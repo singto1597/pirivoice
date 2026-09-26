@@ -388,3 +388,50 @@ async def test_audit_logs_endpoint_filters_pagination(client, db_pool, audit_wor
     async with db_pool.acquire() as conn:
         newest = await conn.fetchrow("SELECT action FROM audit_logs ORDER BY created_at DESC LIMIT 1")
     assert body["items"][0]["action"] == newest["action"]
+
+
+@pytest.mark.asyncio
+async def test_audit_logs_endpoint_exposes_room(client, db_pool, audit_world):
+    """🏫 API ต้องส่ง room_id + room_name ออกมาด้วย (LEFT JOIN rooms) — ไม่ใช่ -1/None เสมอ"""
+    world = audit_world
+    admin_h = {"Authorization": f"Bearer {world['admin']['token']}"}
+
+    # login ที่ไม่เจอชื่อ → ไม่รู้ว่าใคร → room_id = -1 และ room_name = None (ไม่มีห้องให้ join)
+    client.post("/api/auth/login", json={"username": "ไม่มีคนนี้เลย", "password": "1234"})
+    # login สำเร็จ + แจ้งเรื่อง → resolve ห้องของผู้กระทำได้
+    client.post("/api/auth/login", json={"username": world["student"]["username"], "password": "1234"})
+    created = _create_issue(client, world, title="เรื่องของห้อง")
+    assert created.status_code == 200, f"→ {created.status_code}: {created.text}"
+    issue_id = created.json()["id"]
+
+    async with db_pool.acquire() as conn:
+        expected_name = await conn.fetchval(
+            "SELECT room_name FROM rooms WHERE id = $1", world["student"]["room_id"]
+        )
+
+    # 1) แถวที่มีห้อง → room_id ตรง + room_name มาจากตาราง rooms
+    res = client.get("/api/audit-logs", params={"entity_id": issue_id}, headers=admin_h)
+    assert res.status_code == 200, f"→ {res.status_code}: {res.text}"
+    items = res.json()["items"]
+    assert items, "ต้องมี audit ของ CREATE_ISSUE"
+    assert items[0]["room_id"] == world["student"]["room_id"]
+    assert items[0]["room_name"] == expected_name, (
+        f"room_name ต้อง join ได้จาก rooms แต่ได้ {items[0]['room_name']!r}"
+    )
+
+    # 2) แถวที่ไม่มีห้อง (-1) → ต้องไม่ถูก JOIN ตัดแถวทิ้ง และ room_name เป็น null
+    res = client.get("/api/audit-logs", params={"action": "login", "status": "error"}, headers=admin_h)
+    assert res.status_code == 200
+    unknown = [i for i in res.json()["items"] if i["actor_identifier"] == "ไม่มีคนนี้เลย"]
+    assert unknown, "แถว room_id = -1 ต้องยังออกมา (LEFT JOIN ไม่ใช่ JOIN)"
+    assert unknown[0]["room_id"] == -1
+    assert unknown[0]["room_name"] is None, "ไม่มีห้อง → room_name เป็น null ไม่ใช่ '-'"
+
+    # 3) deep-DB: ค่าที่ API ส่งตรงกับแถวจริงใน audit_logs
+    async with db_pool.acquire() as conn:
+        # entity_id เป็น VARCHAR — issue id เป็น int ต้อง str() ก่อน ไม่งั้น asyncpg DataError
+        row = await conn.fetchrow(
+            "SELECT room_id FROM audit_logs WHERE entity_id = $1 AND action = 'CREATE_ISSUE'",
+            str(issue_id)
+        )
+    assert row["room_id"] == items[0]["room_id"]

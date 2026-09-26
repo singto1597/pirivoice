@@ -9,6 +9,9 @@ export interface AuditLogEntry {
   id: string;
   trace_id: string | null;
   user_id: number | null;
+  // 🏫 room_id = -1 เมื่อไม่ระบุห้อง ; room_name = null เมื่อไม่พบห้องนั้นในตาราง rooms
+  room_id: number | null;
+  room_name: string | null;
   actor_identifier: string;
   client_source: string;
   service_name: string;

@@ -617,3 +617,11 @@
 - **Correct Pattern/Solution:** อ่าน `X-Forwarded-For` เอาตัว **ซ้ายสุด** (client ต้นทาง) → `X-Real-IP` → `request.client.host` เป็นทางสุดท้าย; normalize ก่อนเก็บ (ตัด port, ตัด `::ffff:` ของ IPv6-mapped, จำกัด 45 ตัวอักษรตาม `VARCHAR(45)`) — ควรทำใน helper ตัวเดียว (`_client_ip(request)`) แล้วให้ middleware เรียก
 - **กฎ: แอปที่อยู่หลัง reverse proxy — ห้ามใช้ `request.client.host` เป็น IP ผู้ใช้; อ่าน X-Forwarded-For/X-Real-IP ก่อนเสมอ (และ normalize ก่อนเก็บ); อาการ "IP เดียวกันหมด/เป็น IP วงใน" = สัญญาณว่าอ่านผิดชั้น**
 - **Date Added:** 2026-09-25
+
+### 🛠️ ตาราง audit/ประวัติ ห้าม FK แบบ `ON DELETE CASCADE` / `SET NULL` — มันลบประวัติทิ้ง
+- **Context/Problem:** ออกแบบ `audit_logs` ให้ `room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE` และ `user_id INTEGER REFERENCES users(id) ON DELETE SET NULL` (ดูเหมือน "สะอาด" — ไม่มี orphan) แต่ผลจริงคือ **ลบห้อง 1 ห้อง = ประวัติ audit หายทั้งห้อง** และ **ลบผู้ใช้ = ไม่รู้ว่าใครทำ** ซึ่งทำให้ audit ตรวจย้อนหลังไม่ได้ = ขัดกับวัตถุประสงค์ของตารางเอง
+- **Root Cause:** FK constraint บังคับ *ความสมบูรณ์ของข้อมูลปัจจุบัน* แต่ตารางประวัติต้องรักษา *ความจริง ณ เวลาที่เกิดเหตุ* — สองเป้าหมายนี้ขัดกัน ⇒ การผูก FK จากตารางประวัติไปยังตารางที่ถูกลบได้ จึงเลือกได้แค่ "ลบประวัติตาม" หรือ "ทำให้ข้อมูลอ้างอิงหาย" ไม่มีทางเลือกที่ถูก
+- **Correct Pattern/Solution:** **ไม่ใส่ FK** บนคอลัมน์อ้างอิงของตารางประวัติ — เก็บเป็นเลข/สตริงล้วน แล้ว JOIN เอาเองตอนอ่าน (`LEFT JOIN rooms r ON r.id = a.room_id` — **LEFT** เพราะแถวที่ไม่มีห้องต้องยังออกมา) ; ค่าที่ "ไม่ระบุ/ไม่รู้จัก" ใช้ sentinel `-1` (คอลัมน์ข้อความใช้ `'-'`); **ห้ามกรอง `r.deleted_at IS NULL` ตอน join ประวัติ** เพราะต้องอ่านชื่อห้องที่ถูกลบไปแล้วได้ (ประวัติต้องตรงกับความจริง ณ ตอนนั้น ไม่ใช่สถานะปัจจุบัน)
+- **⚠️ ลำดับใน migration:** ถ้าจะเปลี่ยนจาก "มี FK" เป็น "ใช้ sentinel -1" ต้อง `DROP CONSTRAINT` **ก่อน** UPDATE เติม `-1` เสมอ ไม่งั้น `ForeignKeyViolationError` (และถ้าจะมี sentinel row จริงในตารางปลายทาง ระวัง fixture ที่ TRUNCATE ระหว่างเทสต์จะลบมันทิ้ง → ทางที่ถูกคือถอด FK ไม่ใช่สร้างแถวปลอม)
+- **กฎ: ตาราง audit/log/ประวัติ — ห้าม FK ที่มี `ON DELETE` action ใด ๆ บนคอลัมน์อ้างอิง; เก็บ id เปล่า + join เอาเอง; อ่านประวัติต้องไม่กรอง soft-delete ของตารางที่ถูกอ้าง; ถ้าจำเป็นต้องมี FK จริง ๆ ให้ใช้ `ON DELETE RESTRICT`/`NO ACTION` เพื่อบังคับให้คิดก่อนลบ ไม่ใช่ให้ DB ลบประวัติให้เงียบ ๆ**
+- **Date Added:** 2026-09-26

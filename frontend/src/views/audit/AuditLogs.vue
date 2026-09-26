@@ -166,6 +166,23 @@ function statusBadge(s: string): string {
   return STATUS_BADGE[s] ?? 'bg-stone-100 text-stone-600';
 }
 
+/**
+ * ชื่อห้องที่ผู้กระทำสังกัด ณ ตอนเกิดเหตุ (audit_logs เก็บ room_id ไว้ ไม่มี FK)
+ * - มีชื่อห้อง → โชว์ชื่อ (rooms ยังอยู่ แม้ถูกลบแบบ soft delete)
+ * - ไม่มีชื่อแต่มี id → โชว์ #id ไว้ตามรอยต่อได้
+ * - room_id = -1 → ไม่ระบุห้อง
+ */
+function fmtRoom(e: AuditLogEntry): string {
+  if (!isBlank(e.room_name)) return e.room_name as string;
+  if (e.room_id !== null && e.room_id !== undefined && e.room_id > 0) return `#${e.room_id}`;
+  return '-';
+}
+
+/** มีห้องจริงหรือไม่ — ใช้ตัดสินสี (sentinel '-' ต้องจางกว่า) */
+function hasRoom(e: AuditLogEntry): boolean {
+  return !isBlank(e.room_name) || (e.room_id !== null && e.room_id !== undefined && e.room_id > 0);
+}
+
 const hasData = computed(() => items.value.length > 0);
 
 const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm transition';
@@ -279,6 +296,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
             <tr class="text-left text-[11px] uppercase tracking-wider text-stone-500">
               <th class="px-4 py-3 font-semibold">เวลา</th>
               <th class="px-4 py-3 font-semibold">ผู้ใช้</th>
+              <th class="px-4 py-3 font-semibold">ห้อง</th>
               <th class="px-4 py-3 font-semibold">การกระทำ</th>
               <th class="px-4 py-3 font-semibold">ข้อมูล</th>
               <th class="px-4 py-3 font-semibold">สถานะ</th>
@@ -293,6 +311,10 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                 <td class="px-4 py-2.5">
                   <span class="font-medium text-stone-700">{{ e.actor_identifier }}</span>
                   <span v-if="!isBlank(e.ip_address)" class="block text-[11px] text-stone-400 tabular-nums">{{ e.ip_address }}</span>
+                </td>
+                <td class="whitespace-nowrap px-4 py-2.5">
+                  <span v-if="hasRoom(e)" class="text-stone-600">{{ fmtRoom(e) }}</span>
+                  <span v-else class="text-stone-300">-</span>
                 </td>
                 <td class="px-4 py-2.5">
                   <span class="inline-flex items-center gap-1.5">
@@ -328,7 +350,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
               </tr>
               <!-- รายละเอียดเก่า/ใหม่ (expand) -->
               <tr v-if="expanded.has(e.id)" class="bg-stone-50/60">
-                <td colspan="7" class="px-4 py-3">
+                <td colspan="8" class="px-4 py-3">
                   <div class="grid gap-3 lg:grid-cols-2">
                     <div>
                       <p class="mb-1 text-xs font-semibold text-stone-500">ค่าเดิม (old_values)</p>
