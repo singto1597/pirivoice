@@ -87,11 +87,25 @@ app.add_middleware(
 
 
 def _client_ip(request: Request) -> str:
-    """🌐 IP จริงของ client — backend อยู่หลัง Traefik จึงต้องอ่าน header forwarding ก่อน
+    """🌐 IP จริงของ client — อ่านตามลำดับความเชื่อถือได้ของ header
 
-    ⚠️ `request.client.host` จะได้ IP ของ Traefik (10.0.0.x) เสมอ ไม่ใช่ IP ผู้ใช้จริง
-       จึงอ่าน X-Forwarded-For (ตัวซ้ายสุด = client ต้นทาง) → X-Real-IP → client.host เป็นทางสุดท้าย
+    🔗 เส้นทางจริงของ production/staging:
+       client → Cloudflare → origin:80 (Swarm ingress) → Traefik 3 → backend
+
+    ⚠️ ทำไมต้องอ่าน CF-Connecting-IP ก่อน XFF:
+       Traefik publish พอร์ตแบบ `PublishMode: ingress` → Swarm routing mesh SNAT
+       source IP ทิ้งไปแล้ว (Traefik เห็น peer เป็น 10.0.0.2 = ingress-endpoint)
+       และ Traefik v3 ค่า default `forwardedHeaders.insecure=false` → **เมิน XFF
+       ที่ Cloudflare ส่งมา แล้วเขียนทับด้วย 10.0.0.2** ⇒ อ่าน XFF ได้ค่าไร้ความหมาย
+       ส่วน `CF-Connecting-IP` เป็น header ที่ Traefik ไม่ยุ่งด้วย จึงรอดมาถึง backend
+
+    🔒 ขอบเขตความเชื่อถือ: header เหล่านี้ "ปลอมได้" ถ้ามีใครยิงเข้า origin ตรง ๆ
+       (ข้าม Cloudflare) — ควรล็อกพอร์ต 80 ของ origin ให้รับเฉพาะ IP ของ Cloudflare
+       ที่ระดับ firewall ก่อนถือว่า ip_address ใช้เป็นหลักฐานได้จริง
     """
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",")[0].strip()

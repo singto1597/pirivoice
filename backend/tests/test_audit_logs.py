@@ -435,3 +435,50 @@ async def test_audit_logs_endpoint_exposes_room(client, db_pool, audit_world):
             str(issue_id)
         )
     assert row["room_id"] == items[0]["room_id"]
+
+
+# === Section: IP จริงของผู้ใช้หลัง proxy chain ===
+@pytest.mark.asyncio
+async def test_client_ip_prefers_cf_connecting_ip(client, db_pool, audit_world):
+    """☁️ Cloudflare อยู่หน้า Traefik → CF-Connecting-IP ต้องชนะ X-Forwarded-For
+
+    ของจริงเคยพลาด: Traefik publish แบบ ingress (Swarm SNAT) + forwardedHeaders
+    default (insecure=false) → Traefik เขียนทับ XFF ด้วย 10.0.0.2 ของ ingress-endpoint
+    ⇒ audit_logs.ip_address เป็น 10.0.0.2 ทุกแถว อ่านย้อนหลังไม่ได้
+    """
+    res = client.post(
+        "/api/auth/login",
+        json={"username": "cf_probe", "password": "xxxx"},
+        headers={
+            "CF-Connecting-IP": "203.0.113.9",   # ค่าจริงจาก Cloudflare
+            "X-Forwarded-For": "10.0.0.2",        # ค่าที่ Traefik ใส่ทับ (ไร้ความหมาย)
+            "User-Agent": "cf-probe/1.0",
+        },
+    )
+    assert res.status_code == 401
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT ip_address FROM audit_logs WHERE actor_identifier = 'cf_probe' ORDER BY created_at DESC LIMIT 1"
+        )
+    assert row["ip_address"] == "203.0.113.9", (
+        f"ต้องใช้ CF-Connecting-IP ไม่ใช่ XFF แต่ได้ {row['ip_address']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_client_ip_falls_back_to_xff_leftmost(client, db_pool, audit_world):
+    """ไม่มี CF-Connecting-IP (dev/local) → ใช้ XFF ตัวซ้ายสุด แล้ว normalize ให้สะอาด"""
+    res = client.post(
+        "/api/auth/login",
+        json={"username": "xff_probe", "password": "xxxx"},
+        headers={"X-Forwarded-For": "198.51.100.7:51234, 10.0.0.2, 10.0.0.3"},
+    )
+    assert res.status_code == 401
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT ip_address FROM audit_logs WHERE actor_identifier = 'xff_probe' ORDER BY created_at DESC LIMIT 1"
+        )
+    # ตัวซ้ายสุด + ตัด port ทิ้ง (VARCHAR(45) ต้องไม่เก็บ "198.51.100.7:51234")
+    assert row["ip_address"] == "198.51.100.7", f"ได้ {row['ip_address']!r}"
