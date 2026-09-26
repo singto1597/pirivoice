@@ -67,41 +67,48 @@ async def list_audit_logs(
         if scope["scope"] not in ("super", "all"):
             raise ForbiddenError("คุณไม่มีสิทธิ์ดูบันทึกการใช้งาน")
 
+        # ⚠️ ทุกคอลัมน์ใน WHERE/ORDER BY ต้อง up alias `a.` เพราะคิวรีหลัก JOIN rooms เข้ามา
+        #    (ตอนนี้ยังไม่มีชื่อคอลัมน์ชนกัน แต่ rooms เพิ่มคอลัมน์เมื่อไหร่จะพังทันทีถ้าไม่ qualify)
         where = ["1 = 1"]
         params: list = []
         if action:
             params.append(action)
-            where.append(f"action = ${len(params)}")
+            where.append(f"a.action = ${len(params)}")
         if entity_type:
             params.append(entity_type)
-            where.append(f"entity_type = ${len(params)}")
+            where.append(f"a.entity_type = ${len(params)}")
         if entity_id:
             params.append(entity_id)
-            where.append(f"entity_id = ${len(params)}")
+            where.append(f"a.entity_id = ${len(params)}")
         if status:
             params.append(status)
-            where.append(f"status = ${len(params)}")
+            where.append(f"a.status = ${len(params)}")
         if q:
             params.append(f"%{q}%")
             where.append(
-                f"(actor_identifier ILIKE ${len(params)} OR COALESCE(error_detail,'') ILIKE ${len(params)})"
+                f"(a.actor_identifier ILIKE ${len(params)} OR COALESCE(a.error_detail,'') ILIKE ${len(params)})"
             )
         if date_from:
             params.append(date_from)
-            where.append(f"(created_at AT TIME ZONE 'Asia/Bangkok')::date >= ${len(params)}")
+            where.append(f"(a.created_at AT TIME ZONE 'Asia/Bangkok')::date >= ${len(params)}")
         if date_to:
             params.append(date_to)
-            where.append(f"(created_at AT TIME ZONE 'Asia/Bangkok')::date <= ${len(params)}")
+            where.append(f"(a.created_at AT TIME ZONE 'Asia/Bangkok')::date <= ${len(params)}")
 
         where_sql = " AND ".join(where)
         filter_params = list(params)  # snapshot ก่อน append limit/offset (ใช้ตอน fallback total)
 
+        # 🏫 LEFT JOIN rooms เพื่อโชว์ชื่อห้อง (audit_logs เก็บ room_id เป็นเลขล้วน ไม่มี FK)
+        #    ⚠️ ไม่กรอง r.deleted_at — ห้องที่ถูกลบไปแล้วต้องยังอ่านชื่อได้ ประวัติต้องตรงกับ
+        #       ความจริง ณ ตอนเกิดเหตุ ไม่ใช่สถานะปัจจุบันของห้อง
+        #    LEFT JOIN (ไม่ใช่ JOIN) เพราะแถวที่ room_id = -1 (ไม่ระบุห้อง) ต้องยังออกมา
         rows = await conn.fetch(
             f"""
-            SELECT *, COUNT(*) OVER() AS total_count
-            FROM audit_logs
+            SELECT a.*, r.room_name AS room_name, COUNT(*) OVER() AS total_count
+            FROM audit_logs a
+            LEFT JOIN rooms r ON r.id = a.room_id
             WHERE {where_sql}
-            ORDER BY created_at DESC
+            ORDER BY a.created_at DESC
             LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}
             """,
             *params, limit, offset
@@ -115,7 +122,7 @@ async def list_audit_logs(
             total = None
         if total is None:
             total = await conn.fetchval(
-                f"SELECT COUNT(*) FROM audit_logs WHERE {where_sql}",
+                f"SELECT COUNT(*) FROM audit_logs a WHERE {where_sql}",
                 *filter_params
             ) or 0
 
@@ -149,6 +156,9 @@ def _audit_to_dict(row: asyncpg.Record) -> dict:
         "id": str(row["id"]),
         "trace_id": row["trace_id"],
         "user_id": row["user_id"],
+        # 🏫 room_id = -1 คือ "ไม่ระบุห้อง" ; room_name = None เมื่อไม่มีห้องนั้นจริง (LEFT JOIN)
+        "room_id": row["room_id"],
+        "room_name": row["room_name"],
         "actor_identifier": row["actor_identifier"],
         "client_source": row["client_source"],
         "service_name": row["service_name"],

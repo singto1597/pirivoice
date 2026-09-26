@@ -12,6 +12,7 @@ import asyncpg
 from arq.connections import RedisSettings
 
 from core.config import settings
+from core.request_context import audit_scope
 from services import import_service
 
 logger = logging.getLogger("IMPORT_WORKER")
@@ -21,7 +22,10 @@ async def startup(ctx: dict) -> None:
     """สร้าง db pool ของ worker + กู้คืนงานค้าง (worker ก่อนหน้าตายกลางคัน)"""
     ctx["pool"] = await asyncpg.create_pool(settings.DATABASE_URL, min_size=1, max_size=5)
     try:
-        await import_service.recover_stuck_jobs(ctx["pool"])
+        # 📡 worker ไม่ได้ผ่าน HTTP → ต้องครอบ audit_scope เอง ไม่งั้น audit_logs
+        #    ของงานนี้จะไม่มี trace_id/endpoint/execution_time_ms (ดู core/request_context.py)
+        with audit_scope(endpoint="arq:recover_stuck_jobs"):
+            await import_service.recover_stuck_jobs(ctx["pool"])
     except Exception:
         logger.exception("❌ recover stuck import jobs ล้มเหลว (จะลองใหม่ตอน start ครั้งหน้า)")
 
@@ -37,7 +41,9 @@ async def process_student_import(ctx: dict, job_id: int) -> dict:
     ⚠️ __qualname__ ของฟังก์ชันนี้ = 'process_student_import'
        ต้องตรงกับที่ `import_service.enqueue_import_job` ใช้ (enqueue_job("process_student_import", job_id))
     """
-    return await import_service.process_import_job(ctx["pool"], job_id)
+    # 📡 ครอบ audit_scope: ทุก audit log ของงานนี้ได้ trace_id เดียวกัน + วัด execution_time_ms ได้
+    with audit_scope(endpoint=f"arq:process_student_import job_id={job_id}"):
+        return await import_service.process_import_job(ctx["pool"], job_id)
 
 
 class WorkerSettings:

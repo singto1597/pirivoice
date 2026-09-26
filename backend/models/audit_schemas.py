@@ -8,6 +8,9 @@ class AuditLogOut(BaseModel):
     id: str
     trace_id: Optional[str] = None
     user_id: Optional[int] = None
+    # 🏫 room_id = -1 เมื่อไม่ระบุห้อง ; room_name = None เมื่อไม่พบห้องนั้น (soft delete ได้)
+    room_id: Optional[int] = None
+    room_name: Optional[str] = None
     actor_identifier: str
     client_source: str
     service_name: str

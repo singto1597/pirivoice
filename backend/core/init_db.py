@@ -348,27 +348,35 @@ async def init_db(pool: asyncpg.Pool):
                 """)
 
                 # --- 8. audit_logs (โครงสร้างเหมือนโปรเจคเก่า) ---
+                # 🔒 ทุกคอลัมน์ NOT NULL + DEFAULT — audit log ต้อง "ครบทุกช่อง" ห้ามเว้นว่าง
+                #    - "-" = ไม่ทราบค่า/ไม่มีค่า (ดู UNKNOWN ใน core/logger.py)
+                #    - {} = ไม่มีข้อมูล old/new (action ประเภทอ่าน)
+                #    - -1 = ไม่ระบุห้อง/ไม่รู้จักตัวตน (sentinel — ไม่ต้องมีแถวจริงใน rooms/users)
+                #    - execution_time_ms 0 = วัดไม่ได้ (ไม่มี request context)
+                # ⚠️ room_id/user_id "ไม่มี FK" โดยเจตนา — audit_logs เป็นบันทึกประวัติที่ต้อง
+                #    ตรวจย้อนหลังได้ตลอดไป: FK แบบ CASCADE เคยทำให้ "ลบห้อง → ประวัติหายทั้งห้อง"
+                #    และแบบ SET NULL ทำให้ "ลบผู้ใช้ → ไม่รู้ว่าใครทำ" (migration 013 ถอด FK เดิมออก)
                 await conn.execute("""
                 CREATE TABLE IF NOT EXISTS audit_logs (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    trace_id VARCHAR(50),
-                    room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE,
-                    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                    actor_identifier VARCHAR(100) NOT NULL,
-                    client_source VARCHAR(20) NOT NULL,
-                    service_name VARCHAR(50) NOT NULL,
-                    action VARCHAR(50) NOT NULL,
-                    entity_type VARCHAR(50),
-                    entity_id VARCHAR(50),
-                    status VARCHAR(20) DEFAULT 'success',
-                    error_detail TEXT,
-                    old_values JSONB,
-                    new_values JSONB,
-                    endpoint_or_command TEXT,
-                    ip_address VARCHAR(45),
-                    user_agent TEXT,
-                    execution_time_ms INTEGER,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    trace_id VARCHAR(50) NOT NULL DEFAULT '-',
+                    room_id INTEGER NOT NULL DEFAULT -1,
+                    user_id INTEGER NOT NULL DEFAULT -1,
+                    actor_identifier VARCHAR(100) NOT NULL DEFAULT '-',
+                    client_source VARCHAR(20) NOT NULL DEFAULT '-',
+                    service_name VARCHAR(50) NOT NULL DEFAULT '-',
+                    action VARCHAR(50) NOT NULL DEFAULT '-',
+                    entity_type VARCHAR(50) NOT NULL DEFAULT '-',
+                    entity_id VARCHAR(50) NOT NULL DEFAULT '-',
+                    status VARCHAR(20) NOT NULL DEFAULT 'success',
+                    error_detail TEXT NOT NULL DEFAULT '-',
+                    old_values JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    new_values JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    endpoint_or_command TEXT NOT NULL DEFAULT '-',
+                    ip_address VARCHAR(45) NOT NULL DEFAULT '-',
+                    user_agent TEXT NOT NULL DEFAULT '-',
+                    execution_time_ms INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """)
 
