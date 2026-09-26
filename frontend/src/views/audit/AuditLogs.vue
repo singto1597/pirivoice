@@ -130,14 +130,33 @@ function toggleExpand(id: string) {
   expanded.value = next;
 }
 
-function hasPayload(e: AuditLogEntry): boolean {
-  return !!e.new_values || !!e.old_values || !!e.error_detail;
+/**
+ * ค่า sentinel จาก backend = "ไม่มีค่า" — audit_logs บันทึกครบทุกคอลัมน์แล้ว (ไม่เป็น NULL)
+ * ความหมาย: '-' = ไม่ทราบ/ไม่มีค่า, '{}' = ไม่มีการเปลี่ยนแปลงข้อมูล
+ * (ดู UNKNOWN / EMPTY_JSON ใน backend/core/logger.py)
+ */
+function isBlank(v: unknown): boolean {
+  return v === null || v === undefined || v === '' || v === '-';
 }
 
-function fmtPayload(v: Record<string, unknown> | null): string {
-  if (!v) return '-';
+/** payload ว่าง = {} (ไม่ใช่ null แล้ว) → ถือว่า "ไม่มีรายละเอียดให้กาง" */
+function isEmptyPayload(v: Record<string, unknown> | string | null): boolean {
+  if (v === null || v === undefined || v === '' || v === '-') return true; // เช็คตรง ๆ ให้ TS narrow type
+  if (typeof v === 'string') {
+    const s = v.trim();
+    return s === '' || s === '-' || s === '{}' || s === 'null';
+  }
+  return Object.keys(v).length === 0;
+}
+
+function hasPayload(e: AuditLogEntry): boolean {
+  return !isEmptyPayload(e.new_values) || !isEmptyPayload(e.old_values) || !isBlank(e.error_detail);
+}
+
+function fmtPayload(v: Record<string, unknown> | string | null): string {
+  if (isEmptyPayload(v)) return '-';
   try {
-    return JSON.stringify(v, null, 2);
+    return typeof v === 'string' ? v : JSON.stringify(v, null, 2);
   } catch {
     return String(v);
   }
@@ -273,19 +292,19 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                 <td class="whitespace-nowrap px-4 py-2.5 text-stone-500 tabular-nums">{{ fmtDateTime(e.created_at) }}</td>
                 <td class="px-4 py-2.5">
                   <span class="font-medium text-stone-700">{{ e.actor_identifier }}</span>
-                  <span v-if="e.ip_address" class="block text-[11px] text-stone-400 tabular-nums">{{ e.ip_address }}</span>
+                  <span v-if="!isBlank(e.ip_address)" class="block text-[11px] text-stone-400 tabular-nums">{{ e.ip_address }}</span>
                 </td>
                 <td class="px-4 py-2.5">
                   <span class="inline-flex items-center gap-1.5">
                     <span class="font-medium text-stone-800">{{ actionLabel(e.action) }}</span>
                     <span class="font-mono text-[11px] text-stone-400">{{ e.action }}</span>
                   </span>
-                  <span v-if="e.endpoint_or_command" class="block font-mono text-[11px] text-stone-400">{{ e.endpoint_or_command }}</span>
+                  <span v-if="!isBlank(e.endpoint_or_command)" class="block font-mono text-[11px] text-stone-400">{{ e.endpoint_or_command }}</span>
                 </td>
                 <td class="px-4 py-2.5 text-stone-500">
-                  <template v-if="e.entity_type">
+                  <template v-if="!isBlank(e.entity_type)">
                     <span class="text-stone-400">{{ e.entity_type }}</span>
-                    <span v-if="e.entity_id" class="font-mono text-stone-600">#{{ e.entity_id }}</span>
+                    <span v-if="!isBlank(e.entity_id)" class="font-mono text-stone-600">#{{ e.entity_id }}</span>
                   </template>
                   <span v-else class="text-stone-300">-</span>
                 </td>
@@ -294,7 +313,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                     {{ e.status }}
                   </span>
                 </td>
-                <td class="px-4 py-2.5 font-mono text-xs text-stone-500">{{ e.ip_address || '-' }}</td>
+                <td class="px-4 py-2.5 font-mono text-xs text-stone-500">{{ isBlank(e.ip_address) ? '-' : e.ip_address }}</td>
                 <td class="px-4 py-2.5 text-right">
                   <button
                     v-if="hasPayload(e)"
@@ -319,7 +338,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                       <p class="mb-1 text-xs font-semibold text-stone-500">ค่าใหม่ (new_values)</p>
                       <pre class="overflow-x-auto rounded-lg border border-stone-200 bg-white p-2.5 text-[11px] text-stone-600">{{ fmtPayload(e.new_values) }}</pre>
                     </div>
-                    <div v-if="e.error_detail" class="lg:col-span-2">
+                    <div v-if="!isBlank(e.error_detail)" class="lg:col-span-2">
                       <p class="mb-1 text-xs font-semibold text-[#B91C1C]">ข้อผิดพลาด</p>
                       <pre class="overflow-x-auto rounded-lg border border-[#B91C1C]/15 bg-[#B91C1C]/5 p-2.5 text-[11px] text-[#B91C1C]">{{ e.error_detail }}</pre>
                     </div>

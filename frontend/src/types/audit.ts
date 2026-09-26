@@ -1,4 +1,9 @@
 // ประเภทข้อมูล Audit Log (บันทึกการใช้งาน)
+//
+// ⚠️ backend บันทึกครบทุกคอลัมน์แล้ว (migration 013 — ห้ามเว้นว่าง) ค่าที่ "ไม่รู้" จะมาเป็น
+// sentinel ไม่ใช่ null: '-' = ไม่ทราบ/ไม่มีค่า, {} = ไม่มีการเปลี่ยนแปลงข้อมูล, -1 = ไม่ระบุห้อง/ตัวตน
+// (ดู UNKNOWN / EMPTY_JSON / UNRESOLVED_ID ใน backend/core/logger.py)
+// คง `| null` ไว้เป็นเกราะกันข้อมูลเก่า/กรณี parse พลาด — UI ให้ใช้ isBlank() ใน AuditLogs.vue ตัดสินใจแสดง
 
 export interface AuditLogEntry {
   id: string;

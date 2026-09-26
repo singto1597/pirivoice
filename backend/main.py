@@ -81,23 +81,42 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # ให้ JS ฝั่ง SPA อ่าน X-Trace-Id ได้ (middleware ส่งกลับทุก response) — ไม่งั้นเบราว์เซอร์ซ่อน
+    expose_headers=["X-Trace-Id"],
 )
+
+
+def _client_ip(request: Request) -> str:
+    """🌐 IP จริงของ client — backend อยู่หลัง Traefik จึงต้องอ่าน header forwarding ก่อน
+
+    ⚠️ `request.client.host` จะได้ IP ของ Traefik (10.0.0.x) เสมอ ไม่ใช่ IP ผู้ใช้จริง
+       จึงอ่าน X-Forwarded-For (ตัวซ้ายสุด = client ต้นทาง) → X-Real-IP → client.host เป็นทางสุดท้าย
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.headers.get("x-real-ip") or (request.client.host if request.client else "")
 
 
 @app.middleware("http")
 async def audit_context_middleware(request: Request, call_next):
-    """📡 ตั้ง request context (ip / user-agent / trace_id) ให้ AuditLogger เก็บอัตโนมัติ
-    (contextvar — services ไม่ต้องรับ param เพิ่ม; ล้างหลัง request จบกัน leak ข้าม request)
+    """📡 ตั้ง request context (ip จริง / user-agent / endpoint / trace_id / เวลาเริ่ม)
+    ให้ AuditLogger เก็บอัตโนมัติ — services ไม่ต้องรับ param เพิ่ม
+    (contextvar; ล้างหลัง request จบกัน leak ข้าม request)
     """
+    trace_id = str(uuid.uuid4())
     set_audit_context(
-        ip_address=request.client.host if request.client else None,
+        ip_address=_client_ip(request),
         user_agent=request.headers.get("user-agent"),
-        trace_id=str(uuid.uuid4()),
+        trace_id=trace_id,
+        endpoint=f"{request.method} {request.url.path}",
     )
     try:
         response = await call_next(request)
     finally:
         clear_audit_context()
+    # ส่ง trace_id กลับไปด้วย — ผู้ใช้แจ้งปัญหาแล้วเทียบกับ audit_logs ได้ตรงแถว
+    response.headers["X-Trace-Id"] = trace_id
     return response
 
 

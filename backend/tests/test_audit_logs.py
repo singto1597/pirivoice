@@ -70,7 +70,7 @@ async def test_login_audit_success_and_failure(client, db_pool, audit_world):
     assert rows[1]["user_id"] == world["student"]["user_id"], "รหัสผิด → รู้ user"
     assert rows[1]["error_detail"] is not None
     assert rows[2]["status"] == "error"
-    assert rows[2]["user_id"] is None, "ไม่เจอชื่อ → ไม่รู้ user"
+    assert rows[2]["user_id"] == -1, "ไม่เจอชื่อ → ไม่รู้ user (sentinel -1 ไม่ปล่อยว่าง)"
     assert rows[2]["actor_identifier"] == f"{sid}NO"
 
 
@@ -210,6 +210,104 @@ async def test_read_audits_logged(client, db_pool, audit_world):
         )
     assert read_issues == 1
     assert read_dashboard == 0, "HEAD โดน 403 ต้องไม่ log READ_DASHBOARD"
+
+
+# === Section 3.5: ความครบถ้วนของทุกคอลัมน์ (ห้ามเว้นว่าง) ===
+@pytest.mark.asyncio
+async def test_audit_logs_every_column_populated(client, db_pool, audit_world):
+    """ทุก action (login สำเร็จ/ล้มเหลว / create / read) → audit row ต้องไม่มีคอลัมน์ใดว่าง
+
+    deep-DB: อ่าน "รายชื่อคอลัมน์ที่ DB บังคับ NOT NULL" จาก information_schema แล้ว
+    ไล่ยืนยันทีละคอลัมน์ — เทสต์จะตามสคีมาให้เองถ้าอนาคตมีคอลัมน์เพิ่ม
+    """
+    world = audit_world
+    sid = world["student"]["username"]
+
+    client.post("/api/auth/login", json={"username": sid, "password": "1234"})           # login สำเร็จ
+    client.post("/api/auth/login", json={"username": f"{sid}NO", "password": "1234"})    # login หาชื่อไม่เจอ
+    client.post("/api/auth/login", json={"username": sid, "password": "wrong"})          # login รหัสผิด
+    res = _create_issue(client, world, title="เรื่องตรวจความครบถ้วน")
+    assert res.status_code == 200
+    issue_id = res.json()["id"]
+    client.get("/api/issues", headers={"Authorization": f"Bearer {world['student']['token']}"})
+
+    async with db_pool.acquire() as conn:
+        not_null_cols = [
+            r["column_name"] for r in await conn.fetch(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'audit_logs' AND is_nullable = 'NO'
+                """
+            )
+        ]
+        rows = await conn.fetch("SELECT * FROM audit_logs ORDER BY created_at")
+
+    assert not_null_cols, "อ่านสคีมา audit_logs ไม่ได้"
+    assert len(rows) >= 5, f"ต้องมีอย่างน้อย 5 audit rows แต่ได้ {len(rows)}"
+
+    for row in rows:
+        for col in not_null_cols:
+            value = row[col]
+            assert value is not None, f"{row['action']}: คอลัมน์ {col} เป็น NULL"
+            if col in ("old_values", "new_values"):
+                continue
+            if isinstance(value, str):
+                assert value.strip() != "", f"{row['action']}: คอลัมน์ {col} เป็นสตริงว่าง"
+
+    def _json(value):
+        """asyncpg คืน jsonb เป็น string (บทเรียนเดิม) — แปลงให้เป็น dict ก่อนเทียบ"""
+        return json.loads(value) if isinstance(value, str) else value
+
+    login_ok = next(r for r in rows if r["action"] == "login" and r["status"] == "success")
+    login_unknown = next(r for r in rows if r["action"] == "login" and r["actor_identifier"].endswith("NO"))
+    create_row = next(r for r in rows if r["action"] == "CREATE_ISSUE")
+    read_row = next(r for r in rows if r["action"] == "READ_ISSUES")
+
+    # user_id / room_id: login สำเร็จ → รู้ตัวตน + ห้องที่สังกัด (resolve จาก students ให้เอง)
+    assert login_ok["user_id"] == world["student"]["user_id"]
+    assert login_ok["room_id"] == world["student"]["room_id"], "ต้องเติม room_id ของผู้กระทำอัตโนมัติ"
+    # login ที่หาชื่อไม่เจอ → ไม่รู้ตัวตน/ห้อง → sentinel -1 (ไม่ใช่ NULL)
+    assert login_unknown["user_id"] == -1
+    assert login_unknown["room_id"] == -1
+
+    # endpoint_or_command: เติมจาก request path ให้เอง ไม่ต้องพึ่ง caller ส่งมา
+    assert login_ok["endpoint_or_command"] == "POST /api/auth/login"
+    assert read_row["endpoint_or_command"] == "GET /api/issues"
+    assert create_row["endpoint_or_command"] == "POST /api/issues"
+    # การอ่านระดับ collection ไม่มีเอนทิตีจริง → "-" (ไม่ปล่อยว่าง)
+    assert read_row["entity_id"] == "-"
+    assert create_row["entity_id"] == str(issue_id)
+
+    # execution_time_ms: วัดจาก middleware — 0 คือ "วัดไม่ได้" เท่านั้น (ต้องเป็น int เสมอ)
+    assert all(isinstance(r["execution_time_ms"], int) for r in rows)
+    assert all(r["execution_time_ms"] >= 0 for r in rows)
+
+    # ip/user_agent: ต้องถูกเติมจาก request context (TestClient → 'testclient')
+    assert login_ok["ip_address"] != "-"
+    assert login_ok["user_agent"] != "-"
+
+    # old/new values: {} แทน NULL (การอ่าน/ล็อกอินไม่มีการเปลี่ยนแปลงข้อมูล)
+    assert _json(read_row["old_values"]) == {}
+    assert _json(read_row["new_values"]) == {}
+    assert _json(create_row["new_values"]), "CREATE_ISSUE ต้องมี new_values ไม่ว่าง"
+    assert _json(create_row["old_values"]) == {}, "สร้างใหม่ → ไม่มีค่าเดิม"
+
+
+@pytest.mark.asyncio
+async def test_trace_id_response_header_matches_audit_row(client, db_pool, audit_world):
+    """middleware คืน X-Trace-Id → trace_id ใน audit_logs ต้องตรงกัน (ตามรอย request ได้)"""
+    world = audit_world
+    res = _create_issue(client, world, title="เรื่องตามรอย trace")
+    assert res.status_code == 200
+    trace_id = res.headers.get("X-Trace-Id")
+    assert trace_id, "ต้องมี header X-Trace-Id"
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT trace_id FROM audit_logs WHERE action = 'CREATE_ISSUE' AND entity_id = $1",
+            str(res.json()["id"])
+        )
+    assert row["trace_id"] == trace_id, "trace_id ใน DB ต้องตรงกับ header ที่ตอบกลับ"
 
 
 # === Section 4: GET /api/audit-logs (RBAC + filter + pagination) ===
