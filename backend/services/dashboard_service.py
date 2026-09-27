@@ -61,6 +61,10 @@ ACTION_LABELS = {
     "READ_DASHBOARD": "ดูแดชบอร์ด",
     "READ_DASHBOARD_TRAFFIC": "ดูสถิติการใช้งาน",
     "READ_AUDIT_LOGS": "ดูบันทึกการใช้งาน",
+    "CREATE_ANNOUNCEMENT": "สร้างประกาศ",
+    "UPDATE_ANNOUNCEMENT": "แก้ไขประกาศ",
+    "DELETE_ANNOUNCEMENT": "ลบประกาศ",
+    "RESTORE_ANNOUNCEMENT": "กู้คืนประกาศ",
 }
 
 

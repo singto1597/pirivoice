@@ -416,6 +416,12 @@ async def init_db(pool: asyncpg.Pool):
                     message TEXT NOT NULL,
                     priority VARCHAR(10) NOT NULL DEFAULT 'normal',
                     link TEXT,
+                    -- ผู้ประกาศ/ผู้แก้ล่าสุด — เก็บเป็น id เปล่า ไม่ใส่ FK
+                    -- (ตามบทเรียน skills.md: ตารางที่ต้องเก็บความจริงย้อนหลังห้าม FK แบบ ON DELETE
+                    --  action ใด ๆ เพราะลบผู้ใช้แล้วหลักฐาน "ใครประกาศ" จะหายไป)
+                    -- NULL = ประกาศที่ seed ก่อนมีฟีเจอร์นี้
+                    created_by INTEGER,
+                    updated_by INTEGER,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     deleted_at TIMESTAMP WITH TIME ZONE,
