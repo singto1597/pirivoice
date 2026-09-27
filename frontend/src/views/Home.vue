@@ -348,6 +348,55 @@ const hasActiveIssues = computed(() => {
       </div>
     </section>
 
+    <!-- ============ ประกาศโรงเรียน ============ -->
+    <section v-if="announceError" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-5 py-10 text-center">
+      <p class="text-sm font-semibold text-stone-700"><i class="bi bi-wifi-off mr-2"></i>โหลดประกาศไม่สำเร็จ</p>
+      <button type="button" @click="loadAnnouncements" class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800">
+        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
+      </button>
+    </section>
+
+    <section v-else-if="!loadingAnnounce && announcements.length > 0" class="rounded-2xl border border-stone-200 bg-white px-5 py-4">
+      <div class="flex items-start gap-3">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
+          <i class="bi bi-megaphone"></i>
+        </span>
+        <div class="min-w-0 space-y-2">
+          <p class="text-xs font-bold uppercase tracking-wider text-stone-500">ประกาศโรงเรียน</p>
+          <div v-for="a in announcements.slice(0, 3)" :key="a.id" class="flex items-start gap-2.5">
+            <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="annIconColor[a.priority] || 'bg-stone-300'"></span>
+            <p class="text-sm font-medium leading-relaxed text-stone-700">{{ a.message }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ทางลัดไปเมนูต่าง ๆ (ตามสิทธิ์) ============ -->
+    <section v-if="quickActions.length > 0">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4">
+        <RouterLink
+          v-for="a in quickActions"
+          :key="a.key"
+          :to="a.to"
+          class="group relative flex flex-col items-start gap-3 rounded-2xl border border-stone-200 bg-white p-4 transition-colors hover:border-stone-300 hover:bg-stone-50 active:scale-[0.98] sm:p-5"
+        >
+          <span class="flex h-12 w-12 items-center justify-center rounded-xl text-xl" :class="a.accent">
+            <i :class="['bi', a.icon]"></i>
+          </span>
+          <div class="min-w-0">
+            <p class="truncate text-sm font-bold text-stone-800 sm:text-[15px]">{{ a.label }}</p>
+            <p class="mt-0.5 truncate text-[11px] font-medium text-stone-400">{{ a.desc }}</p>
+          </div>
+          <span
+            v-if="a.badge > 0"
+            class="absolute right-3 top-3 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#B91C1C] px-1.5 text-[10px] font-bold text-white"
+          >
+            {{ a.badge > 99 ? '99+' : a.badge }}
+          </span>
+        </RouterLink>
+      </div>
+    </section>
+
     <!-- ============ My-issue summary (ทุกคน) ============ -->
     <section class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
       <!-- Header -->
@@ -520,32 +569,6 @@ const hasActiveIssues = computed(() => {
             </RouterLink>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ============ ทางลัดไปเมนูต่าง ๆ (ตามสิทธิ์) ============ -->
-    <section v-if="quickActions.length > 0">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4">
-        <RouterLink
-          v-for="a in quickActions"
-          :key="a.key"
-          :to="a.to"
-          class="group relative flex flex-col items-start gap-3 rounded-2xl border border-stone-200 bg-white p-4 transition-colors hover:border-stone-300 hover:bg-stone-50 active:scale-[0.98] sm:p-5"
-        >
-          <span class="flex h-12 w-12 items-center justify-center rounded-xl text-xl" :class="a.accent">
-            <i :class="['bi', a.icon]"></i>
-          </span>
-          <div class="min-w-0">
-            <p class="truncate text-sm font-bold text-stone-800 sm:text-[15px]">{{ a.label }}</p>
-            <p class="mt-0.5 truncate text-[11px] font-medium text-stone-400">{{ a.desc }}</p>
-          </div>
-          <span
-            v-if="a.badge > 0"
-            class="absolute right-3 top-3 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#B91C1C] px-1.5 text-[10px] font-bold text-white"
-          >
-            {{ a.badge > 99 ? '99+' : a.badge }}
-          </span>
-        </RouterLink>
       </div>
     </section>
 
@@ -731,28 +754,6 @@ const hasActiveIssues = computed(() => {
       </div>
     </section>
 
-    <!-- ============ ประกาศโรงเรียน ============ -->
-    <section v-if="announceError" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-5 py-10 text-center">
-      <p class="text-sm font-semibold text-stone-700"><i class="bi bi-wifi-off mr-2"></i>โหลดประกาศไม่สำเร็จ</p>
-      <button type="button" @click="loadAnnouncements" class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800">
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
-    </section>
-
-    <section v-else-if="!loadingAnnounce && announcements.length > 0" class="rounded-2xl border border-stone-200 bg-white px-5 py-4">
-      <div class="flex items-start gap-3">
-        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
-          <i class="bi bi-megaphone"></i>
-        </span>
-        <div class="min-w-0 space-y-2">
-          <p class="text-xs font-bold uppercase tracking-wider text-stone-500">ประกาศโรงเรียน</p>
-          <div v-for="a in announcements.slice(0, 3)" :key="a.id" class="flex items-start gap-2.5">
-            <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="annIconColor[a.priority] || 'bg-stone-300'"></span>
-            <p class="text-sm font-medium leading-relaxed text-stone-700">{{ a.message }}</p>
-          </div>
-        </div>
-      </div>
-    </section>
   </div>
 </template>
 
