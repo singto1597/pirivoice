@@ -453,8 +453,13 @@ const hasAnyItems = computed(() => items.value.length > 0)
               : 'ring-stone-100'
         "
       >
+        <!-- ⚠️ มือถือต้อง "ซ้อน" ไม่ใช่ "วางข้างกัน": ปุ่มเป็น shrink-0 (หดไม่ได้) จึงกิน
+             ความกว้างตามเนื้อ ส่วนกล่องข้อความเป็น flex-1 (basis 0) ⇒ ถ้าปล่อยให้อยู่แถว
+             เดียวกันบนจอแคบ ข้อความจะเหลือกว้างไม่กี่ px แล้วขึ้น "บรรทัดละตัวอักษร"
+             ทางแก้: มือถือให้ทั้งสองกล่องเต็มความกว้าง (w-full) ⇒ flex-wrap พาไปคนละบรรทัด
+             จอ sm ขึ้นไปค่อยกลับไปวางข้างกันแบบเดิม -->
         <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
+          <div class="w-full min-w-0 sm:w-auto sm:flex-1">
             <!-- ป้าย priority + เวลา -->
             <div class="mb-2 flex flex-wrap items-center gap-2">
               <span
@@ -525,8 +530,9 @@ const hasAnyItems = computed(() => items.value.length > 0)
             </p>
           </div>
 
-          <!-- ปุ่มจัดการ -->
-          <div class="flex shrink-0 items-center gap-1.5">
+          <!-- ปุ่มจัดการ — มือถือเต็มความกว้าง + wrap ได้ (3 ปุ่ม: แก้ไข/ปลดระวาง/ลบ)
+               ส่วน sm ขึ้นไปค่อยหดตามเนื้อและไม่ให้หด (shrink-0) -->
+          <div class="flex w-full flex-wrap items-center gap-1.5 sm:w-auto sm:shrink-0">
             <template v-if="a.deleted_at">
               <button
                 type="button"
