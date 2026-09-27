@@ -44,3 +44,16 @@ export async function deleteAnnouncement(id: number): Promise<Announcement> {
 export async function restoreAnnouncement(id: number): Promise<Announcement> {
   return (await api.post(`/api/announcements/${id}/restore`)) as Announcement
 }
+
+/**
+ * ปลดระวาง — เอาออกจาก Landing Page แต่ **ไม่ใช่การลบ** ยังเก็บไว้เป็นประวัติ
+ * (ต่างจาก deleteAnnouncement: ตั้งใจเอาออกเพราะหมดอายุ ไม่ปนกับของที่เผลอลบ)
+ */
+export async function retireAnnouncement(id: number): Promise<Announcement> {
+  return (await api.post(`/api/announcements/${id}/retire`)) as Announcement
+}
+
+/** นำประกาศที่ปลดระวางกลับมาใช้ — กลับไปแสดงบน Landing Page อีกครั้ง */
+export async function unretireAnnouncement(id: number): Promise<Announcement> {
+  return (await api.post(`/api/announcements/${id}/unretire`)) as Announcement
+}

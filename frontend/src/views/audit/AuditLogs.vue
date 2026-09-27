@@ -46,6 +46,11 @@ const ACTION_LABELS: Record<string, string> = {
   UPDATE_ANNOUNCEMENT: 'แก้ไขประกาศ',
   DELETE_ANNOUNCEMENT: 'ลบประกาศ',
   RESTORE_ANNOUNCEMENT: 'กู้คืนประกาศ',
+  // ⚠️ map นี้เป็นของหน้าจอ *นี้* โดยเฉพาะ — backend มี ACTION_LABELS ของตัวเองอีกชุด
+  //    (`services/dashboard_service.py` ใช้กับแดชบอร์ด) ⇒ เพิ่ม action ใหม่ต้องเติมทั้งคู่
+  //    ไม่งั้นหน้าจอใดหน้าจอหนึ่งจะโชว์ชื่อ action ดิบ ๆ ภาษาอังกฤษ
+  RETIRE_ANNOUNCEMENT: 'ปลดระวางประกาศ',
+  UNRETIRE_ANNOUNCEMENT: 'นำประกาศกลับมาใช้',
 };
 
 function actionLabel(action: string): string {

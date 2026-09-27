@@ -72,6 +72,18 @@ def _create(client, world, actor="admin", **overrides):
     return client.post("/api/announcements", json=payload, headers=_auth(world, actor))
 
 
+def _retire(client, world, ann_id, actor="admin"):
+    return client.post(f"/api/announcements/{ann_id}/retire", headers=_auth(world, actor))
+
+
+def _unretire(client, world, ann_id, actor="admin"):
+    return client.post(f"/api/announcements/{ann_id}/unretire", headers=_auth(world, actor))
+
+
+def _public_ids(client) -> list:
+    return [a["id"] for a in client.get("/api/v1/public/announcements").json()]
+
+
 async def _audit_rows(db_pool, announcement_id: int):
     """อ่าน audit_logs ของประกาศนี้ (jsonb ต้อง json.loads ก่อนใช้)"""
     async with db_pool.acquire() as conn:
@@ -207,27 +219,47 @@ async def test_list_orders_urgent_first(client, db_pool, announcement_world):
 
 @pytest.mark.asyncio
 async def test_list_status_filter(client, db_pool, announcement_world):
-    """กรอง active / deleted / all แยกกันถูกต้อง + deep DB verify"""
+    """กรอง active / retired / deleted / all แยกกันถูกต้อง + deep DB verify
+
+    ⚠️ หลังเพิ่มสถานะ "ปลดระวาง" แล้ว คำว่า active **ไม่เท่ากับ** `deleted_at IS NULL`
+       อีกต่อไป ต้องเป็น `deleted_at IS NULL AND retired_at IS NULL` ⇒ เทสต์นี้จึงต้อง
+       cross-check ทั้งสองเงื่อนไข ไม่ใช่แค่ deleted_at
+    """
     world = announcement_world
     keep_id = _create(client, world, message="ยังอยู่").json()["id"]
     del_id = _create(client, world, message="จะถูกลบ").json()["id"]
+    ret_id = _create(client, world, message="จะถูกปลดระวาง").json()["id"]
     client.delete(f"/api/announcements/{del_id}", headers=_auth(world, "admin"))
+    _retire(client, world, ret_id)
 
     active = client.get("/api/announcements?status=active", headers=_auth(world, "admin")).json()
+    retired = client.get("/api/announcements?status=retired", headers=_auth(world, "admin")).json()
     deleted = client.get("/api/announcements?status=deleted", headers=_auth(world, "admin")).json()
     allof = client.get("/api/announcements?status=all", headers=_auth(world, "admin")).json()
 
     assert [i["id"] for i in active["items"]] == [keep_id]
+    assert [i["id"] for i in retired["items"]] == [ret_id]
     assert [i["id"] for i in deleted["items"]] == [del_id]
-    assert len(allof["items"]) == 2
+    assert len(allof["items"]) == 3, "ทั้งสามสถานะต้องไม่ทับกันและไม่หายไปไหน"
 
     async with db_pool.acquire() as conn:
         assert await conn.fetchval(
-            "SELECT COUNT(*) FROM announcements WHERE deleted_at IS NULL"
+            "SELECT COUNT(*) FROM announcements WHERE deleted_at IS NULL AND retired_at IS NULL"
         ) == active["total"]
+        assert await conn.fetchval(
+            "SELECT COUNT(*) FROM announcements WHERE retired_at IS NOT NULL AND deleted_at IS NULL"
+        ) == retired["total"]
         assert await conn.fetchval(
             "SELECT COUNT(*) FROM announcements WHERE deleted_at IS NOT NULL"
         ) == deleted["total"]
+
+
+@pytest.mark.asyncio
+async def test_list_rejects_unknown_status(client, db_pool, announcement_world):
+    """สถานะที่ไม่อยู่ใน _STATUS_CONDITIONS → 422 (pattern ที่ Query) ไม่ใช่ 200 ว่างเปล่า"""
+    world = announcement_world
+    res = client.get("/api/announcements?status=archived", headers=_auth(world, "admin"))
+    assert res.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -379,7 +411,14 @@ async def test_public_endpoint_does_not_leak_author(client, db_pool, announcemen
 
     items = client.get("/api/v1/public/announcements").json()
     assert len(items) == 1
-    for leaked in ("created_by", "updated_by", "created_by_name", "deleted_at", "created_at"):
+    for leaked in (
+        "created_by",
+        "updated_by",
+        "created_by_name",
+        "deleted_at",
+        "retired_at",  # สถานะภายใน — ฝั่ง public ต้องไม่รู้จัก (ไม่งั้นหลุดว่าใครถูกปลดระวาง)
+        "created_at",
+    ):
         assert leaked not in items[0], f"ห้ามหลุดฟิลด์ {leaked} ออกไปหน้า public"
 
 
@@ -553,7 +592,7 @@ async def test_blank_link_becomes_null(client, db_pool, announcement_world):
 
 @pytest.mark.asyncio
 async def test_priority_check_constraint_still_guards_table(db_pool, announcement_world):
-    """ต่อให้绕过 API ตรงไปที่ DB — CHECK constraint ต้องยังกัน priority ที่ผิดไว้"""
+    """ต่อให้ข้าม API ตรงไปที่ DB — CHECK constraint ต้องยังกัน priority ที่ผิดไว้"""
     with pytest.raises(asyncpg.exceptions.CheckViolationError):
         async with db_pool.acquire() as conn:
             await conn.execute(
@@ -561,7 +600,257 @@ async def test_priority_check_constraint_still_guards_table(db_pool, announcemen
             )
 
 
-# === Section 5: migration 014 ===
+# === Section 5: ปลดระวาง (retire / unretire) ===
+#   แบบจำลอง 3 สถานะ — `retired_at` กับ `deleted_at` เป็นอิสระต่อกัน:
+#     retired_at IS NULL     AND deleted_at IS NULL  → ใช้งานอยู่   (โชว์บน Landing/Home)
+#     retired_at IS NOT NULL AND deleted_at IS NULL  → ปลดระวางแล้ว (ไม่โชว์ แต่เก็บไว้)
+#     deleted_at IS NOT NULL                         → ถูกลบ        (ไม่โชว์)
+@pytest.mark.asyncio
+async def test_retire_sets_retired_at_without_deleting(client, db_pool, announcement_world):
+    """ปลดระวาง → retired_at มีค่า, deleted_at ยัง NULL (ต้องไม่ใช่การลบ)"""
+    world = announcement_world
+    ann_id = _create(client, world, message="จะปลดระวาง").json()["id"]
+
+    res = _retire(client, world, ann_id)
+    assert res.status_code == 200, res.json()
+    assert res.json()["retired_at"] is not None
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT retired_at, deleted_at, count(*) OVER () AS n FROM announcements WHERE id = $1",
+            ann_id,
+        )
+    assert row is not None, "ต้องยังมีแถวอยู่"
+    assert row["n"] == 1
+    assert row["retired_at"] is not None
+    assert row["deleted_at"] is None, "ปลดระวางต้องไม่ไปแตะ deleted_at"
+
+
+@pytest.mark.asyncio
+async def test_retire_writes_audit_log_with_owner(client, db_pool, announcement_world):
+    """ปลดระวางต้องมี audit RETIRE_ANNOUNCEMENT + new_values + updated_by = ผู้สั่ง"""
+    world = announcement_world
+    ann_id = _create(client, world, message="ตรวจ audit").json()["id"]
+    _retire(client, world, ann_id, actor="council")
+
+    rows = await _audit_rows(db_pool, ann_id)
+    assert [r["action"] for r in rows] == ["CREATE_ANNOUNCEMENT", "RETIRE_ANNOUNCEMENT"]
+    assert rows[1]["user_id"] == world["council"]["user_id"]
+    assert rows[1]["old_values"]["retired_at"] is None
+    assert rows[1]["new_values"]["retired_at"] == "NOW()"
+
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval(
+            "SELECT updated_by FROM announcements WHERE id = $1", ann_id
+        ) == world["council"]["user_id"]
+
+
+@pytest.mark.asyncio
+async def test_retire_twice_returns_404_and_keeps_first_timestamp(
+    client, db_pool, announcement_world
+):
+    """กดปลดระวางซ้ำ → 404 และ retired_at เดิมต้องไม่ถูกทับด้วย NOW() ใหม่"""
+    world = announcement_world
+    ann_id = _create(client, world).json()["id"]
+
+    assert _retire(client, world, ann_id).status_code == 200
+    async with db_pool.acquire() as conn:
+        first = await conn.fetchval("SELECT retired_at FROM announcements WHERE id = $1", ann_id)
+
+    assert _retire(client, world, ann_id).status_code == 404
+
+    async with db_pool.acquire() as conn:
+        second = await conn.fetchval("SELECT retired_at FROM announcements WHERE id = $1", ann_id)
+    assert first == second, "กดซ้ำต้องไม่เขียนทับเวลาที่ปลดระวางจริง"
+    assert [r["action"] for r in await _audit_rows(db_pool, ann_id)].count("RETIRE_ANNOUNCEMENT") == 1
+
+
+@pytest.mark.asyncio
+async def test_retired_announcement_hidden_from_public(client, db_pool, announcement_world):
+    """
+    🔑 เทสต์ที่คุ้มที่สุดของฟีเจอร์นี้ — ประกาศที่ปลดระวางต้องหายจาก Landing Page
+
+    endpoint นี้ (`/api/v1/public/announcements`) เป็นคิวรีเดียวในระบบที่กรองสถานะ
+    ด้วยตัวเองโดยไม่ผ่าน `_STATUS_CONDITIONS` ⇒ ถ้าลืมเติม `retired_at IS NULL`
+    ประกาศที่ปลดระวางจะยังโชว์ทั้ง Landing.vue และ Home.vue โดยที่เทสต์อื่นเขียวหมด
+    """
+    world = announcement_world
+    ann_id = _create(client, world, message="จะหายจาก Landing").json()["id"]
+    assert ann_id in _public_ids(client)
+
+    _retire(client, world, ann_id)
+
+    assert ann_id not in _public_ids(client), "ปลดระวางแล้วต้องไม่โชว์บน Landing"
+    # และต้องยังไม่ถูกลบ — ดูได้จากแท็บปลดระวาง
+    retired = client.get("/api/announcements?status=retired", headers=_auth(world, "admin")).json()
+    assert [i["id"] for i in retired["items"]] == [ann_id]
+
+
+@pytest.mark.asyncio
+async def test_unretire_returns_announcement_to_public(client, db_pool, announcement_world):
+    """นำกลับมาใช้ → retired_at กลับเป็น NULL และโผล่บน Landing อีกครั้ง"""
+    world = announcement_world
+    ann_id = _create(client, world, message="ปลดแล้วเอากลับ").json()["id"]
+    _retire(client, world, ann_id)
+    assert ann_id not in _public_ids(client)
+
+    res = _unretire(client, world, ann_id)
+    assert res.status_code == 200, res.json()
+    assert res.json()["retired_at"] is None
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT retired_at, deleted_at FROM announcements WHERE id = $1", ann_id
+        )
+    assert row["retired_at"] is None
+    assert row["deleted_at"] is None
+    assert ann_id in _public_ids(client)
+
+    actions = [r["action"] for r in await _audit_rows(db_pool, ann_id)]
+    assert actions == ["CREATE_ANNOUNCEMENT", "RETIRE_ANNOUNCEMENT", "UNRETIRE_ANNOUNCEMENT"]
+
+
+@pytest.mark.asyncio
+async def test_unretire_active_returns_404(client, db_pool, announcement_world):
+    """นำกลับมาใช้กับประกาศที่ยังใช้งานอยู่ → 404"""
+    world = announcement_world
+    ann_id = _create(client, world).json()["id"]
+    assert _unretire(client, world, ann_id).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_retire_deleted_announcement_returns_404(client, db_pool, announcement_world):
+    """ประกาศที่ถูกลบแล้วปลดระวางไม่ได้ → 404 (ต้องกู้คืนก่อน)"""
+    world = announcement_world
+    ann_id = _create(client, world).json()["id"]
+    client.delete(f"/api/announcements/{ann_id}", headers=_auth(world, "admin"))
+
+    assert _retire(client, world, ann_id).status_code == 404
+
+    async with db_pool.acquire() as conn:
+        retired_at = await conn.fetchval(
+            "SELECT retired_at FROM announcements WHERE id = $1", ann_id
+        )
+    assert retired_at is None, "คำขอที่ถูกปฏิเสธต้องไม่เขียนค่าค้าง"
+
+
+@pytest.mark.asyncio
+async def test_delete_retired_keeps_retired_at(client, db_pool, announcement_world):
+    """ลบประกาศที่ปลดระวางแล้ว → deleted_at มีค่า แต่ retired_at **ต้องยังอยู่**"""
+    world = announcement_world
+    ann_id = _create(client, world).json()["id"]
+    _retire(client, world, ann_id)
+
+    assert client.delete(
+        f"/api/announcements/{ann_id}", headers=_auth(world, "admin")
+    ).status_code == 200
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT retired_at, deleted_at FROM announcements WHERE id = $1", ann_id
+        )
+    assert row["deleted_at"] is not None
+    assert row["retired_at"] is not None, "ลบต้องไม่ล้างสถานะปลดระวางทิ้ง"
+
+
+@pytest.mark.asyncio
+async def test_restore_keeps_retired_state_and_stays_hidden(client, db_pool, announcement_world):
+    """
+    🔑 กู้คืนต้องไม่สูญเสียสถานะ — ปลดระวาง → ลบ → กู้คืน ต้องกลับมาเป็น "ปลดระวางแล้ว"
+
+    ถ้าออกแบบให้สองคอลัมน์ exclusive กัน (delete ล้าง retired_at) ผู้ใช้จะเจอประกาศ
+    ที่ตัวเองตั้งใจเอาออก โผล่กลับมาบนหน้าเว็บทันทีที่กดกู้คืน — โดยไม่มีอะไรบอก
+    """
+    world = announcement_world
+    ann_id = _create(client, world, message="ปลดแล้วลบแล้วกู้คืน").json()["id"]
+    _retire(client, world, ann_id)
+    client.delete(f"/api/announcements/{ann_id}", headers=_auth(world, "admin"))
+
+    assert client.post(
+        f"/api/announcements/{ann_id}/restore", headers=_auth(world, "admin")
+    ).status_code == 200
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT retired_at, deleted_at FROM announcements WHERE id = $1", ann_id
+        )
+    assert row["deleted_at"] is None, "กู้คืนแล้ว deleted_at ต้องเป็น NULL"
+    assert row["retired_at"] is not None, "แต่ต้องยังปลดระวางอยู่"
+    assert ann_id not in _public_ids(client), "ต้องไม่โผล่บน Landing หลังกู้คืน"
+
+    # แถวนี้กลับมาโชว์ได้ด้วยการ "นำกลับมาใช้" เท่านั้น (ไม่ใช่ด้วย restore)
+    assert _unretire(client, world, ann_id).status_code == 200
+    assert ann_id in _public_ids(client)
+
+
+@pytest.mark.asyncio
+async def test_unretire_deleted_returns_404(client, db_pool, announcement_world):
+    """นำกลับมาใช้กับแถวที่ 'ปลดระวาง + ถูกลบ' → 404 จนกว่าจะกู้คืนก่อน"""
+    world = announcement_world
+    ann_id = _create(client, world).json()["id"]
+    _retire(client, world, ann_id)
+    client.delete(f"/api/announcements/{ann_id}", headers=_auth(world, "admin"))
+
+    assert _unretire(client, world, ann_id).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_retired_returns_404(client, db_pool, announcement_world):
+    """PATCH ประกาศที่ปลดระวาง → 404 และข้อความเดิมต้องไม่ถูกแก้"""
+    world = announcement_world
+    ann_id = _create(client, world, message="ห้ามแก้").json()["id"]
+    _retire(client, world, ann_id)
+
+    res = client.patch(
+        f"/api/announcements/{ann_id}", json={"message": "แอบแก้"}, headers=_auth(world, "admin")
+    )
+    assert res.status_code == 404
+
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval(
+            "SELECT message FROM announcements WHERE id = $1", ann_id
+        ) == "ห้ามแก้"
+
+
+@pytest.mark.asyncio
+async def test_retire_requires_auth(client, db_pool, announcement_world):
+    """ไม่ส่ง token → 401 และ retired_at ต้องยังเป็น NULL"""
+    world = announcement_world
+    ann_id = _create(client, world).json()["id"]
+
+    assert client.post(f"/api/announcements/{ann_id}/retire").status_code == 401
+    assert client.post(f"/api/announcements/{ann_id}/unretire").status_code == 401
+
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval(
+            "SELECT retired_at FROM announcements WHERE id = $1", ann_id
+        ) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor", ["student", "teacher"])
+async def test_retire_forbidden_for_unauthorized_roles(
+    client, db_pool, announcement_world, actor
+):
+    """
+    403 สำหรับผู้ที่ไม่มีสิทธิ์ — รวม 'teacher' ที่มี MANAGE_STUDENTS/VIEW_DASHBOARD
+    แต่ไม่มี MANAGE_ANNOUNCEMENTS
+    """
+    world = announcement_world
+    ann_id = _create(client, world).json()["id"]
+
+    assert _retire(client, world, ann_id, actor=actor).status_code == 403
+    # unretire ก็ต้องเช็คสิทธิ์เหมือนกัน (ไม่ใช่ปล่อยผ่านเพราะ "แค่ยกเลิก")
+    _retire(client, world, ann_id)  # ปลดด้วย admin ก่อน เพื่อให้มีอะไรให้ยกเลิก
+    assert _unretire(client, world, ann_id, actor=actor).status_code == 403
+
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval(
+            "SELECT retired_at FROM announcements WHERE id = $1", ann_id
+        ) is not None, "คำขอที่ถูกปฏิเสธต้องไม่ล้างสถานะเดิม"
+
+
+# === Section 6: migration 014 ===
 @pytest.mark.asyncio
 async def test_migration_014_backfills_permission_and_is_idempotent(db_pool):
     """
@@ -677,3 +966,72 @@ async def test_migration_014_backfills_permission_and_is_idempotent(db_pool):
             await conn.fetchval("SELECT permissions FROM students WHERE id = $1", council_sid)
         )
         assert perms_again.count("MANAGE_ANNOUNCEMENTS") == 1, "รัน migration ซ้ำต้องไม่เติมสิทธิ์ซ้ำ"
+
+
+# === Section 7: migration 015 ===
+@pytest.mark.asyncio
+async def test_migration_015_adds_retired_at_and_is_idempotent(db_pool):
+    """
+    เทสต์ migration 015 บน DB "เก่า" (ก่อนมีคอลัมน์ retired_at)
+
+    ทำไมต้องมี: production/staging มีตาราง announcements อยู่แล้วที่มีข้อมูลจริง
+    ⇒ `CREATE TABLE IF NOT EXISTS` ใน init_db จะไม่ทำงานกับ DB เดิม คอลัมน์ใหม่
+      ต้องมาจาก migration เท่านั้น ไม่งั้นแอปจะพังด้วย `column retired_at does not exist`
+      ทั้งที่เทสต์บน DB ใหม่ผ่านหมด
+    """
+    migration = importlib.import_module("migrations.015_announcement_retire")
+
+    async with db_pool.acquire() as conn:
+        # --- จำลองสคีมาก่อน migration -------------------------------------------
+        await conn.execute("ALTER TABLE announcements DROP COLUMN IF EXISTS retired_at")
+        assert await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_name = 'announcements' AND column_name = 'retired_at'
+            """
+        ) == 0, "เตรียมสภาพก่อน migration ไม่สำเร็จ"
+
+        # แถวข้อมูลเดิมต้องรอดผ่าน migration
+        ann_id = await conn.fetchval(
+            "INSERT INTO announcements (message, priority) VALUES ($1,'normal') RETURNING id",
+            "ประกาศก่อน migration 015",
+        )
+
+        # --- รัน migration 015 ตรง ๆ บน DB เก่านี้ ---------------------------------
+        await migration.upgrade(conn)
+
+        col = await conn.fetchrow(
+            """
+            SELECT data_type, is_nullable FROM information_schema.columns
+            WHERE table_name = 'announcements' AND column_name = 'retired_at'
+            """
+        )
+        assert col is not None, "migration ต้องเพิ่มคอลัมน์ retired_at"
+        assert col["data_type"] == "timestamp with time zone"
+        assert col["is_nullable"] == "YES", "ต้องเป็น NULL ได้ (แถวเดิมจะได้ไม่พัง)"
+
+        # แถวเดิมต้องอยู่ครบ และถือว่า "ใช้งานอยู่" (retired_at = NULL)
+        row = await conn.fetchrow(
+            "SELECT message, retired_at, deleted_at FROM announcements WHERE id = $1", ann_id
+        )
+        assert row["message"] == "ประกาศก่อน migration 015"
+        assert row["retired_at"] is None, "ประกาศเดิมต้องกลายเป็น 'ใช้งานอยู่' ไม่ใช่หายไป"
+
+        # ⭐ ไม่มี CHECK บังคับ exclusive ระหว่าง retired_at กับ deleted_at
+        #    (ต้องมีพร้อมกันได้ เพื่อให้กู้คืนไม่สูญเสียสถานะ)
+        await conn.execute(
+            "UPDATE announcements SET retired_at = NOW(), deleted_at = NOW() WHERE id = $1",
+            ann_id,
+        )
+
+        # --- รันซ้ำต้องไม่พัง (idempotent) ---------------------------------------
+        await migration.upgrade(conn)
+        assert await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_name = 'announcements' AND column_name = 'retired_at'
+            """
+        ) == 1
+        assert await conn.fetchval(
+            "SELECT retired_at FROM announcements WHERE id = $1", ann_id
+        ) is not None, "รัน migration ซ้ำต้องไม่ล้างข้อมูล"

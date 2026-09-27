@@ -1,4 +1,16 @@
-"""Announcement Service — จัดการประกาศหน้า Landing Page (CRUD)
+"""Announcement Service — จัดการประกาศหน้า Landing Page (CRUD + ปลดระวาง)
+
+3 สถานะของประกาศ (ดู `_STATUS_CONDITIONS` — dict นั้นคือจุดเดียวที่นิยามคำว่าสถานะ):
+
+    | สถานะ         | เงื่อนไข                                      | Landing/Home | แท็บ        |
+    |---------------|-----------------------------------------------|--------------|-------------|
+    | ใช้งานอยู่     | `retired_at IS NULL AND deleted_at IS NULL`   | แสดง         | active      |
+    | ปลดระวางแล้ว   | `retired_at IS NOT NULL AND deleted_at IS NULL` | ไม่แสดง    | retired     |
+    | ถูกลบ         | `deleted_at IS NOT NULL`                      | ไม่แสดง      | deleted     |
+
+  ⭐ `retired_at` กับ `deleted_at` เป็น **อิสระต่อกัน** ⇒ "ปลดระวางแล้วเผลอลบ → กู้คืน"
+     กลับมาเป็น *ปลดระวางแล้ว* ตามเดิม ไม่ใช่กลับไปโชว์บนหน้าเว็บ
+     (`retire`/`unretire` ไม่แตะ `deleted_at` และ `delete`/`restore` ไม่แตะ `retired_at`)
 
 กฎที่ยึดตาม docs/rules/backend.md:
   - SQL ทั้งหมดอยู่ในชั้นนี้เท่านั้น ใช้ parameterized query ($1..$n) ห้าม f-string ใส่ค่า
@@ -7,6 +19,8 @@
   - ลบ = soft delete (`deleted_at = NOW()`) เสมอ
   - เช็คสิทธิ์ด้วย `require_permission_anywhere` แล้วโยน ForbiddenError ให้ router แปลงเป็น 403
     (แบบเดียวกับ audit_service.list_audit_logs)
+  - การเปลี่ยนสถานะที่ผิดกติกาบังคับด้วยเงื่อนไขใน `WHERE` (ไม่ใช่ if ใน Python)
+    ⇒ กดซ้ำ/กดผิดลำดับได้ 404 โดยไม่ทับ timestamp เดิม
 
 หมายเหตุการออกแบบ:
   - `created_by` / `updated_by` เป็น INTEGER เปล่า **ไม่มี FK** (บทเรียน skills.md:623)
@@ -26,8 +40,14 @@ from core.rbac import require_permission_anywhere
 _EDITABLE_COLUMNS = ("message", "priority", "link")
 
 # เงื่อนไขกรองสถานะในรายการฝั่ง admin
+# ⭐ **dict นี้คือจุดเดียวที่นิยามคำว่าสถานะ** — ถูกใช้ทั้ง COUNT(*) และคิวรีหลัก
+#    ⇒ total กับ items ตรงกันเสมอโดยไม่ต้องแก้อะไรเพิ่ม
+# ⚠️ 3 สถานะ: ใช้งานอยู่ / ปลดระวางแล้ว / ถูกลบ — `retired_at` กับ `deleted_at` เป็นอิสระ
+#    ต่อกัน ⇒ แถวที่ "ปลดระวาง + ถูกลบ" พร้อมกันจะอยู่แท็บ `deleted` ที่เดียว
+#    (เพราะ `retired` กรอง `deleted_at IS NULL` ด้วย) ⇒ ไม่มีแถวโผล่สองแท็บ
 _STATUS_CONDITIONS = {
-    "active": "a.deleted_at IS NULL",
+    "active": "a.deleted_at IS NULL AND a.retired_at IS NULL",
+    "retired": "a.retired_at IS NOT NULL AND a.deleted_at IS NULL",
     "deleted": "a.deleted_at IS NOT NULL",
     "all": "TRUE",
 }
@@ -37,7 +57,7 @@ _STATUS_CONDITIONS = {
 #    ⚠️ ห้าม JOIN students เพราะ user หนึ่งคนมีได้หลายแถว (หลายห้อง) → รายการจะบานออกเป็นซ้ำ
 _SELECT_COLUMNS = """
     a.id, a.message, a.priority, a.link,
-    a.created_at, a.updated_at, a.deleted_at,
+    a.created_at, a.updated_at, a.deleted_at, a.retired_at,
     a.created_by, a.updated_by,
     cu.full_name AS created_by_name,
     uu.full_name AS updated_by_name
@@ -171,18 +191,22 @@ async def update_announcement(
         async with conn.transaction():
             await require_permission_anywhere(conn, user_id, "MANAGE_ANNOUNCEMENTS")
 
-            # FOR UPDATE — ล็อกแถวกัน TOCTOU กับคำสั่งลบ/กู้คืนที่วิ่งมาพร้อมกัน
+            # FOR UPDATE — ล็อกแถวกัน TOCTOU กับคำสั่งลบ/กู้คืน/ปลดระวางที่วิ่งมาพร้อมกัน
+            # ⚠️ แก้ได้เฉพาะประกาศที่ *ใช้งานอยู่* — ตัวที่ปลดระวางต้อง "นำกลับมาใช้" ก่อน
+            #    (ประกาศที่ปลดระวางคือประวัติ ไม่ควรถูกแก้เงียบ ๆ)
             before = await conn.fetchrow(
                 """
                 SELECT message, priority, link
                 FROM announcements
-                WHERE id = $1 AND deleted_at IS NULL
+                WHERE id = $1 AND deleted_at IS NULL AND retired_at IS NULL
                 FOR UPDATE
                 """,
                 announcement_id,
             )
             if not before:
-                raise NotFoundError("ไม่พบประกาศนี้ (อาจถูกลบไปแล้ว)")
+                raise NotFoundError(
+                    "ไม่พบประกาศนี้ (อาจถูกลบหรือถูกปลดระวางไปแล้ว)"
+                )
 
             # dynamic SET: จอง $1 ไว้ให้ WHERE เสมอ แล้วฟิลด์เริ่มที่ len(params)+1
             # (บทเรียน skills.md: asyncpg AmbiguousParameterError/IndeterminateDatatypeError)
@@ -286,6 +310,90 @@ async def restore_announcement(
                 entity_id=announcement_id,
                 old_values={"deleted_at": "NOT NULL"},
                 new_values={"deleted_at": None},
+            )
+
+        return await _fetch_one(conn, announcement_id)
+
+
+async def retire_announcement(
+    pool: asyncpg.Pool, user_id: int, announcement_id: int
+) -> dict:
+    """
+    ปลดระวางประกาศ — เอาออกจากหน้า Landing/Home แต่ **เก็บไว้เป็นประวัติ**
+    ต่างจากการลบ: ตั้งใจเอาออกเพราะหมดอายุ/ใช้การไม่ได้แล้ว ไม่ใช่เพราะผิดพลาด
+
+    ⚠️ ตั้ง `retired_at` **ไม่แตะ `deleted_at`** และต้องเป็นประกาศที่ยังใช้งานอยู่เท่านั้น
+       ⇒ แถวที่ถูกลบไปแล้วปลดระวางไม่ได้ (404) และกดซ้ำก็ไม่ทับ timestamp เดิม
+    """
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await require_permission_anywhere(conn, user_id, "MANAGE_ANNOUNCEMENTS")
+
+            row = await conn.fetchrow(
+                """
+                UPDATE announcements
+                SET retired_at = NOW(), updated_at = NOW(), updated_by = $2
+                WHERE id = $1 AND deleted_at IS NULL AND retired_at IS NULL
+                RETURNING id
+                """,
+                announcement_id, user_id,
+            )
+            if not row:
+                # ไม่พบ / ถูกลบไปแล้ว / ถูกปลดระวางไปแล้ว — ทั้งสามกรณีไม่ควรทับค่าที่มีอยู่
+                raise NotFoundError(
+                    "ไม่พบประกาศนี้ที่ยังใช้งานอยู่ (อาจถูกลบหรือถูกปลดระวางไปแล้ว)"
+                )
+
+            await AuditLogger("announcement_service").log(
+                conn=conn,
+                action="RETIRE_ANNOUNCEMENT",
+                actor_identifier=str(user_id),
+                client_source="web",
+                user_id=user_id,
+                entity_type="announcement",
+                entity_id=announcement_id,
+                old_values={"retired_at": None},
+                new_values={"retired_at": "NOW()"},
+            )
+
+        return await _fetch_one(conn, announcement_id)
+
+
+async def unretire_announcement(
+    pool: asyncpg.Pool, user_id: int, announcement_id: int
+) -> dict:
+    """
+    นำประกาศที่ปลดระวางกลับมาใช้ — ล้าง `retired_at` ให้กลับไปแสดงบน Landing/Home
+
+    ⚠️ ต้องเป็นแถวที่ `deleted_at IS NULL` ⇒ ตัวที่ "ปลดระวาง + ถูกลบ" ต้องกู้คืนก่อน
+       (กู้คืนแล้วมันจะกลับมาเป็น "ปลดระวางแล้ว" ไม่ใช่กลับไปโชว์ทันที)
+    """
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await require_permission_anywhere(conn, user_id, "MANAGE_ANNOUNCEMENTS")
+
+            row = await conn.fetchrow(
+                """
+                UPDATE announcements
+                SET retired_at = NULL, updated_at = NOW(), updated_by = $2
+                WHERE id = $1 AND retired_at IS NOT NULL AND deleted_at IS NULL
+                RETURNING id
+                """,
+                announcement_id, user_id,
+            )
+            if not row:
+                raise NotFoundError("ไม่พบประกาศที่ถูกปลดระวางนี้")
+
+            await AuditLogger("announcement_service").log(
+                conn=conn,
+                action="UNRETIRE_ANNOUNCEMENT",
+                actor_identifier=str(user_id),
+                client_source="web",
+                user_id=user_id,
+                entity_type="announcement",
+                entity_id=announcement_id,
+                old_values={"retired_at": "NOT NULL"},
+                new_values={"retired_at": None},
             )
 
         return await _fetch_one(conn, announcement_id)
