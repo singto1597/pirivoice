@@ -425,6 +425,11 @@ async def init_db(pool: asyncpg.Pool):
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     deleted_at TIMESTAMP WITH TIME ZONE,
+                    -- "ปลดระวาง" — เอาออกจากหน้า Landing/Home แต่เก็บไว้เป็นประวัติ
+                    -- ⭐ ตั้งใจให้เป็นอิสระจาก deleted_at (ไม่ใส่ CHECK บังคับ exclusive)
+                    --    ⇒ ปลดระวางแล้วเผลอลบ → กู้คืน → กลับมาเป็น "ปลดระวางแล้ว" ตามเดิม
+                    --    ไม่ใช่กลับไปโชว์บนหน้าเว็บ (ดู migration 015)
+                    retired_at TIMESTAMP WITH TIME ZONE,
                     CONSTRAINT chk_announcements_priority CHECK (priority IN ('normal', 'high', 'urgent'))
                 );
                 """)

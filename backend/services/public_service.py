@@ -195,13 +195,27 @@ async def get_resolved_cases(pool: asyncpg.Pool, limit: int) -> list[dict]:
 
 
 async def get_announcements(pool: asyncpg.Pool) -> list[dict]:
-    """ประกาศสาธารณะ — เรียง urgent/high มาก่อน"""
+    """
+    ประกาศสาธารณะ — เรียง urgent/high มาก่อน
+
+    ⚠️ **กรองเองโดยไม่ผ่าน `_STATUS_CONDITIONS`** (dict นั้นอยู่ใน announcement_service
+       ซึ่งเป็นฝั่ง admin) ⇒ ถ้าเพิ่ม/แก้สถานะใหม่ ต้องมาเติมเงื่อนไขที่นี่ด้วยเสมอ
+       ไม่งั้นประกาศที่ปลดระวางจะยังโชว์บน Landing Page ทั้งที่เทสต์อื่นเขียวหมด
+
+    ⚠️ endpoint นี้ถูกเรียกโดย **2 หน้า**: `Landing.vue` (ไม่ล็อกอิน — hero pill + marquee)
+       และ `Home.vue` (ใน /app) ⇒ แก้ที่นี่ที่เดียวมีผลทั้งคู่
+
+    ⭐ จงใจ **ไม่ใส่ LIMIT** ตามที่เจ้าของระบบสั่ง ("ให้โชว์ทั้งหมดที่ยังไม่ถอดออก")
+       ซึ่งขัดกับ docs/rules/backend.md ข้อ 3 (list ยาวต้องมี pagination)
+       ⇒ ยอมรับได้เพราะตารางนี้มีหลักหน่วยถึงหลักสิบแถว ; ถ้าวันหนึ่งโตถึงหลักพัน
+         ต้องกลับมาคุยเรื่อง pagination หรือ LIMIT เพดาน
+    """
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT id, message, priority, link
             FROM announcements
-            WHERE deleted_at IS NULL
+            WHERE deleted_at IS NULL AND retired_at IS NULL
             ORDER BY
                 (CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END),
                 created_at DESC

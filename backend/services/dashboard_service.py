@@ -65,6 +65,8 @@ ACTION_LABELS = {
     "UPDATE_ANNOUNCEMENT": "แก้ไขประกาศ",
     "DELETE_ANNOUNCEMENT": "ลบประกาศ",
     "RESTORE_ANNOUNCEMENT": "กู้คืนประกาศ",
+    "RETIRE_ANNOUNCEMENT": "ปลดระวางประกาศ",
+    "UNRETIRE_ANNOUNCEMENT": "นำประกาศกลับมาใช้",
 }
 
 

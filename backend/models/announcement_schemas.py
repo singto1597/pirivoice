@@ -83,6 +83,9 @@ class AnnouncementAdminOut(BaseModel):
 
     created_by_name / updated_by_name มาจาก LEFT JOIN users — เป็น None ได้เมื่อ
     ประกาศนั้นถูก seed ก่อนมีฟีเจอร์นี้ หรือผู้ใช้นั้นถูกลบไปแล้ว
+
+    `deleted_at` กับ `retired_at` เป็นอิสระต่อกัน — ทั้งคู่ None = ใช้งานอยู่
+    (frontend ใช้สามค่านี้แยก 3 สถานะ: ใช้งานอยู่ / ปลดระวางแล้ว / ถูกลบ)
     """
     id: int
     message: str
@@ -91,6 +94,7 @@ class AnnouncementAdminOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime] = None
+    retired_at: Optional[datetime] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None
     created_by_name: Optional[str] = None

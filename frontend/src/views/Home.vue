@@ -348,7 +348,12 @@ const hasActiveIssues = computed(() => {
       </div>
     </section>
 
-    <!-- ============ ประกาศโรงเรียน ============ -->
+    <!-- ============ ประกาศโรงเรียน ============
+         ⭐ โชว์ **ทั้งหมด** ที่ยังใช้งานอยู่ — ไม่มี slice()/เพดานจำนวนโดยเจตนา
+            (เจ้าของระบบสั่งว่า "ไม่ต้องกำหนดว่าให้โชว์กี่อัน ให้โชว์ทั้งหมดที่ยังไม่ถอดออก")
+            backend กรอง `deleted_at IS NULL AND retired_at IS NULL` มาให้แล้วใน
+            `/api/v1/public/announcements` ⇒ ที่นี่ไม่ต้องกรอง/ตัดอะไรอีก
+            ⚠️ endpoint เดียวกันนี้ถูกใช้โดย Landing.vue ด้วย (hero pill + marquee) -->
     <section v-if="announceError" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-5 py-10 text-center">
       <p class="text-sm font-semibold text-stone-700"><i class="bi bi-wifi-off mr-2"></i>โหลดประกาศไม่สำเร็จ</p>
       <button type="button" @click="loadAnnouncements" class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800">
@@ -363,7 +368,7 @@ const hasActiveIssues = computed(() => {
         </span>
         <div class="min-w-0 space-y-2">
           <p class="text-xs font-bold uppercase tracking-wider text-stone-500">ประกาศโรงเรียน</p>
-          <div v-for="a in announcements.slice(0, 3)" :key="a.id" class="flex items-start gap-2.5">
+          <div v-for="a in announcements" :key="a.id" class="flex items-start gap-2.5">
             <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="annIconColor[a.priority] || 'bg-stone-300'"></span>
             <p class="text-sm font-medium leading-relaxed text-stone-700">{{ a.message }}</p>
           </div>

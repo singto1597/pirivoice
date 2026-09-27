@@ -180,3 +180,61 @@ async def test_public_announcements_order(client, public_world):
     assert data[1]["priority"] == "normal"
     assert data[0]["message"] == "ปิดห้องน้ำหญิงชั้น 2 ชั่วคราวเพื่อซ่อมแซม"
     assert data[1]["link"] is None
+
+
+@pytest.mark.asyncio
+async def test_public_announcements_excludes_retired(client, db_pool, public_world):
+    """
+    🔑 ประกาศที่ "ปลดระวาง" ต้องหายจากหน้า Landing สาธารณะ (แต่ไม่ถูกลบ)
+
+    endpoint นี้ถูกเรียกโดย **2 หน้า** — `Landing.vue` (hero pill + marquee ticker)
+    และ `Home.vue` (ส่วน "ประกาศโรงเรียน") ⇒ ยิงเทสต์ที่ endpoint นี้ที่เดียว
+    คุมทั้งสองหน้า
+
+    ⚠️ เทสต์นี้ตั้ง retired_at ตรง ๆ ทาง DB (ไม่ผ่าน API) เพื่อให้เป็นอิสระจาก
+       สิทธิ์/route ฝั่ง admin — ที่นี่พิสูจน์เฉพาะ "คิวรี public กรองถูกไหม"
+    """
+    retired_id = public_world["normal_announcement_id"]
+    active_id = public_world["urgent_announcement_id"]
+
+    before = client.get("/api/v1/public/announcements").json()
+    assert {a["id"] for a in before} == {retired_id, active_id}
+
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE announcements SET retired_at = NOW() WHERE id = $1", retired_id
+        )
+
+    after = client.get("/api/v1/public/announcements").json()
+    ids = [a["id"] for a in after]
+    assert retired_id not in ids, "ปลดระวางแล้วต้องไม่โชว์บน Landing"
+    assert ids == [active_id], "ตัวที่ยังใช้งานอยู่ต้องอยู่ครบตามเดิม"
+
+    # ยังไม่ถูกลบ — แถวยังอยู่และ deleted_at ยังเป็น NULL
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT retired_at, deleted_at FROM announcements WHERE id = $1", retired_id
+        )
+    assert row is not None and row["deleted_at"] is None
+    assert row["retired_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_public_announcements_returns_all_active_without_limit(
+    client, db_pool, public_world
+):
+    """
+    ⭐ จงใจไม่มี LIMIT — เจ้าของระบบสั่งว่า "ให้โชว์ทั้งหมดที่ยังไม่ถอดออก"
+
+    ขัดกับ docs/rules/backend.md ข้อ 3 (list ยาวต้องมี pagination) ⇒ เทสต์นี้ตรึง
+    เจตนานั้นไว้ ถ้ามีคนใส่ LIMIT กลับมาเพื่อความ "เรียบร้อย" เทสต์จะฟ้อง
+    """
+    async with db_pool.acquire() as conn:
+        for i in range(5):
+            await conn.execute(
+                "INSERT INTO announcements (message, priority) VALUES ($1, 'normal')",
+                f"ประกาศเพิ่มเติมลำดับที่ {i}",
+            )
+
+    data = client.get("/api/v1/public/announcements").json()
+    assert len(data) == 7, "ต้องคืนทุกแถวที่ยังใช้งานอยู่ (2 ตัวตั้งต้น + 5 ตัวใหม่)"

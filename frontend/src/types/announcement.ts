@@ -5,8 +5,13 @@
 
 export type AnnouncementPriority = 'normal' | 'high' | 'urgent'
 
-/** สถานะที่กรองในหน้ารายการฝั่งผู้ดูแล (ตรงกับ backend _STATUS_CONDITIONS) */
-export type AnnouncementStatus = 'active' | 'deleted' | 'all'
+/**
+ * สถานะที่กรองในหน้ารายการฝั่งผู้ดูแล (ตรงกับ backend _STATUS_CONDITIONS)
+ *
+ * ⚠️ 3 สถานะจริง: ใช้งานอยู่ / ปลดระวางแล้ว / ถูกลบ — `active` **ไม่ใช่** แค่
+ * "deleted_at IS NULL" อีกต่อไป แต่ต้อง `retired_at IS NULL` ด้วย
+ */
+export type AnnouncementStatus = 'active' | 'retired' | 'deleted' | 'all'
 
 /** ประกาศสำหรับหน้า public (Landing) — ดู public_schemas.py (ห้ามมีข้อมูลผู้ประกาศ) */
 export interface PublicAnnouncement {
@@ -16,7 +21,15 @@ export interface PublicAnnouncement {
   link?: string | null
 }
 
-/** ประกาศสำหรับหน้า admin — มีข้อมูลผู้ประกาศ/ผู้แก้ + เวลาที่ลบ (จาก announcement_schemas.py) */
+/**
+ * ประกาศสำหรับหน้า admin — มีข้อมูลผู้ประกาศ/ผู้แก้ + เวลาที่ลบ/ปลดระวาง
+ * (จาก announcement_schemas.py)
+ *
+ * `deleted_at` กับ `retired_at` เป็นอิสระต่อกัน ⇒ แยก 3 สถานะได้:
+ *   ทั้งคู่ null            → ใช้งานอยู่
+ *   retired_at มีค่า        → ปลดระวางแล้ว (ไม่โชว์บน Landing/Home แต่ยังเก็บไว้)
+ *   deleted_at มีค่า        → ถูกลบ
+ */
 export interface Announcement {
   id: number
   message: string
@@ -25,6 +38,7 @@ export interface Announcement {
   created_at: string
   updated_at: string | null
   deleted_at: string | null
+  retired_at: string | null
   // 🔎 created_by/updated_by เป็น id เปล่า ไม่มี FK ฝั่ง DB ⇒ ชื่ออาจเป็น null ได้
   //    (ประกาศที่ seed ไว้ก่อนมีฟีเจอร์นี้ หรือผู้ใช้ถูกลบไปแล้ว)
   created_by: number | null

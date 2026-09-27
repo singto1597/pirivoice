@@ -17,6 +17,8 @@ import {
   updateAnnouncement,
   deleteAnnouncement,
   restoreAnnouncement,
+  retireAnnouncement,
+  unretireAnnouncement,
 } from '@/services/announcement'
 
 describe('announcement services (จัดการประกาศ)', () => {
@@ -108,5 +110,38 @@ describe('announcement services (จัดการประกาศ)', () => {
     expect(postMock).toHaveBeenCalledWith('/api/announcements/9/restore')
     // กัน regress: ถ้าเผลอเปลี่ยนไปใช้ PATCH endpoint /restore จะ 405
     expect(patchMock).not.toHaveBeenCalled()
+  })
+
+  it('listAnnouncements ส่ง status: retired ได้ (สถานะที่ 3 ไม่ใช่แค่ active/deleted)', async () => {
+    getMock.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+
+    await listAnnouncements({ status: 'retired' })
+
+    expect(getMock).toHaveBeenCalledWith('/api/announcements', {
+      params: { status: 'retired', limit: 20, offset: 0 },
+    })
+  })
+
+  it('retireAnnouncement → POST /api/announcements/{id}/retire (ไม่ใช่ PATCH/DELETE)', async () => {
+    postMock.mockResolvedValue({ id: 9, retired_at: '2026-09-27T10:00:00+07:00' })
+
+    const result = await retireAnnouncement(9)
+
+    expect(postMock).toHaveBeenCalledWith('/api/announcements/9/retire')
+    expect(postMock).toHaveBeenCalledTimes(1)
+    expect(result).toHaveProperty('retired_at')
+    // ⚠️ กัน regress ที่สำคัญที่สุด: ปลดระวางต้อง **ไม่** ไปเรียก DELETE
+    //    ถ้าเผลอใช้ deleteAnnouncement ผู้ใช้จะเห็นว่าประวัติหายไปจากแท็บถูกลบ
+    expect(deleteMock).not.toHaveBeenCalled()
+    expect(patchMock).not.toHaveBeenCalled()
+  })
+
+  it('unretireAnnouncement → POST /api/announcements/{id}/unretire (ไม่ใช่ /restore)', async () => {
+    postMock.mockResolvedValue({ id: 9, retired_at: null })
+
+    await unretireAnnouncement(9)
+
+    expect(postMock).toHaveBeenCalledWith('/api/announcements/9/unretire')
+    expect(postMock).toHaveBeenCalledTimes(1)
   })
 })

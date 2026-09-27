@@ -8,6 +8,8 @@ import {
   updateAnnouncement,
   deleteAnnouncement,
   restoreAnnouncement,
+  retireAnnouncement,
+  unretireAnnouncement,
 } from '@/services/announcement'
 import type {
   Announcement,
@@ -17,6 +19,8 @@ import type {
 
 // 📣 หน้าจัดการประกาศหน้า Landing Page (ต้องมีสิทธิ์ MANAGE_ANNOUNCEMENTS)
 // - ลบ = soft delete → ยังเห็นได้เมื่อสลับตัวกรองเป็น "ถูกลบ" แล้วกู้คืนได้
+// - ปลดระวาง = เอาออกจากหน้าเว็บเพราะหมดอายุ แต่ **ไม่ใช่การลบ** เก็บไว้เป็นประวัติ
+//   (คนละเจตนากับการลบ — ดู doUnretire/confirmRetire ด้านล่าง)
 // - ประกาศที่ seed มาก่อนมีฟีเจอร์นี้จะไม่มีชื่อผู้ประกาศ (created_by = null) → แสดง "—" ไม่ใช่พัง
 
 const PAGE_SIZE = 20
@@ -47,9 +51,17 @@ const PRIORITY_STYLE: Record<AnnouncementPriority, { dot: string; badge: string;
 
 const STATUS_TABS: { value: AnnouncementStatus; label: string }[] = [
   { value: 'active', label: 'ใช้งานอยู่' },
+  { value: 'retired', label: 'ปลดระวางแล้ว' },
   { value: 'deleted', label: 'ถูกลบ' },
   { value: 'all', label: 'ทั้งหมด' },
 ]
+
+/** สถานะที่แท้จริงของแถวหนึ่ง — ใช้แยกการแสดงผล 3 ทาง (ไม่ใช่ binary deleted/ไม่ deleted) */
+function rowState(a: Announcement): 'active' | 'retired' | 'deleted' {
+  if (a.deleted_at) return 'deleted'
+  if (a.retired_at) return 'retired'
+  return 'active'
+}
 
 // ===== ข้อมูล + การโหลด =====
 const items = ref<Announcement[]>([])
@@ -174,8 +186,18 @@ async function submitForm() {
   }
 }
 
-// ===== ลบ / กู้คืน =====
+// ===== ลบ / กู้คืน / ปลดระวาง =====
+//   `actingId` = แถวที่กำลังทำอะไรอยู่ (ใช้ disable ทุกปุ่มของแถวนั้น)
+//   `actingKind` = กำลังทำ action ไหน — จำเป็นเพราะแถวที่ใช้งานอยู่มี **สอง** ปุ่มที่
+//   เขียน DB ได้ (ปลดระวาง + ลบ) ⇒ ถ้าดูแค่ actingId ทั้งคู่จะหมุนพร้อมกัน
+type ActionKind = 'delete' | 'restore' | 'retire' | 'unretire'
 const actingId = ref<number | null>(null)
+const actingKind = ref<ActionKind | null>(null)
+
+/** ปุ่มนี้กำลังทำงานอยู่หรือเปล่า — ใช้ตัดสินว่าจะโชว์สปินเนอร์ */
+function busy(a: Announcement, kind: ActionKind): boolean {
+  return actingId.value === a.id && actingKind.value === kind
+}
 
 async function confirmDelete(a: Announcement) {
   const { isConfirmed } = await Swal.fire({
@@ -190,6 +212,7 @@ async function confirmDelete(a: Announcement) {
   if (!isConfirmed) return
 
   actingId.value = a.id
+  actingKind.value = 'delete'
   try {
     await deleteAnnouncement(a.id)
     Swal.fire({
@@ -206,6 +229,7 @@ async function confirmDelete(a: Announcement) {
     Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: errorText(e) })
   } finally {
     actingId.value = null
+    actingKind.value = null
   }
 }
 
@@ -222,6 +246,7 @@ async function doRestore(a: Announcement) {
   if (!isConfirmed) return
 
   actingId.value = a.id
+  actingKind.value = 'restore'
   try {
     await restoreAnnouncement(a.id)
     Swal.fire({ icon: 'success', title: 'กู้คืนแล้ว', timer: 1200, showConfirmButton: false })
@@ -230,6 +255,74 @@ async function doRestore(a: Announcement) {
     Swal.fire({ icon: 'error', title: 'กู้คืนไม่สำเร็จ', text: errorText(e) })
   } finally {
     actingId.value = null
+    actingKind.value = null
+  }
+}
+
+// ===== ปลดระวาง / นำกลับมาใช้ =====
+//   ตั้งใจให้ข้อความต่างจากการลบชัดเจน — ผู้ใช้ต้องเข้าใจว่า "ของยังอยู่ แค่เลิกใช้"
+async function confirmRetire(a: Announcement) {
+  const { isConfirmed } = await Swal.fire({
+    title: 'ปลดระวางประกาศนี้?',
+    text: 'ประกาศจะหายจากหน้า Landing Page แต่ยังเก็บไว้ดูย้อนหลังได้ — ต่างจากการลบนะ',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'ปลดระวาง',
+    confirmButtonColor: '#B45309',
+    cancelButtonText: 'ยกเลิก',
+  })
+  if (!isConfirmed) return
+
+  actingId.value = a.id
+  actingKind.value = 'retire'
+  try {
+    await retireAnnouncement(a.id)
+    Swal.fire({
+      icon: 'success',
+      title: 'ปลดระวางแล้ว',
+      text: 'ดูย้อนหลังได้จากตัวกรอง "ปลดระวางแล้ว"',
+      timer: 1800,
+      showConfirmButton: false,
+    })
+    // ปลดรายการสุดท้ายของหน้าสุดท้าย → ถอยกลับหนึ่งหน้า ไม่งั้นเจอหน้าว่าง
+    if (items.value.length === 1 && page.value > 1) page.value -= 1
+    await load()
+  } catch (e) {
+    Swal.fire({ icon: 'error', title: 'ปลดระวางไม่สำเร็จ', text: errorText(e) })
+  } finally {
+    actingId.value = null
+    actingKind.value = null
+  }
+}
+
+async function doUnretire(a: Announcement) {
+  const { isConfirmed } = await Swal.fire({
+    title: 'นำประกาศกลับมาใช้?',
+    text: 'ประกาศจะกลับไปแสดงบนหน้า Landing Page อีกครั้ง',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'นำกลับมาใช้',
+    confirmButtonColor: '#B45309',
+    cancelButtonText: 'ยกเลิก',
+  })
+  if (!isConfirmed) return
+
+  actingId.value = a.id
+  actingKind.value = 'unretire'
+  try {
+    await unretireAnnouncement(a.id)
+    Swal.fire({
+      icon: 'success',
+      title: 'นำกลับมาใช้แล้ว',
+      timer: 1200,
+      showConfirmButton: false,
+    })
+    await load()
+  } catch (e) {
+    Swal.fire({ icon: 'error', title: 'นำกลับมาใช้ไม่สำเร็จ', text: errorText(e) })
+  } finally {
+    actingId.value = null
+    actingKind.value = null
   }
 }
 
@@ -327,13 +420,21 @@ const hasAnyItems = computed(() => items.value.length > 0)
     >
       <i class="bi bi-megaphone mb-3 block text-3xl text-stone-300"></i>
       <p class="text-sm font-semibold text-stone-600">
-        {{ statusFilter === 'deleted' ? 'ไม่มีประกาศที่ถูกลบ' : 'ยังไม่มีประกาศ' }}
+        {{
+          statusFilter === 'deleted'
+            ? 'ไม่มีประกาศที่ถูกลบ'
+            : statusFilter === 'retired'
+              ? 'ไม่มีประกาศที่ปลดระวาง'
+              : 'ยังไม่มีประกาศ'
+        }}
       </p>
       <p class="mt-1 text-[13px] text-stone-400">
         {{
           statusFilter === 'deleted'
             ? 'ประกาศที่ลบจะมาแสดงที่นี่'
-            : 'กด "เพิ่มประกาศ" เพื่อขึ้นประกาศบนหน้า Landing Page'
+            : statusFilter === 'retired'
+              ? 'ประกาศที่ปลดระวางแล้วจะมาแสดงที่นี่'
+              : 'กด "เพิ่มประกาศ" เพื่อขึ้นประกาศบนหน้า Landing Page'
         }}
       </p>
     </div>
@@ -344,7 +445,13 @@ const hasAnyItems = computed(() => items.value.length > 0)
         v-for="a in items"
         :key="a.id"
         class="rounded-2xl bg-white p-5 ring-1 transition-shadow hover:shadow-md"
-        :class="a.deleted_at ? 'ring-stone-200 bg-stone-50/60' : 'ring-stone-100'"
+        :class="
+          rowState(a) === 'deleted'
+            ? 'ring-stone-200 bg-stone-50/60'
+            : rowState(a) === 'retired'
+              ? 'ring-amber-200 bg-amber-50/40'
+              : 'ring-stone-100'
+        "
       >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0 flex-1">
@@ -363,12 +470,20 @@ const hasAnyItems = computed(() => items.value.length > 0)
               <span v-if="a.deleted_at" class="rounded-full bg-stone-200 px-2.5 py-1 text-[11px] font-bold text-stone-600">
                 ถูกลบแล้ว
               </span>
+              <!-- ปลดระวาง = สถานะแยกจากการลบ — โชว์ป้ายเฉพาะเมื่อยังไม่ถูกลบ
+                   (แถวที่ "ปลดระวาง + ถูกลบ" อยู่แท็บถูกลบ ⇒ ป้าย "ถูกลบแล้ว" คุมความหมายอยู่แล้ว) -->
+              <span
+                v-else-if="a.retired_at"
+                class="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200"
+              >
+                <i class="bi bi-archive mr-1"></i>ปลดระวางแล้ว
+              </span>
               <span class="text-[11px] text-stone-400">{{ fmtDateTime(a.created_at) }}</span>
             </div>
 
             <p
               class="whitespace-pre-wrap break-words text-[15px] leading-relaxed"
-              :class="a.deleted_at ? 'text-stone-500' : 'text-stone-800'"
+              :class="rowState(a) === 'active' ? 'text-stone-800' : 'text-stone-500'"
             >
               {{ a.message }}
             </p>
@@ -390,12 +505,22 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 <i class="bi bi-person-circle mr-1"></i>
                 {{ a.created_by_name || 'ไม่ทราบผู้ประกาศ' }}
               </span>
-              <template v-if="a.updated_at && a.updated_at !== a.created_at">
+              <!-- ⚠️ !a.retired_at จำเป็น: การปลดระวางก็เซ็ต updated_at ⇒ ถ้าไม่กัน
+                   แถวที่เพิ่งปลดระวางจะโชว์ "แก้ล่าสุด <เวลาเดียวกับที่ปลดระวาง>" ซึ่งอ่านแล้ว
+                   เข้าใจผิดว่าเนื้อหาถูกแก้ (จริง ๆ แก้ไม่ได้ด้วยซ้ำ — PATCH ถูกบล็อก) -->
+              <template v-if="a.updated_at && a.updated_at !== a.created_at && !a.retired_at">
                 <span class="mx-1.5">·</span>
                 <span>แก้ล่าสุด {{ fmtDateTime(a.updated_at) }}</span>
                 <template v-if="a.updated_by_name">
                   <span class="mx-1">โดย {{ a.updated_by_name }}</span>
                 </template>
+              </template>
+              <!-- เวลาที่ปลดระวาง — บอกว่า "เอาออกเมื่อไร" ซึ่งเป็นข้อมูลที่การลบไม่มี -->
+              <template v-if="a.retired_at">
+                <span class="mx-1.5">·</span>
+                <span class="text-amber-600">
+                  <i class="bi bi-archive mr-1"></i>ปลดระวางเมื่อ {{ fmtDateTime(a.retired_at) }}
+                </span>
               </template>
             </p>
           </div>
@@ -410,20 +535,28 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
                 <span
-                  v-if="actingId === a.id"
+                  v-if="busy(a, 'restore')"
                   class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
                 ></span>
                 <i v-else class="bi bi-arrow-counterclockwise"></i>
                 กู้คืน
               </button>
             </template>
-            <template v-else>
+
+            <!-- ปลดระวางแล้ว: แก้ไม่ได้ (ต้องนำกลับมาใช้ก่อน) — ลบได้ตามปกติ -->
+            <template v-else-if="a.retired_at">
               <button
                 type="button"
-                @click="openEdit(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-50"
+                :disabled="actingId === a.id"
+                @click="doUnretire(a)"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
               >
-                <i class="bi bi-pencil"></i> แก้ไข
+                <span
+                  v-if="busy(a, 'unretire')"
+                  class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                ></span>
+                <i v-else class="bi bi-arrow-up-circle"></i>
+                นำกลับมาใช้
               </button>
               <button
                 type="button"
@@ -432,7 +565,42 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-[#B91C1C] ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
                 <span
-                  v-if="actingId === a.id"
+                  v-if="busy(a, 'delete')"
+                  class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#B91C1C]/30 border-t-[#B91C1C]"
+                ></span>
+                <i v-else class="bi bi-trash3"></i> ลบ
+              </button>
+            </template>
+
+            <template v-else>
+              <button
+                type="button"
+                @click="openEdit(a)"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-50"
+              >
+                <i class="bi bi-pencil"></i> แก้ไข
+              </button>
+              <!-- ปลดระวาง — ปุ่มโทน amber ต่างจาก "ลบ" ที่เป็นแดง เพื่อไม่ให้สับสนว่าเป็นการลบ -->
+              <button
+                type="button"
+                :disabled="actingId === a.id"
+                @click="confirmRetire(a)"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-50 disabled:opacity-50"
+              >
+                <span
+                  v-if="busy(a, 'retire')"
+                  class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-600/30 border-t-amber-600"
+                ></span>
+                <i v-else class="bi bi-archive"></i> ปลดระวาง
+              </button>
+              <button
+                type="button"
+                :disabled="actingId === a.id"
+                @click="confirmDelete(a)"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-[#B91C1C] ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
+              >
+                <span
+                  v-if="busy(a, 'delete')"
                   class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#B91C1C]/30 border-t-[#B91C1C]"
                 ></span>
                 <i v-else class="bi bi-trash3"></i> ลบ
@@ -488,7 +656,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 v-model="form.message"
                 rows="4"
                 maxlength="1000"
-                placeholder="เช่น ปิดโรงยิมชั่วคราววันที่ 30 ก.ย. เนื่องจากซ่อมแซมพื้น"
+                placeholder="เช่น เข้าแถวหน้าชั้นเรียน เพราะฝนตก วันที่ 30 ก.ย."
                 class="w-full resize-none rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
               ></textarea>
               <p class="mt-1 text-right text-[11px] text-stone-400">

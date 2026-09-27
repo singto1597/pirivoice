@@ -48,8 +48,11 @@ def _err(e: Exception) -> HTTPException:
 async def list_announcements(
     status: str = Query(
         "active",
-        pattern="^(active|deleted|all)$",
-        description="กรองสถานะ: active (ยังใช้อยู่) / deleted (ถูกลบ) / all (ทั้งหมด)",
+        pattern="^(active|retired|deleted|all)$",
+        description=(
+            "กรองสถานะ: active (ยังใช้อยู่) / retired (ปลดระวางแล้ว) / "
+            "deleted (ถูกลบ) / all (ทั้งหมด)"
+        ),
     ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -138,6 +141,42 @@ async def restore_announcement(
     uid = _ensure_user(user_ctx)
     try:
         row = await announcement_service.restore_announcement(pool, uid, announcement_id)
+    except (NotFoundError, ForbiddenError) as e:
+        raise _err(e)
+
+    return AnnouncementAdminOut(**row)
+
+
+@router.post("/{announcement_id}/retire", response_model=AnnouncementAdminOut)
+async def retire_announcement(
+    announcement_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ปลดระวางประกาศ — หายจาก Landing Page แต่ **ไม่ใช่การลบ** ยังเก็บเป็นประวัติ
+
+    ต่างจาก DELETE: ตั้งใจเอาออกเพราะหมดอายุ/ใช้การไม่ได้แล้ว ไม่ปนกับของที่เผลอลบ
+    (ตัวที่ถูกลบไปแล้วปลดระวางไม่ได้ — ต้องกู้คืนก่อน)
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await announcement_service.retire_announcement(pool, uid, announcement_id)
+    except (NotFoundError, ForbiddenError) as e:
+        raise _err(e)
+
+    return AnnouncementAdminOut(**row)
+
+
+@router.post("/{announcement_id}/unretire", response_model=AnnouncementAdminOut)
+async def unretire_announcement(
+    announcement_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """นำประกาศที่ปลดระวางกลับมาใช้ — กลับไปแสดงบน Landing Page อีกครั้ง"""
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await announcement_service.unretire_announcement(pool, uid, announcement_id)
     except (NotFoundError, ForbiddenError) as e:
         raise _err(e)
 
