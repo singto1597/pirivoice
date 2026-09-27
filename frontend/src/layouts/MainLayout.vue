@@ -180,6 +180,14 @@ const menuItems = computed<NavItem[]>(() => {
       badge: 0,
     })
   }
+  if (authStore.hasPermission('MANAGE_ANNOUNCEMENTS')) {
+    items.push({
+      name: 'จัดการประกาศ',
+      path: '/app/announcements',
+      icon: 'bi-megaphone-fill',
+      badge: 0,
+    })
+  }
   if (authStore.hasPermission('VIEW_AUDIT_LOG')) {
     items.push({
       name: 'บันทึกการใช้งาน',

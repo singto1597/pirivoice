@@ -157,6 +157,12 @@ const router = createRouter({
           meta: { requiresAuth: true, requiresPermission: 'MANAGE_STUDENTS' },
         },
         {
+          path: 'announcements',
+          name: 'announcements',
+          component: () => import('@/views/announcements/AnnouncementManagement.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_ANNOUNCEMENTS' },
+        },
+        {
           path: 'audit-logs',
           name: 'audit-logs',
           component: () => import('@/views/audit/AuditLogs.vue'),
