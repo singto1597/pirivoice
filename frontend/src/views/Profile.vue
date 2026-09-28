@@ -17,7 +17,14 @@ import { getMyStats } from '@/services/me';
 import type { PersonalStats } from '@/types/me';
 import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
 import { useAuthStore } from '@/stores/auth';
-import { canPromptInstall, installNow, isIosSafari, isStandalone } from '@/pwa';
+import {
+  canPromptInstall,
+  installDiagnostics,
+  installHint,
+  installNow,
+  isIosSafari,
+  isStandalone,
+} from '@/pwa';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -26,6 +33,24 @@ const authStore = useAuthStore();
 // ⚠️ การ์ดนี้คือ **ทางกลับมา** ของคนที่เคยกด ✕ ปิดแบนเนอร์ติดตั้งไว้ — แบนเนอร์จำการปิด
 //    แล้วไม่ขึ้นอีก ส่วนการ์ดนี้ไม่ผูกกับค่านั้น เพราะการที่ผู้ใช้เปิดมาหาเองคือการเปลี่ยนใจ
 const installing = ref(false);
+
+/**
+ * แถวข้อมูลวินิจฉัย — แสดงเฉพาะในกิ่ง "ติดตั้งอัตโนมัติไม่ได้"
+ *
+ * ใช้คำว่า "ใช่/ไม่" ไม่ใช่ true/false เพราะคนที่อ่านเป็นผู้ใช้ทั่วไป ไม่ใช่ช่าง
+ * ⚠️ `installDiagnostics` เป็น `computed` ⇒ ค่าจะอัปเดตเองเมื่อสถานะเปลี่ยน
+ *    (เช่นผู้ใช้กดปิดแบนเนอร์ระหว่างเปิดหน้านี้อยู่)
+ */
+const diagRows = computed(() => {
+  const d = installDiagnostics.value;
+  return [
+    { label: 'เปิดในโหมดแอพแล้ว', on: d.standalone },
+    { label: 'เบราว์เซอร์พร้อมติดตั้ง', on: d.promptReady },
+    { label: 'ตัวช่วยแอพทำงาน (SW)', on: d.swRegistered },
+    { label: 'เคยกดปิดแบนเนอร์', on: d.dismissed },
+    { label: 'เครื่องนี้เคยติดตั้งมาก่อน', on: d.installedBefore },
+  ];
+});
 
 async function onInstall() {
   if (installing.value) return;
@@ -472,6 +497,22 @@ onMounted(loadStats);
                 เปิดหน้านี้ด้วย <b>Chrome</b> แล้วเลือก “ติดตั้งแอป” จากเมนู
                 <i class="bi bi-three-dots-vertical"></i> มุมขวาบน
               </p>
+              <!-- 🔎 วินิจฉัย: อาการ "ไม่เห็นแบนเนอร์" เกิดได้จาก 5 สาเหตุที่หน้าตาเหมือนกัน
+                   และแก้คนละทาง ⇒ โชว์ค่าจริงเฉพาะตอนที่ติดตั้งไม่ได้ (คนที่ติดตั้งได้ไม่เห็นความยุ่งเหยิงนี้) -->
+              <p class="mt-2.5 text-xs text-stone-500">{{ installHint }}</p>
+              <details class="mt-1.5">
+                <summary class="cursor-pointer text-[11px] font-semibold text-stone-400 hover:text-stone-600">
+                  รายละเอียดทางเทคนิค
+                </summary>
+                <dl class="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-[11px] text-stone-500">
+                  <template v-for="row in diagRows" :key="row.label">
+                    <dt>{{ row.label }}</dt>
+                    <dd :class="row.on ? 'font-semibold text-stone-700' : ''">
+                      {{ row.on ? 'ใช่' : 'ไม่' }}
+                    </dd>
+                  </template>
+                </dl>
+              </details>
             </template>
           </div>
 

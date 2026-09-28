@@ -90,6 +90,26 @@ function clearFlag(key: string): void {
   }
 }
 
+// ── ธงที่หน้าจอต้องอ่านซ้ำได้ (reactive) ─────────────────────────────────────
+//
+// ⚠️ `readFlag()` อ่าน `localStorage` ตรง ๆ ซึ่ง **ไม่ reactive** ⇒ ถ้าเอาค่าดิบไปผูกหน้าจอ
+//    หน้าจอจะค้างค่าเดิมไว้ ไม่รู้ตัวเมื่อธงเปลี่ยน (เช่นผู้ใช้กด ✕ ระหว่างเปิดหน้านั้นอยู่)
+//    ⇒ เก็บ `ref` คู่ไว้ แล้วให้ `setFlag()` เป็น **ทางเดียว** ที่เขียน/ล้างธง
+//      ในเส้นทางที่หน้าจอต้องเห็น — ห้ามเรียก `writeFlag`/`clearFlag` ตรง ๆ อีก
+const dismissedState = ref(false)
+const autoAskedState = ref(false)
+const installedState = ref(false)
+
+/** เขียน/ล้างธง **พร้อมอัปเดต ref คู่กันเสมอ** */
+function setFlag(key: string, on: boolean): void {
+  if (on) writeFlag(key)
+  else clearFlag(key)
+
+  if (key === DISMISS_KEY) dismissedState.value = on
+  else if (key === AUTO_ASKED_KEY) autoAskedState.value = on
+  else if (key === INSTALLED_KEY) installedState.value = on
+}
+
 function isDismissed(): boolean {
   return readFlag(DISMISS_KEY)
 }
@@ -136,7 +156,7 @@ if (typeof window !== 'undefined') {
     //    ถ้าเอาธงนั้นมาบล็อกการติดตั้ง เท่ากับ **ผู้ใช้ไม่มีทางติดตั้งกลับได้อีกเลย**
     //    ทั้งที่เบราว์เซอร์เพิ่งบอกว่า "ติดตั้งได้" — ล้างตรงนี้ทำให้ธงซ่อมตัวเอง
     //    โดยไม่ต้องรอเบราว์เซอร์ล้าง storage ให้
-    clearFlag(INSTALLED_KEY)
+    setFlag(INSTALLED_KEY, false)
     canInstallState.value = !isDismissed()
     armAutoPrompt()
   })
@@ -146,7 +166,7 @@ if (typeof window !== 'undefined') {
     canInstallState.value = false
     standaloneState.value = true
     disarmAutoPrompt()
-    writeFlag(INSTALLED_KEY)
+    setFlag(INSTALLED_KEY, true)
   })
 }
 
@@ -173,7 +193,7 @@ function onFirstGesture(): void {
   disarmAutoPrompt()
 
   if (!deferredPrompt.value) return
-  writeFlag(AUTO_ASKED_KEY)
+  setFlag(AUTO_ASKED_KEY, true)
   void promptInstall()
 }
 
@@ -232,6 +252,69 @@ export const canPromptInstall = computed(
 )
 
 /**
+ * สภาพการติดตั้ง ณ ตอนนี้ — ใช้ **วินิจฉัย** ว่าเหตุใดจึงยังติดตั้งไม่ได้
+ *
+ * ⚠️ เหตุผลที่ต้องมี: อาการ "ไม่เห็นแบนเนอร์ชวนติดตั้ง" แยกสาเหตุจากหน้าจอไม่ได้เลย
+ *    — เกิดได้จาก 5 อย่างที่หน้าตาเหมือนกันหมด (ไม่เคยได้ event · เคยกดปิด ·
+ *    ติดตั้งค้างอยู่ · SW ไม่ทำงาน · เปิดในแอพอยู่แล้ว) และ **แก้คนละทางกันสิ้นเชิง**
+ *    เดิมต้องให้ผู้ใช้อธิบายจากความจำ ⇒ ที่นี่ทำให้อ่านค่าจริงออกมาได้
+ */
+export interface InstallDiagnostics {
+  /** เปิดในโหมดแอพที่ติดตั้งแล้ว */
+  standalone: boolean
+  /** เบราว์เซอร์ยิง `beforeinstallprompt` แล้วในหน้านี้ (สัญญาณสดว่าติดตั้งได้) */
+  promptReady: boolean
+  /** iOS/iPadOS Safari — ไม่มี API ติดตั้งเลย ต้องสอนเท่านั้น */
+  iosSafari: boolean
+  /** service worker ลงทะเบียนสำเร็จ (Chrome ใช้เป็นเงื่อนไข installability) */
+  swRegistered: boolean
+  /** ผู้ใช้เคยกด ✕ ปิดแบนเนอร์ (แบนเนอร์จะไม่ขึ้นอีก แต่ปุ่มติดตั้งยังใช้ได้) */
+  dismissed: boolean
+  /** เคยถูกถามติดตั้งอัตโนมัติไปแล้วหนึ่งครั้ง */
+  autoAsked: boolean
+  /** เครื่องนี้เคยติดตั้งมาก่อน (ธงในเครื่อง — ไม่ได้แปลว่ายังติดตั้งอยู่) */
+  installedBefore: boolean
+}
+
+export const installDiagnostics = computed<InstallDiagnostics>(() => ({
+  standalone: standaloneState.value,
+  promptReady: deferredPrompt.value !== null,
+  iosSafari: iosSafariState.value,
+  swRegistered: registration.value !== null,
+  dismissed: dismissedState.value,
+  autoAsked: autoAskedState.value,
+  installedBefore: installedState.value,
+}))
+
+/**
+ * คำอธิบายภาษาคนว่า "ติดตรงไหน" — เรียงตามลำดับความสำคัญ
+ *
+ * ⚠️ `promptReady` ต้องมาก่อน `dismissed` — ถ้าเบราว์เซอร์เพิ่งยืนยันว่าติดตั้งได้
+ *    การเคยกดปิด **ไม่ใช่** สาเหตุที่ติดตั้งไม่ได้ (ปุ่มในการ์ดยังกดได้เสมอ) ⇒ ชี้ผิดจุด
+ *
+ * ⚠️ **แยกเป็นฟังก์ชันบริสุทธิ์ที่รับสถานะเข้ามา ไม่ใช่ปิดอ่าน state เอง** — เพราะ
+ *    สาเหตุเหล่านี้ **เกิดพร้อมกันได้** (เช่นเคยกดปิด *และ* เคยติดตั้ง) ⇒ ตัวที่มีความหมาย
+ *    จริงคือ **ลำดับความสำคัญ** ไม่ใช่ค่าใดค่าหนึ่ง ⇒ ถ้าผูกกับ state ของโมดูลจะเขียนเทส
+ *    ให้ครอบทุกลำดับไม่ได้เลย (vitest ไม่ลงทะเบียน SW ⇒ `swRegistered` เป็น false ตลอด
+ *    ทำให้กิ่งหลังจากนั้นแตะไม่ถึง) ⇒ แยกออกมาแบบนี้เทสป้อนสถานะใดก็ได้
+ */
+export function installHintFor(d: InstallDiagnostics): string {
+  if (d.standalone) return 'เปิดอยู่ในโหมดแอพแล้ว — ไม่มีอะไรต้องติดตั้งอีก'
+  if (d.promptReady) return 'เบราว์เซอร์พร้อมติดตั้งแล้ว — กดปุ่ม “ติดตั้งเลย” ได้เลย'
+  if (d.iosSafari) return 'iPhone/iPad ติดตั้งได้ทางเดียวคือปุ่มแชร์ → “เพิ่มไปที่หน้าจอ”'
+  if (!d.swRegistered) {
+    return 'ตัวช่วยของแอพยังไม่ทำงาน (Service Worker) — ลองปิดแท็บแล้วเปิดใหม่ หรือกดรีเฟรชแบบล้างแคช'
+  }
+  if (d.dismissed) return 'คุณเคยกดปิดแบนเนอร์ไว้ — ปุ่มติดตั้งด้านบนยังใช้ได้เสมอ'
+  if (d.installedBefore) {
+    return 'เครื่องนี้เคยติดตั้งมาก่อน — ถ้าถอนไปแล้วแต่ยังไม่ขึ้น มักเพราะตัวแอพยังค้างอยู่ ให้ตรวจที่ chrome://webapks'
+  }
+  return 'เบราว์เซอร์ยังไม่ยืนยันว่าติดตั้งได้ — พบบ่อยเมื่อ (1) ตัวแอพยังติดตั้งค้างอยู่ (2) เปิดจากเบราว์เซอร์ในแอพอื่น เช่น LINE/Facebook (3) เครื่องหรือเบราว์เซอร์รุ่นนี้ไม่รองรับ'
+}
+
+export const installHint = computed(() => installHintFor(installDiagnostics.value))
+
+/**
  * ควรแสดงคำแนะนำติดตั้งแบบ iOS ไหม (แชร์ → เพิ่มไปที่หน้าจอ)
  *
  * iOS ไม่มี event ให้ดัก ⇒ ถ้าไม่แสดงอะไรเลย ผู้ใช้ iOS จะไม่มีทางรู้ว่าติดตั้งได้
@@ -265,6 +348,9 @@ export function registerPwa(): void {
   standaloneState.value = window.matchMedia('(display-mode: standalone)').matches
   iosSafariState.value = detectIosSafari()
   iosHintDismissedState.value = readFlag(IOS_HINT_KEY)
+  dismissedState.value = readFlag(DISMISS_KEY)
+  autoAskedState.value = readFlag(AUTO_ASKED_KEY)
+  installedState.value = readFlag(INSTALLED_KEY)
 
   // ── service worker ────────────────────────────────────────────────────────
   if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -315,7 +401,7 @@ export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unava
 
   // ⚠️ ติดตั้งสำเร็จ ≠ ไม่อยากติดตั้ง — ต้องจำคนละคีย์ (ถ้าปัดออก = ยังถามใหม่ได้
   //    ในเซสชันหน้า เพราะเบราว์เซอร์จะยิง `beforeinstallprompt` ให้ใหม่)
-  if (outcome === 'accepted') writeFlag(INSTALLED_KEY)
+  if (outcome === 'accepted') setFlag(INSTALLED_KEY, true)
 
   return outcome
 }
@@ -331,13 +417,13 @@ export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unava
  */
 export async function installNow(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
   if (!deferredPrompt.value) return 'unavailable'
-  clearFlag(DISMISS_KEY)
+  setFlag(DISMISS_KEY, false)
   return promptInstall()
 }
 
 /** ผู้ใช้กดปิดแบนเนอร์ — จำไว้ ไม่ถามซ้ำอีก */
 export function dismissInstall(): void {
-  writeFlag(DISMISS_KEY)
+  setFlag(DISMISS_KEY, true)
   canInstallState.value = false
   // ⚠️ ต้องยกเลิก "คำขอติดตั้งที่รอแตะแรกอยู่" ด้วย — ไม่งั้นถ้ามีอะไรเรียกฟังก์ชันนี้
   //    ระหว่างที่ยังรอแตะ (เช่นอนาคตมีปุ่มปิดที่อื่น) dialog จะเด้งขึ้นมาอยู่ดี
