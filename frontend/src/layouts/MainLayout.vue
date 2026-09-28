@@ -5,6 +5,7 @@ import Swal from 'sweetalert2'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import PlaybookSidebarMenu from '@/components/playbooks/PlaybookSidebarMenu.vue'
+import InstallPrompt from '@/components/InstallPrompt.vue'
 import { PLAYBOOKS } from '@/types/playbook'
 
 const authStore = useAuthStore()
@@ -740,6 +741,10 @@ const goHome = () => {
         </div>
       </div>
     </Transition>
+
+    <!-- 📱 แบนเนอร์ติดตั้ง PWA + แจ้งเวอร์ชันใหม่ (A1)
+         วางไว้ที่ MainLayout ⇒ ขึ้นเฉพาะหน้าหลังล็อกอิน ไม่รบกวน Landing สาธารณะ -->
+    <InstallPrompt />
   </div>
 </template>
 
