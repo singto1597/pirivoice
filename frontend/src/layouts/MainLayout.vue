@@ -93,6 +93,8 @@ const routeTitles: Record<string, string> = {
   users: 'จัดการสมาชิก',
   students: 'รายชื่อนักเรียน',
   'import-students': 'นำเข้านักเรียน',
+  announcements: 'จัดการประกาศ',
+  'academic-terms': 'ภาคเรียน',
   'audit-logs': 'บันทึกการใช้งาน',
 }
 const routeTitle = computed(() => routeTitles[(route.name as string) || ''] || 'PIRIvoice')
@@ -185,6 +187,14 @@ const menuItems = computed<NavItem[]>(() => {
       name: 'จัดการประกาศ',
       path: '/app/announcements',
       icon: 'bi-megaphone-fill',
+      badge: 0,
+    })
+  }
+  if (authStore.hasPermission('MANAGE_SETTINGS')) {
+    items.push({
+      name: 'ภาคเรียน',
+      path: '/app/settings/terms',
+      icon: 'bi-calendar3-range',
       badge: 0,
     })
   }

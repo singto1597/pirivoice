@@ -18,6 +18,7 @@ from routers import audit_router
 from routers import boards
 from routers import notification_router
 from routers import announcement_router
+from routers import settings_router
 from routers import public_router
 
 logging.basicConfig(
@@ -144,6 +145,7 @@ app.include_router(audit_router.router, prefix="/api")
 app.include_router(boards.router, prefix="/api")
 app.include_router(notification_router.router, prefix="/api")
 app.include_router(announcement_router.router, prefix="/api")
+app.include_router(settings_router.router, prefix="/api")
 app.include_router(public_router.router, prefix="/api/v1")
 
 

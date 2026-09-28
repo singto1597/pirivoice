@@ -425,7 +425,26 @@ async def init_db(pool: asyncpg.Pool):
                 );
                 """)
 
-                # --- 8.7 announcements: ประกาศสาธารณะบน Landing Page ---
+                # --- 8.7 academic_terms: ภาคเรียน (migration 017) ---
+                #   - โรงเรียนถามว่า "ภาคนี้เป็นยังไง" ⇒ ต้องมีช่วงวันที่ให้กรองสถิติ
+                #   - **ไม่มีภาคปัจจุบันก็ได้** (ค่าเริ่มต้นของระบบ) ⇒ get_current_term คืน None
+                #     แล้วสถิติจะนับทั้งหมด — ไม่ต้อง backfill ภาคเดา ๆ ให้ตัวเลขผิดเงียบ ๆ
+                #   - end_date รวมวันสุดท้าย (inclusive) — ระบุชัดเพราะเป็นจุดที่พลาดง่าย
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS academic_terms (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(50) NOT NULL,
+                    start_date DATE NOT NULL,
+                    end_date DATE NOT NULL,
+                    is_current BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    deleted_at TIMESTAMP WITH TIME ZONE,
+                    CONSTRAINT chk_academic_terms_range CHECK (end_date >= start_date)
+                );
+                """)
+
+                # --- 8.8 announcements: ประกาศสาธารณะบน Landing Page ---
                 #   - priority: normal / high / urgent (urgent = พื้นหลังแดงเข้มบนหน้า Landing)
                 #   - link: ลิงก์ปลายทาง (optional) เมื่อคลิกประกาศ
                 await conn.execute("""
@@ -588,6 +607,17 @@ async def init_db(pool: asyncpg.Pool):
                 --   ไม่มี index อื่นโดยเจตนา: ≤ 4 แถว/คน และอ่านแบบ point lookup อยู่แล้ว
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_notification_prefs_user_group
                     ON notification_preferences(user_id, group_type);
+                -- academic_terms (T1 / migration 017) — ภาคเรียน
+                --   ⚠️ partial unique index: key คือ is_current แต่กรอง WHERE is_current
+                --      ⇒ ใน index มีแต่แถว is_current = TRUE และ key เท่ากันหมด ⇒ บังคับ
+                --      "มีภาคปัจจุบันได้ตัวเดียว" ได้ด้วย DB เอง ไม่ต้องพึ่งโค้ด
+                --   ⚠️ non-deferrable ⇒ service ต้อง "ล้างตัวเก่าก่อน ตั้งตัวใหม่ทีหลัง"
+                --      ใน transaction เดียวกัน (สลับลำดับ = UniqueViolationError)
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_academic_terms_single_current
+                    ON academic_terms(is_current) WHERE is_current AND deleted_at IS NULL;
+                -- คิวรีหลัก = "ภาคที่คลุมวันนี้" / "ภาคตามช่วงวันที่" ⇒ index บนช่วงวัน
+                CREATE INDEX IF NOT EXISTS idx_academic_terms_dates
+                    ON academic_terms(start_date, end_date);
                 CREATE INDEX IF NOT EXISTS idx_students_room_no_active
                     ON students(room_id, student_no)
                     WHERE deleted_at IS NULL;
