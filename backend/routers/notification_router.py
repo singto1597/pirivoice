@@ -6,6 +6,7 @@ from core.exceptions import ValidationError
 from models.notification_schemas import (
     NotificationListOut, NotificationOut, UnreadCountsOut,
     MarkReadRequest, MarkReadOut,
+    NotificationPreferencesOut, UpdateNotificationPreferencesRequest,
 )
 from services import notification_service
 
@@ -76,3 +77,32 @@ async def mark_read(
     except ValidationError as e:
         raise _err(e)
     return MarkReadOut(updated=updated)
+
+
+@router.get("/preferences", response_model=NotificationPreferencesOut)
+async def get_preferences(
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ค่าตั้งค่าการแจ้งเตือนของฉัน — คืนครบทั้ง 4 กลุ่มเสมอ"""
+    uid = _ensure_user(user_ctx)
+    return await notification_service.get_preferences(pool, uid)
+
+
+@router.put("/preferences", response_model=NotificationPreferencesOut)
+async def update_preferences(
+    req: UpdateNotificationPreferencesRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ปิด/เปิดการแจ้งเตือนรายกลุ่ม — partial update (กลุ่มที่ไม่ส่งมาคงค่าเดิม)
+
+    ใช้ PUT ไม่ใช่ PATCH เพราะ client ส่ง "สถานะที่ต้องการ" ของกลุ่มที่แสดงอยู่ครบชุด
+    และ endpoint นี้ idempotent — ส่งซ้ำด้วยค่าเดิมได้ผลเท่าเดิม"""
+    uid = _ensure_user(user_ctx)
+    try:
+        return await notification_service.update_preferences(
+            pool, uid, [p.model_dump() for p in req.preferences]
+        )
+    except ValidationError as e:
+        raise _err(e)

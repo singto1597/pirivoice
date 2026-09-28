@@ -4,6 +4,15 @@ import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import { getMyProfile, type MyProfile } from '@/services/profile';
+import {
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from '@/services/notification';
+import {
+  PREFERENCE_GROUPS,
+  GROUP_DESCRIPTIONS,
+  type NotificationGroup,
+} from '@/types/notification';
 import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
@@ -59,6 +68,70 @@ async function load() {
   }
 }
 onMounted(load);
+
+// ===== ⚙️ ตั้งค่าการแจ้งเตือนรายกลุ่ม (A2) =====
+// สร้างคีย์จาก PREFERENCE_GROUPS → ไม่ต้องพิมพ์ชื่อกลุ่มซ้ำในไฟล์นี้
+// ค่าตั้งต้น = เปิดหมด (ตรงกับ backend: "ไม่มีแถว = เปิด")
+const prefs = ref<Record<string, boolean>>(
+  Object.fromEntries(PREFERENCE_GROUPS.map((g) => [g.value, true])),
+);
+const prefsLoading = ref(true);
+const prefsError = ref(false);
+const savingGroup = ref<NotificationGroup | null>(null);
+
+// คีย์ที่ไม่มี = เปิด (ตรงกับ backend) — และกัน noUncheckedIndexedAccess ที่ทำให้เป็น boolean|undefined
+const isOn = (group: NotificationGroup): boolean => prefs.value[group] ?? true;
+
+async function loadPrefs() {
+  prefsLoading.value = true;
+  prefsError.value = false;
+  try {
+    const res = await getNotificationPreferences();
+    const next = { ...prefs.value };
+    for (const p of res.preferences) next[p.group_type] = p.enabled;
+    prefs.value = next;
+  } catch {
+    // ไม่เด้ง Swal ตอนเปิดหน้า (กวนเกินไป) — โชว์ในตัวการ์ดพร้อมปุ่มลองใหม่แทน
+    prefsError.value = true;
+  } finally {
+    prefsLoading.value = false;
+  }
+}
+onMounted(loadPrefs);
+
+async function toggleGroup(group: NotificationGroup) {
+  const next = !isOn(group);
+
+  // ปิดกลุ่ม "เรื่องของฉัน" = เงียบเมื่อเรื่องที่ตัวเองแจ้งมีความเคลื่อนไหว → ถามก่อน
+  if (!next && group === 'issue_mine') {
+    const res = await Swal.fire({
+      icon: 'warning',
+      title: 'ปิดการแจ้งเตือนเรื่องของฉัน?',
+      text: 'คุณจะไม่รู้เมื่อเรื่องที่คุณแจ้งไว้ถูกตอบกลับ หรือมีการเปลี่ยนสถานะ',
+      showCancelButton: true,
+      confirmButtonText: 'ปิดการแจ้งเตือน',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#B91C1C',
+    });
+    if (!res.isConfirmed) return;
+  }
+
+  const prev = isOn(group);
+  prefs.value[group] = next; // optimistic — กดแล้วต้องเห็นผลทันที
+  savingGroup.value = group;
+  try {
+    await updateNotificationPreferences([{ group_type: group, enabled: next }]);
+  } catch (e: unknown) {
+    prefs.value[group] = prev; // ยิงไม่ผ่าน → คืนค่าที่ถูกต้องให้ผู้ใช้เห็น
+    Swal.fire({
+      icon: 'error',
+      title: 'บันทึกไม่สำเร็จ',
+      text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่',
+    });
+  } finally {
+    savingGroup.value = null;
+  }
+}
 
 const goEdit = () => { menuOpen.value = false; router.push({ name: 'profile-edit' }); };
 const goPassword = () => { menuOpen.value = false; router.push({ name: 'profile-password' }); };
@@ -236,6 +309,77 @@ const infoRows = computed(() => {
               <p class="text-[11px] text-stone-500 font-medium leading-tight">{{ row.label }}</p>
               <p class="text-sm text-stone-800 font-semibold break-words leading-snug">{{ row.value }}</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ⚙️ การแจ้งเตือน ===== -->
+      <div class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
+        <div class="mb-5 flex items-center gap-3">
+          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
+            <i class="bi bi-bell"></i>
+          </span>
+          <div>
+            <h2 class="text-lg font-bold text-stone-900">การแจ้งเตือน</h2>
+            <p class="text-xs text-stone-500 mt-0.5">
+              เลือกว่าจะรับเรื่องอะไร — ปิดแล้วเรื่องนั้นจะไม่ขึ้นทั้งในแอพและการแจ้งเตือน
+            </p>
+          </div>
+        </div>
+
+        <!-- โหลดไม่สำเร็จ: ไม่ปิดกั้นทั้งหน้า แค่การ์ดนี้ -->
+        <div v-if="prefsError" class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center">
+          <i class="bi bi-cloud-slash mb-2 block text-2xl text-stone-400"></i>
+          <p class="text-sm font-semibold text-stone-700">โหลดการตั้งค่าไม่ได้</p>
+          <button
+            type="button"
+            @click="loadPrefs"
+            class="mt-3 inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2 text-[13px] font-bold text-stone-700 transition-colors hover:bg-stone-100"
+          >
+            <i class="bi bi-arrow-clockwise"></i> ลองใหม่
+          </button>
+        </div>
+
+        <div v-else-if="prefsLoading" class="space-y-4" aria-busy="true">
+          <div v-for="i in 4" :key="i" class="flex items-center gap-3">
+            <div class="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-stone-100"></div>
+            <div class="flex-1 space-y-2">
+              <div class="h-4 w-28 animate-pulse rounded bg-stone-100"></div>
+              <div class="h-3 w-44 animate-pulse rounded bg-stone-100"></div>
+            </div>
+            <div class="h-6 w-11 shrink-0 animate-pulse rounded-full bg-stone-100"></div>
+          </div>
+        </div>
+
+        <div v-else class="divide-y divide-stone-100">
+          <div
+            v-for="g in PREFERENCE_GROUPS"
+            :key="g.value"
+            class="flex items-start gap-3 py-3.5 first:pt-0 last:pb-0"
+          >
+            <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
+              <i :class="g.icon"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-stone-800">{{ g.label }}</p>
+              <p class="mt-0.5 text-xs leading-snug text-stone-500">{{ GROUP_DESCRIPTIONS[g.value] }}</p>
+            </div>
+            <!-- role="switch" + aria-checked → screen reader อ่านสถานะออก ไม่ต้องเดาจากสี -->
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="isOn(g.value)"
+              :aria-label="`${isOn(g.value) ? 'ปิด' : 'เปิด'}การแจ้งเตือน ${g.label}`"
+              :disabled="savingGroup === g.value"
+              @click="toggleGroup(g.value)"
+              class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 disabled:opacity-50"
+              :class="isOn(g.value) ? 'bg-[#B91C1C]' : 'bg-stone-300'"
+            >
+              <span
+                class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none"
+                :class="isOn(g.value) ? 'translate-x-[22px]' : 'translate-x-0.5'"
+              ></span>
+            </button>
           </div>
         </div>
       </div>

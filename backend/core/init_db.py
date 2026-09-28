@@ -407,7 +407,25 @@ async def init_db(pool: asyncpg.Pool):
                 );
                 """)
 
-                # --- 8.6 announcements: ประกาศสาธารณะบน Landing Page ---
+                # --- 8.6 notification_preferences: ปิด/เปิดการแจ้งเตือนรายกลุ่ม (migration 016) ---
+                #   - "ไม่มีแถว" = เปิด → เป็นค่าตั้งต้นของทุกคน ไม่ต้อง backfill
+                #   - enabled gate **ทั้ง in-app และ push** (push ยังไม่มีในระบบ — ดู A3)
+                #   - ชื่อ `enabled` ไม่ใช่ `push_enabled` โดยเจตนา — วันหน้าเพิ่มคอลัมน์ใหม่
+                #     ควบคู่ ห้าม rename (ดูเหตุผลเต็มใน migrations/016_*.py)
+                #   - ไม่มี CHECK บน group_type ตามแบบตาราง notifications — GROUP_TYPES โตได้
+                #     (D1 จะเพิ่ม "event") ⇒ ใช้ regex ที่ชั้น Pydantic/router แทน
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS notification_preferences (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    group_type VARCHAR(30) NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+                """)
+
+                # --- 8.7 announcements: ประกาศสาธารณะบน Landing Page ---
                 #   - priority: normal / high / urgent (urgent = พื้นหลังแดงเข้มบนหน้า Landing)
                 #   - link: ลิงก์ปลายทาง (optional) เมื่อคลิกประกาศ
                 await conn.execute("""
@@ -564,6 +582,12 @@ async def init_db(pool: asyncpg.Pool):
                     ON notifications(board_id) WHERE board_id IS NOT NULL;
                 CREATE INDEX IF NOT EXISTS idx_notifications_entity
                     ON notifications(entity_type, entity_id);
+                -- notification_preferences (A2 / migration 016) — ตั้งค่าการแจ้งเตือนรายกลุ่ม
+                --   ⚠️ unique index นี้คือสิ่งที่ทำให้ `ON CONFLICT (user_id, group_type)
+                --      DO UPDATE` ใน update_preferences() ทำงาน — ลบไม่ได้
+                --   ไม่มี index อื่นโดยเจตนา: ≤ 4 แถว/คน และอ่านแบบ point lookup อยู่แล้ว
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_notification_prefs_user_group
+                    ON notification_preferences(user_id, group_type);
                 CREATE INDEX IF NOT EXISTS idx_students_room_no_active
                     ON students(room_id, student_no)
                     WHERE deleted_at IS NULL;
