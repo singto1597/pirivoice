@@ -252,6 +252,10 @@ async function doDelete(t: AcademicTerm) {
   try {
     await deleteTerm(t.id)
     Swal.fire({ icon: 'success', title: 'ลบแล้ว', timer: 1000, showConfirmButton: false })
+    // ลบรายการสุดท้ายของหน้าสุดท้าย → ถอยกลับหนึ่งหน้า
+    // ไม่งั้น `load()` คืน 0 รายการ ⇒ หน้าเปลี่ยนเป็น empty state แล้ว **แถบแบ่งหน้าหายไปด้วย**
+    // (PaginationBar อยู่ในกิ่ง v-else ของรายการ) ⇒ ภาคเรียนที่เหลืออยู่เข้าถึงไม่ได้เลย
+    if (items.value.length === 1 && page.value > 1) page.value -= 1
     await load()
   } catch (e) {
     Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: errorText(e) })
@@ -278,6 +282,8 @@ async function doRestore(t: AcademicTerm) {
   try {
     await restoreTerm(t.id)
     Swal.fire({ icon: 'success', title: 'กู้คืนแล้ว', timer: 1000, showConfirmButton: false })
+    // กู้คืน = รายการออกจากแท็บ "ถูกลบ" ⇒ เกิดปัญหาเดียวกับ doDelete (ดูคอมเมนต์ที่นั่น)
+    if (items.value.length === 1 && page.value > 1) page.value -= 1
     await load()
   } catch (e) {
     Swal.fire({ icon: 'error', title: 'กู้คืนไม่สำเร็จ', text: errorText(e) })
@@ -491,123 +497,129 @@ function coversToday(t: AcademicTerm): boolean {
     </div>
 
     <!-- ════════════ Modal เพิ่ม/แก้ไขภาคเรียน ════════════ -->
-    <Transition name="sheet">
-      <div v-if="modalOpen" class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-        <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeModal"></div>
-        <div
-          class="relative z-10 mx-auto flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl sm:rounded-[1.5rem]"
-        >
-          <div class="flex items-center justify-between border-b border-stone-100 px-5 py-4">
-            <div>
-              <h3 class="text-base font-bold text-stone-900">
-                {{ modalMode === 'add' ? 'เพิ่มภาคเรียน' : 'แก้ไขภาคเรียน' }}
-              </h3>
-              <p class="mt-0.5 text-xs text-stone-500">
-                {{ modalMode === 'add' ? 'กำหนดช่วงวันที่ของภาค' : 'แก้แล้วมีผลกับการกรองสถิติทันที' }}
+    <!-- ⚠️ ต้อง Teleport ออกไปที่ <body> — modal นี้เรนเดอร์อยู่ภายใน stacking context
+         ของ `.maincol` (`relative z-10` ใน MainLayout) ⇒ z-50 ข้างในถูกกักไว้ที่ชั้น 10
+         และแพ้ bottom tab bar (`fixed z-40`) ที่เป็นพี่น้องกัน ⇒ แถบเมนูล่างทับและกลืนคลิก
+         ปุ่มบันทึก. Teleport ทำให้ modal ไปแข่ง z-index ที่ระดับ root แทน -->
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="modalOpen" class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeModal"></div>
+          <div
+            class="relative z-10 mx-auto flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl sm:rounded-[1.5rem]"
+          >
+            <div class="flex items-center justify-between border-b border-stone-100 px-5 py-4">
+              <div>
+                <h3 class="text-base font-bold text-stone-900">
+                  {{ modalMode === 'add' ? 'เพิ่มภาคเรียน' : 'แก้ไขภาคเรียน' }}
+                </h3>
+                <p class="mt-0.5 text-xs text-stone-500">
+                  {{ modalMode === 'add' ? 'กำหนดช่วงวันที่ของภาค' : 'แก้แล้วมีผลกับการกรองสถิติทันที' }}
+                </p>
+              </div>
+              <button
+                type="button"
+                @click="closeModal"
+                class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
+                aria-label="ปิด"
+              >
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            <div class="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div>
+                <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-name">
+                  ชื่อภาคเรียน <span class="text-[#B91C1C]">*</span>
+                </label>
+                <input
+                  id="term-name"
+                  v-model="form.name"
+                  type="text"
+                  maxlength="50"
+                  placeholder="เช่น ภาคเรียนที่ 1/2569"
+                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                />
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-start">
+                    วันเริ่มต้น <span class="text-[#B91C1C]">*</span>
+                  </label>
+                  <input
+                    id="term-start"
+                    v-model="form.start_date"
+                    type="date"
+                    class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-end">
+                    วันสิ้นสุด <span class="text-[#B91C1C]">*</span>
+                  </label>
+                  <input
+                    id="term-end"
+                    v-model="form.end_date"
+                    type="date"
+                    class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                  />
+                </div>
+              </div>
+              <p class="text-[11px] text-stone-400">
+                <i class="bi bi-info-circle mr-1"></i>วันสิ้นสุด <b>รวมวันสุดท้ายด้วย</b> —
+                ถ้าภาคจบวันที่ 10 ต.ค. ให้เลือก 10 ต.ค.
               </p>
-            </div>
-            <button
-              type="button"
-              @click="closeModal"
-              class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
-              aria-label="ปิด"
-            >
-              <i class="bi bi-x-lg"></i>
-            </button>
-          </div>
 
-          <div class="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-name">
-                ชื่อภาคเรียน <span class="text-[#B91C1C]">*</span>
-              </label>
-              <input
-                id="term-name"
-                v-model="form.name"
-                type="text"
-                maxlength="50"
-                placeholder="เช่น ภาคเรียนที่ 1/2569"
-                class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-              />
-            </div>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-start">
-                  วันเริ่มต้น <span class="text-[#B91C1C]">*</span>
-                </label>
+              <!-- ตั้งเป็นปัจจุบัน — เฉพาะตอนเพิ่ม (ตอนแก้ให้ใช้ปุ่มในรายการ) -->
+              <label
+                v-if="modalMode === 'add'"
+                class="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 px-3.5 py-3 transition-colors hover:bg-stone-50"
+              >
                 <input
-                  id="term-start"
-                  v-model="form.start_date"
-                  type="date"
-                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                  v-model="form.is_current"
+                  type="checkbox"
+                  class="mt-0.5 h-4 w-4 shrink-0 accent-[#B91C1C]"
                 />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-end">
-                  วันสิ้นสุด <span class="text-[#B91C1C]">*</span>
-                </label>
-                <input
-                  id="term-end"
-                  v-model="form.end_date"
-                  type="date"
-                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-                />
-              </div>
-            </div>
-            <p class="text-[11px] text-stone-400">
-              <i class="bi bi-info-circle mr-1"></i>วันสิ้นสุด <b>รวมวันสุดท้ายด้วย</b> —
-              ถ้าภาคจบวันที่ 10 ต.ค. ให้เลือก 10 ต.ค.
-            </p>
-
-            <!-- ตั้งเป็นปัจจุบัน — เฉพาะตอนเพิ่ม (ตอนแก้ให้ใช้ปุ่มในรายการ) -->
-            <label
-              v-if="modalMode === 'add'"
-              class="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 px-3.5 py-3 transition-colors hover:bg-stone-50"
-            >
-              <input
-                v-model="form.is_current"
-                type="checkbox"
-                class="mt-0.5 h-4 w-4 shrink-0 accent-[#B91C1C]"
-              />
-              <span class="min-w-0">
-                <span class="block text-[13px] font-bold text-stone-700">ใช้เป็นภาคปัจจุบัน</span>
-                <span class="mt-0.5 block text-[11px] text-stone-500">
-                  ภาคปัจจุบันเดิมจะถูกปลดให้อัตโนมัติ (มีภาคปัจจุบันได้ครั้งละหนึ่ง)
+                <span class="min-w-0">
+                  <span class="block text-[13px] font-bold text-stone-700">ใช้เป็นภาคปัจจุบัน</span>
+                  <span class="mt-0.5 block text-[11px] text-stone-500">
+                    ภาคปัจจุบันเดิมจะถูกปลดให้อัตโนมัติ (มีภาคปัจจุบันได้ครั้งละหนึ่ง)
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
 
-            <!-- error จาก server (เก็บไว้ในฟอร์ม ไม่ปิด modal) -->
-            <div v-if="saveError" class="rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700 ring-1 ring-red-100">
-              <i class="bi bi-exclamation-circle mr-1"></i>{{ saveError }}
+              <!-- error จาก server (เก็บไว้ในฟอร์ม ไม่ปิด modal) -->
+              <div v-if="saveError" class="rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700 ring-1 ring-red-100">
+                <i class="bi bi-exclamation-circle mr-1"></i>{{ saveError }}
+              </div>
             </div>
-          </div>
 
-          <div class="flex items-center justify-end gap-2 border-t border-stone-100 px-5 py-4">
-            <p v-if="formError" class="mr-auto text-[12px] font-semibold text-amber-600">
-              {{ formError }}
-            </p>
-            <button
-              type="button"
-              @click="closeModal"
-              class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-100"
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="button"
-              :disabled="saving || !!formError"
-              @click="save"
-              class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
-            >
-              <i :class="saving ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check-lg'"></i>
-              {{ modalMode === 'add' ? 'เพิ่มภาคเรียน' : 'บันทึก' }}
-            </button>
+            <div class="flex items-center justify-end gap-2 border-t border-stone-100 px-5 py-4">
+              <p v-if="formError" class="mr-auto text-[12px] font-semibold text-amber-600">
+                {{ formError }}
+              </p>
+              <button
+                type="button"
+                @click="closeModal"
+                class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-100"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                :disabled="saving || !!formError"
+                @click="save"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
+              >
+                <i :class="saving ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check-lg'"></i>
+                {{ modalMode === 'add' ? 'เพิ่มภาคเรียน' : 'บันทึก' }}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 

@@ -626,136 +626,142 @@ const hasAnyItems = computed(() => items.value.length > 0)
     </div>
 
     <!-- ════════════ Modal เพิ่ม/แก้ไขประกาศ ════════════ -->
-    <Transition name="sheet">
-      <div v-if="modalOpen" class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-        <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeModal"></div>
-        <div
-          class="relative z-10 mx-auto flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl sm:rounded-[1.5rem]"
-        >
-          <!-- Header -->
-          <div class="flex items-center justify-between border-b border-stone-100 px-5 py-4">
-            <div>
-              <h3 class="text-base font-bold text-stone-900">
-                {{ modalMode === 'add' ? 'เพิ่มประกาศ' : 'แก้ไขประกาศ' }}
-              </h3>
-              <p class="mt-0.5 text-xs text-stone-500">
-                {{ modalMode === 'add' ? 'จะขึ้นบน Landing Page ทันที' : 'แก้แล้วมีผลทันที' }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="closeModal"
-              class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
-            >
-              <i class="bi bi-x-lg"></i>
-            </button>
-          </div>
-
-          <!-- Body -->
-          <div class="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-stone-500" for="ann-message">
-                ข้อความประกาศ <span class="text-[#B91C1C]">*</span>
-              </label>
-              <textarea
-                id="ann-message"
-                v-model="form.message"
-                rows="4"
-                maxlength="1000"
-                placeholder="เช่น เข้าแถวหน้าชั้นเรียน เพราะฝนตก วันที่ 30 ก.ย."
-                class="w-full resize-none rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-              ></textarea>
-              <p class="mt-1 text-right text-[11px] text-stone-400">
-                {{ form.message.length }}/1000
-              </p>
-            </div>
-
-            <div>
-              <p class="mb-1 text-xs font-semibold text-stone-500">ความสำคัญ</p>
-              <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-                <button
-                  v-for="opt in PRIORITY_OPTIONS"
-                  :key="opt.value"
-                  type="button"
-                  @click="form.priority = opt.value"
-                  class="flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors"
-                  :class="
-                    form.priority === opt.value
-                      ? 'border-[#B91C1C] bg-[#B91C1C]/5'
-                      : 'border-stone-200 hover:bg-stone-50'
-                  "
-                >
-                  <span
-                    class="h-2 w-2 shrink-0 rounded-full"
-                    :class="PRIORITY_STYLE[opt.value].dot"
-                  ></span>
-                  <span class="min-w-0">
-                    <span
-                      class="block text-[13px] font-bold"
-                      :class="form.priority === opt.value ? 'text-[#B91C1C]' : 'text-stone-700'"
-                    >
-                      {{ opt.label }}
-                    </span>
-                  </span>
-                </button>
+    <!-- ⚠️ ต้อง Teleport ออกไปที่ <body> — modal นี้เรนเดอร์อยู่ภายใน stacking context
+         ของ `.maincol` (`relative z-10` ใน MainLayout) ⇒ z-50 ข้างในถูกกักไว้ที่ชั้น 10
+         และแพ้ bottom tab bar (`fixed z-40`) ที่เป็นพี่น้องกัน ⇒ แถบเมนูล่างทับและกลืนคลิก
+         ปุ่มบันทึก. Teleport ทำให้ modal ไปแข่ง z-index ที่ระดับ root แทน -->
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="modalOpen" class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeModal"></div>
+          <div
+            class="relative z-10 mx-auto flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl sm:rounded-[1.5rem]"
+          >
+            <!-- Header -->
+            <div class="flex items-center justify-between border-b border-stone-100 px-5 py-4">
+              <div>
+                <h3 class="text-base font-bold text-stone-900">
+                  {{ modalMode === 'add' ? 'เพิ่มประกาศ' : 'แก้ไขประกาศ' }}
+                </h3>
+                <p class="mt-0.5 text-xs text-stone-500">
+                  {{ modalMode === 'add' ? 'จะขึ้นบน Landing Page ทันที' : 'แก้แล้วมีผลทันที' }}
+                </p>
               </div>
-              <p class="mt-1.5 text-[11px] text-stone-400">
-                {{ PRIORITY_OPTIONS.find((o) => o.value === form.priority)?.hint }}
+              <button
+                type="button"
+                @click="closeModal"
+                class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
+              >
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            <!-- Body -->
+            <div class="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div>
+                <label class="mb-1 block text-xs font-semibold text-stone-500" for="ann-message">
+                  ข้อความประกาศ <span class="text-[#B91C1C]">*</span>
+                </label>
+                <textarea
+                  id="ann-message"
+                  v-model="form.message"
+                  rows="4"
+                  maxlength="1000"
+                  placeholder="เช่น เข้าแถวหน้าชั้นเรียน เพราะฝนตก วันที่ 30 ก.ย."
+                  class="w-full resize-none rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                ></textarea>
+                <p class="mt-1 text-right text-[11px] text-stone-400">
+                  {{ form.message.length }}/1000
+                </p>
+              </div>
+
+              <div>
+                <p class="mb-1 text-xs font-semibold text-stone-500">ความสำคัญ</p>
+                <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                  <button
+                    v-for="opt in PRIORITY_OPTIONS"
+                    :key="opt.value"
+                    type="button"
+                    @click="form.priority = opt.value"
+                    class="flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors"
+                    :class="
+                      form.priority === opt.value
+                        ? 'border-[#B91C1C] bg-[#B91C1C]/5'
+                        : 'border-stone-200 hover:bg-stone-50'
+                    "
+                  >
+                    <span
+                      class="h-2 w-2 shrink-0 rounded-full"
+                      :class="PRIORITY_STYLE[opt.value].dot"
+                    ></span>
+                    <span class="min-w-0">
+                      <span
+                        class="block text-[13px] font-bold"
+                        :class="form.priority === opt.value ? 'text-[#B91C1C]' : 'text-stone-700'"
+                      >
+                        {{ opt.label }}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+                <p class="mt-1.5 text-[11px] text-stone-400">
+                  {{ PRIORITY_OPTIONS.find((o) => o.value === form.priority)?.hint }}
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-1 block text-xs font-semibold text-stone-500" for="ann-link">
+                  ลิงก์แนบ <span class="text-stone-400">(ไม่บังคับ)</span>
+                </label>
+                <input
+                  id="ann-link"
+                  v-model="form.link"
+                  type="url"
+                  maxlength="500"
+                  placeholder="https://..."
+                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                />
+                <p class="mt-1 text-[11px] text-stone-400">
+                  ต้องขึ้นต้นด้วย http:// หรือ https:// เท่านั้น — เว้นว่าง = ไม่มีลิงก์
+                </p>
+              </div>
+
+              <p
+                v-if="saveError"
+                class="whitespace-pre-line rounded-xl bg-red-50 px-3 py-2.5 text-[13px] font-medium text-red-600"
+              >
+                <i class="bi bi-exclamation-circle mr-1"></i> {{ saveError }}
               </p>
             </div>
 
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-stone-500" for="ann-link">
-                ลิงก์แนบ <span class="text-stone-400">(ไม่บังคับ)</span>
-              </label>
-              <input
-                id="ann-link"
-                v-model="form.link"
-                type="url"
-                maxlength="500"
-                placeholder="https://..."
-                class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-              />
-              <p class="mt-1 text-[11px] text-stone-400">
-                ต้องขึ้นต้นด้วย http:// หรือ https:// เท่านั้น — เว้นว่าง = ไม่มีลิงก์
-              </p>
+            <!-- Footer -->
+            <div class="flex items-center justify-end gap-2 border-t border-stone-100 px-5 py-3.5">
+              <button
+                type="button"
+                @click="closeModal"
+                :disabled="saving"
+                class="rounded-xl px-4 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                @click="submitForm"
+                :disabled="!canSubmit"
+                class="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] disabled:opacity-60"
+              >
+                <span
+                  v-if="saving"
+                  class="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                ></span>
+                <i v-else class="bi bi-check-lg"></i>
+                {{ saving ? 'กำลังบันทึก…' : modalMode === 'add' ? 'ประกาศ' : 'บันทึก' }}
+              </button>
             </div>
-
-            <p
-              v-if="saveError"
-              class="whitespace-pre-line rounded-xl bg-red-50 px-3 py-2.5 text-[13px] font-medium text-red-600"
-            >
-              <i class="bi bi-exclamation-circle mr-1"></i> {{ saveError }}
-            </p>
-          </div>
-
-          <!-- Footer -->
-          <div class="flex items-center justify-end gap-2 border-t border-stone-100 px-5 py-3.5">
-            <button
-              type="button"
-              @click="closeModal"
-              :disabled="saving"
-              class="rounded-xl px-4 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="button"
-              @click="submitForm"
-              :disabled="!canSubmit"
-              class="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] disabled:opacity-60"
-            >
-              <span
-                v-if="saving"
-                class="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-              ></span>
-              <i v-else class="bi bi-check-lg"></i>
-              {{ saving ? 'กำลังบันทึก…' : modalMode === 'add' ? 'ประกาศ' : 'บันทึก' }}
-            </button>
           </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 

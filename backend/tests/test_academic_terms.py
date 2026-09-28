@@ -369,6 +369,59 @@ async def test_patch_deleted_term_404(client, term_world):
     assert res.status_code == 404, res.text
 
 
+# ⚠️ `null` ที่ส่งมาชัด ๆ — ทั้งสามคอลัมน์เป็น NOT NULL ⇒ ต้องได้ 400 ไม่ใช่ 500
+#    (`exclude_unset` ไม่กรองให้ เพราะการส่ง `null` มา = ฟิลด์ถูก "set" แล้ว)
+#    เดิมพังเป็น 500 สองทาง: `None < date` = TypeError และ `SET name = NULL` = NotNullViolation
+@pytest.mark.parametrize("field", ["name", "start_date", "end_date"])
+@pytest.mark.asyncio
+async def test_patch_explicit_null_400(client, term_world, db_pool, field):
+    """ส่ง `{field: null}` → 400 พร้อมบอกชื่อฟิลด์ และ**แถวต้องไม่ถูกแตะเลย**"""
+    term_id = _create(client, term_world).json()["id"]
+    before = (await _term_rows(db_pool, term_id))[0]
+
+    res = client.patch(
+        f"/api/settings/terms/{term_id}",
+        json={field: None},
+        headers=_auth(term_world),
+    )
+    assert res.status_code == 400, f"ต้องเป็น 400 ไม่ใช่ {res.status_code}: {res.text}"
+    assert field in res.json()["detail"], "ข้อความต้องบอกว่าฟิลด์ไหน"
+
+    after = (await _term_rows(db_pool, term_id))[0]
+    assert dict(after) == dict(before), "ห้ามแก้ค่าจริง"
+
+
+@pytest.mark.asyncio
+async def test_patch_null_alongside_valid_field_400(client, term_world, db_pool):
+    """ส่ง `null` ปนกับฟิลด์ที่แก้ได้ → ต้องไม่บันทึก **แม้แต่ฟิลด์ที่ดี**
+
+    (การปฏิเสธทั้งคำขอ กันสภาพครึ่ง ๆ กลาง ๆ ที่ผู้เรียกเข้าใจผิดว่าบันทึกแล้ว)
+    """
+    term_id = _create(client, term_world).json()["id"]
+
+    res = client.patch(
+        f"/api/settings/terms/{term_id}",
+        json={"name": "ภาคใหม่", "end_date": None},
+        headers=_auth(term_world),
+    )
+    assert res.status_code == 400, res.text
+    assert (await _term_rows(db_pool, term_id))[0]["name"] == "ภาคเรียนที่ 1/2569", (
+        "ชื่อต้องไม่ถูกแก้ (ทั้งคำขอถูกปฏิเสธ)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_all_null_400_not_500(client, term_world):
+    """ส่ง null ครบทุกฟิลด์ → 400 (ไม่ใช่ 500 และไม่ใช่ 200 เงียบ ๆ)"""
+    term_id = _create(client, term_world).json()["id"]
+    res = client.patch(
+        f"/api/settings/terms/{term_id}",
+        json={"name": None, "start_date": None, "end_date": None},
+        headers=_auth(term_world),
+    )
+    assert res.status_code == 400, res.text
+
+
 # ===================== 6) รายการ =====================
 
 @pytest.mark.asyncio

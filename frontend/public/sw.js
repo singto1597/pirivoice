@@ -17,20 +17,27 @@
  *    ไม่งั้นแท็บที่กำลังกรอกเรื่องอยู่จะโดน reload กลางทาง
  */
 
-const SHELL_CACHE = 'piri-shell-v1';
+// ⚠️ ขึ้นเวอร์ชันเมื่อ **รายการไฟล์หรือวิธี precache เปลี่ยน** — ไม่ใช่ทุก deploy
+//    (asset ของแอพมี content hash ในชื่ออยู่แล้ว จึงไม่ต้องพึ่งเวอร์ชันนี้)
+//    v2: เปลี่ยนมาใช้ precacheStrict — ของเดิมเคยเก็บ HTML ทับไอคอนได้ (ดูคอมเมนต์ล่าง)
+//    v3: ไอคอนเปลี่ยนเป็นโลโก้โรงเรียนล้วน ⇒ ขึ้นเวอร์ชันเพื่อทิ้ง cache เก่า
+//        (ถ้าไม่ขึ้น ของเดิมจะค้างใน cache ใต้ URL เดิม แล้วผู้ใช้ที่ติดตั้งไว้จะเห็นไอคอนเก่า)
+const SHELL_CACHE = 'piri-shell-v3';
 
 // ไฟล์ที่ต้องมีแน่ ๆ — precache ตอน install
-// ⚠️ `addAll` จะล้มทั้งชุดถ้ามีไฟล์ใดไฟล์หนึ่งหาย ⇒ ต้องมั่นใจว่าไฟล์พวกนี้มีจริง
+// ⚠️ ถ้าไฟล์ใดหาย จะถูกรายงานใน console (ไม่ทำให้ install ล้มทั้งอัน — ดู precacheStrict)
 //    (ไอคอน generate ไว้ใน `public/icons/` แล้ว — อย่าลบ)
+// ⚠️ ไอคอนต่อ `?v=` ให้ตรงกับ `manifest.json` เสมอ — `cache.match()` นับ query เป็นส่วนหนึ่ง
+//    ของคีย์ ⇒ สอง URL นี้เป็นคนละรายการกัน ใส่ไม่ตรงจะได้ไอคอนเก่าค้างอยู่อีกชุด
 const SHELL_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/logos/school-logo.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-512-maskable.png',
-  '/icons/apple-touch-icon.png',
+  '/icons/icon-192.png?v=3',
+  '/icons/icon-512.png?v=3',
+  '/icons/icon-512-maskable.png?v=3',
+  '/icons/apple-touch-icon.png?v=3',
 ];
 
 /** หน้าที่แสดงเมื่อออฟไลน์และ **ไม่มี** shell ใน cache เลย (ครั้งแรกสุด) */
@@ -70,14 +77,53 @@ function extractAssets(html) {
   return [...urls];
 }
 
+/**
+ * precache ที่ **ตรวจเนื้อก่อนเก็บ** — ไม่ใช่ `cache.addAll`
+ *
+ * ⚠️ **นี่คือบั๊กจริงที่เคยเกิด**: nginx ของโปรเจคนี้ใช้ `try_files $uri /index.html`
+ *    ⇒ ทุก path ที่ไม่มีไฟล์จริงจะได้ **HTTP 200 พร้อมเนื้อหา `index.html`** (ไม่ใช่ 404)
+ *    ⇒ `cache.addAll` เห็น `res.ok === true` ก็เก็บ **หน้า HTML ไว้ใต้ชื่อไอคอน/JS**
+ *    แล้ว `handleStatic` เป็น cache-first ⇒ ของเสียติดอยู่ใน cache **ถาวร**
+ *    จนกว่าจะขึ้น `SHELL_CACHE` — อาการที่เห็นคือ "ไอคอน/ไฟล์โหลดไม่ขึ้น" แบบหาสาเหตุยาก
+ *    (กรณีจริง: Cloudflare แคช SPA fallback ไว้ที่ `/icons/icon-192.png`)
+ *
+ * ⇒ ต้องเช็ค `Content-Type` ก่อนเก็บเสมอ: ไฟล์ที่ไม่ใช่ HTML ต้องไม่ได้ `text/html`
+ *   และ **ไม่ throw** เมื่อไฟล์ใดหาย — SW ที่ติดตั้งไม่สำเร็จแย่กว่าการขาดไอคอนหนึ่งใบ
+ *   (รายงานทาง console แทน ให้เห็นตอน debug)
+ */
+async function precacheStrict(cache, urls) {
+  const failed = [];
+  await Promise.all(
+    urls.map(async (u) => {
+      try {
+        const res = await fetch(u, { cache: 'reload' });
+        const type = res.headers.get('Content-Type') || '';
+        const wantsHtml = u === '/' || u.endsWith('.html');
+
+        if (!res.ok || (!wantsHtml && type.includes('text/html'))) {
+          failed.push(`${u} (${res.status} ${type || 'ไม่ระบุ type'})`);
+          return;
+        }
+        await cache.put(u, res);
+      } catch (err) {
+        failed.push(`${u} (${err})`);
+      }
+    }),
+  );
+  if (failed.length) {
+    console.warn('[sw] precache ไม่สำเร็จบางไฟล์:', failed.join(', '));
+  }
+  return failed;
+}
+
 // ── install: precache shell + asset ที่ Vite hash ไว้ ──────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(SHELL_CACHE);
 
-      // ไฟล์คงที่ — ถ้าตัวใดหายให้ล้มแบบเห็นได้ (จะได้รู้ว่าลืม generate ไอคอน)
-      await cache.addAll(SHELL_ASSETS);
+      // ไฟล์คงที่ — ตรวจเนื้อก่อนเก็บ (ดูเหตุผลใน precacheStrict)
+      await precacheStrict(cache, SHELL_ASSETS);
 
       // asset ที่ hash ไว้ — ดึงจาก HTML จริง แล้วเก็บแบบ "เท่าที่ได้"
       // (ใช้ allSettled ไม่ใช่ addAll เพราะ asset บางตัวอาจ 404 ในบาง build
@@ -164,14 +210,19 @@ async function handleNavigate(req) {
   }
 }
 
+/** ของที่เก็บไว้ต้องไม่ใช่หน้า HTML (ดูเหตุผลใน precacheStrict) — กันของเสียที่ค้างจากรุ่นก่อน */
+function isUsableAsset(res) {
+  return !(res.headers.get('Content-Type') || '').includes('text/html');
+}
+
 async function handleStatic(req) {
   const cache = await caches.open(SHELL_CACHE);
   const hit = await cache.match(req);
-  if (hit) return hit;
+  if (hit && isUsableAsset(hit)) return hit;
 
   const fresh = await fetch(req);
   // ⚠️ เก็บเฉพาะ same-origin ok ที่เป็น basic — กัน opaque/redirect หลุดเข้า cache
-  if (fresh && fresh.ok && fresh.type === 'basic') {
+  if (fresh && fresh.ok && fresh.type === 'basic' && isUsableAsset(fresh)) {
     try {
       await cache.put(req, fresh.clone());
     } catch {

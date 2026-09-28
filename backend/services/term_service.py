@@ -218,7 +218,23 @@ async def update_term(
     """แก้ภาคเรียน (PATCH — เฉพาะฟิลด์ที่ส่งมา) + audit old/new values
 
     ⚠️ แก้ได้เฉพาะภาคที่ยังไม่ถูกลบ — ตัวที่ถูกลบต้อง "กู้คืน" ก่อน ไม่ให้แก้ประวัติเงียบ ๆ
+
+    ⚠️ **PATCH ที่ส่ง `null` มาตรง ๆ ต้องโดนปฏิเสธที่นี่ — ไม่ใช่ปล่อยผ่าน แล้วไปพังเป็น 500**
+       `exclude_unset` ไม่ช่วยเลย: ส่ง `{"name": null}` มา = ฟิลด์นั้นถูก "set" แล้ว
+       ⇒ ค่าที่ได้คือ `{"name": None}` ซึ่งผ่าน allowlist ต่อไปได้ ⇒
+         · `{"end_date": null}` → `None < date` = `TypeError` → 500
+         · `{"name": null}`     → `UPDATE ... SET name = NULL` = `NotNullViolationError` → 500
+       ทั้งสามคอลัมน์เป็น `NOT NULL` ⇒ `null` **ไม่มีความหมายที่ใช้ได้** ในที่นี้
+       (ต่างจาก `announcement_service` ที่ `link: null` แปลว่า "สั่งล้างลิงก์" จริง ๆ
+        เพราะคอลัมน์นั้น nullable — ที่นี่ไม่มีการล้างค่าให้)
+       ⇒ **ปฏิเสธด้วย 400 ไม่ใช่เงียบ ๆ ทิ้ง** เพราะถ้าทิ้ง ผู้เรียกจะได้ 200 แล้วเข้าใจว่าบันทึกแล้ว
     """
+    nulls = sorted(k for k, v in changes.items() if k in _EDITABLE_COLUMNS and v is None)
+    if nulls:
+        raise ValidationError(
+            f"ห้ามส่งค่า null ในฟิลด์ {', '.join(nulls)} — ถ้าไม่ต้องการแก้ฟิลด์นั้น ให้ไม่ส่งมาที่เลย"
+        )
+
     safe = {k: v for k, v in changes.items() if k in _EDITABLE_COLUMNS}
     if not safe:
         raise ValidationError("ไม่มีข้อมูลที่จะแก้ไข")

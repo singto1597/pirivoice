@@ -457,7 +457,20 @@ function fmtDate(iso: string | null): string {
   })
 }
 
-function countdownLabel(days: number): string {
+/**
+ * ป้าย "เหลืออีกกี่วัน" — **ต้องคำนวณจาก `deadline` ไม่ใช่ `estimated_days`**
+ *
+ * ⚠️ บั๊กเดิม: ส่ง `estimated_days` (ค่าตั้งต้นที่ตั้งครั้งเดียวแล้วไม่เปลี่ยน) เข้ามา
+ *    ⇒ การ์ดโชว์ "ตั้งไว้ 7 วัน" คู่กับ "เหลือ 7 วัน" พร้อมกันตลอดไป แล้วกระโดดเป็น
+ *    "เกินเวลา!" เฉย ๆ โดยไม่มีคำเตือนตอนใกล้ครบกำหนด — ผู้รับเรื่องจึงไม่รู้ตัว
+ *    (หลักฐานยืนยันว่าเป็นบั๊ก: backend validate `estimated_days` เป็น `ge=1`
+ *     ⇒ กิ่ง `days <= 0` เดิมเป็น dead code ที่ไม่มีทางถูกเรียก)
+ *
+ * ปัดขึ้น (`ceil`) ให้ตรงกับที่คนอ่านเข้าใจ: เหลือ 6.9 วัน = "เหลือ 7 วัน"
+ * ส่วนสถานะ "เกินเวลา" ยังใช้ `is_overdue` จากเซิร์ฟเวอร์เป็นหลัก — ไม่พึ่งนาฬิกาเครื่องผู้ใช้
+ */
+function countdownLabel(deadline: string): string {
+  const days = Math.ceil((new Date(deadline).getTime() - Date.now()) / 86_400_000)
   if (days <= 0) return 'หมดเวลา'
   if (days === 1) return 'เหลือ 1 วัน'
   return `เหลือ ${days} วัน`
@@ -643,7 +656,7 @@ function countdownLabel(days: number): string {
           {{
             issue.countdown.is_overdue
               ? 'เกินเวลา!'
-              : countdownLabel(issue.countdown.estimated_days)
+              : countdownLabel(issue.countdown.deadline)
           }}
         </div>
       </div>

@@ -80,99 +80,105 @@ async function handleConfirm() {
 </script>
 
 <template>
-  <Transition name="modal">
-    <div v-if="open && issue" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="open = false">
-      <!-- overlay (ไม่เบลอ — ทึบหม่น stone) -->
-      <div class="absolute inset-0 bg-stone-900/50"></div>
+  <!-- ⚠️ ต้อง Teleport ออกไปที่ <body> — modal นี้เรนเดอร์อยู่ภายใน stacking context
+         ของ `.maincol` (`relative z-10` ใน MainLayout) ⇒ z-50 ข้างในถูกกักไว้ที่ชั้น 10
+         และแพ้ bottom tab bar (`fixed z-40`) ที่เป็นพี่น้องกัน ⇒ แถบเมนูล่างทับและกลืนคลิก
+         ปุ่มบันทึก. Teleport ทำให้ modal ไปแข่ง z-index ที่ระดับ root แทน -->
+  <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="open && issue" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="open = false">
+        <!-- overlay (ไม่เบลอ — ทึบหม่น stone) -->
+        <div class="absolute inset-0 bg-stone-900/50"></div>
 
-      <!-- card -->
-      <div class="relative w-full max-w-lg bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
-        <div class="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1">
-              <i class="bi bi-people-fill mr-1"></i> Public Board
-            </p>
-            <h2 class="text-xl font-bold text-stone-900 leading-tight">อนุมัติเผยแพร่สาธารณะ</h2>
-            <p class="text-sm text-stone-500 mt-1">สภานักเรียน/แอดมิน พิจารณาเรื่องนี้เป็น PIRI Board</p>
+        <!-- card -->
+        <div class="relative w-full max-w-lg bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
+          <div class="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1">
+                <i class="bi bi-people-fill mr-1"></i> Public Board
+              </p>
+              <h2 class="text-xl font-bold text-stone-900 leading-tight">อนุมัติเผยแพร่สาธารณะ</h2>
+              <p class="text-sm text-stone-500 mt-1">สภานักเรียน/แอดมิน พิจารณาเรื่องนี้เป็น PIRI Board</p>
+            </div>
+            <button type="button" class="w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-600" @click="open = false">
+              <i class="bi bi-x-lg"></i>
+            </button>
           </div>
-          <button type="button" class="w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-600" @click="open = false">
-            <i class="bi bi-x-lg"></i>
-          </button>
-        </div>
 
-        <!-- สรุปเรื่อง -->
-        <div class="bg-stone-50 border border-stone-100 rounded-xl p-3 mb-4">
-          <p class="text-sm font-semibold text-stone-800 break-words">{{ issue.title }}</p>
-          <p class="text-xs text-stone-500 mt-0.5">ประเภทที่ขอ: {{ DESTINATION_LABELS[issue.requested_destination || 'normal'] }}</p>
-        </div>
-
-        <!-- ประเภท board (lock ตามที่ผู้แจ้งขอ — backend บังคับให้ตรง) -->
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-stone-700 mb-1.5">ประเภทบอร์ด</label>
-          <div class="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-stone-100 text-stone-600">
-            <i :class="boardType === 'vote' ? 'bi bi-bar-chart-fill' : 'bi bi-chat-dots-fill'"></i>
-            {{ BOARD_TYPE_LABELS[boardType] }}
+          <!-- สรุปเรื่อง -->
+          <div class="bg-stone-50 border border-stone-100 rounded-xl p-3 mb-4">
+            <p class="text-sm font-semibold text-stone-800 break-words">{{ issue.title }}</p>
+            <p class="text-xs text-stone-500 mt-0.5">ประเภทที่ขอ: {{ DESTINATION_LABELS[issue.requested_destination || 'normal'] }}</p>
           </div>
-        </div>
 
-        <!-- vote board → ตั้งค่าตัวเลือกโหวต -->
-        <div v-if="boardType === 'vote'" class="mb-4">
-          <label class="block text-sm font-medium text-stone-700 mb-1.5">
-            ตัวเลือกโหวต <span class="text-stone-400 font-normal">(อย่างน้อย 2 ตัวเลือก)</span>
-          </label>
-          <div class="space-y-2">
-            <div v-for="(c, idx) in voteChoices" :key="idx" class="flex gap-2">
-              <input
-                v-model="voteChoices[idx]"
-                type="text"
-                :data-testid="'choice-input-' + idx"
-                :placeholder="`ตัวเลือกที่ ${idx + 1}`"
-                maxlength="200"
-                class="flex-1 px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#B91C1C]"
-              />
-              <button
-                type="button"
-                :disabled="voteChoices.length <= 2"
-                @click="removeChoice(idx)"
-                title="ลบตัวเลือก"
-                class="w-10 h-10 flex items-center justify-center rounded-xl border border-stone-200 text-stone-400 hover:text-[#B91C1C] hover:border-[#B91C1C]/30 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <i class="bi bi-trash"></i>
-              </button>
+          <!-- ประเภท board (lock ตามที่ผู้แจ้งขอ — backend บังคับให้ตรง) -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-stone-700 mb-1.5">ประเภทบอร์ด</label>
+            <div class="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-stone-100 text-stone-600">
+              <i :class="boardType === 'vote' ? 'bi bi-bar-chart-fill' : 'bi bi-chat-dots-fill'"></i>
+              {{ BOARD_TYPE_LABELS[boardType] }}
             </div>
           </div>
-          <button type="button" @click="addChoice" class="mt-2 text-sm text-[#B91C1C] hover:text-[#991B1B] font-medium flex items-center gap-1">
-            <i class="bi bi-plus-circle"></i> เพิ่มตัวเลือก
-          </button>
-        </div>
 
-        <!-- talk board → เปิด/ปิดคอมเมนต์ -->
-        <div v-else class="mb-4">
-          <label class="flex items-center gap-2 text-sm text-stone-700 cursor-pointer select-none">
-            <input v-model="allowComments" type="checkbox" class="w-4 h-4 rounded bg-white border-stone-300 text-[#B91C1C] focus:ring-[#B91C1C] accent-[#B91C1C]" />
-            เปิดให้คอมเมนต์บนบอร์ดได้
-          </label>
-          <p class="text-xs text-stone-400 mt-1 ml-6">ปิดถ้าอยากให้เป็นบอร์ดอ่านอย่างเดียว (ไม่ให้คอมเมนต์)</p>
-        </div>
+          <!-- vote board → ตั้งค่าตัวเลือกโหวต -->
+          <div v-if="boardType === 'vote'" class="mb-4">
+            <label class="block text-sm font-medium text-stone-700 mb-1.5">
+              ตัวเลือกโหวต <span class="text-stone-400 font-normal">(อย่างน้อย 2 ตัวเลือก)</span>
+            </label>
+            <div class="space-y-2">
+              <div v-for="(c, idx) in voteChoices" :key="idx" class="flex gap-2">
+                <input
+                  v-model="voteChoices[idx]"
+                  type="text"
+                  :data-testid="'choice-input-' + idx"
+                  :placeholder="`ตัวเลือกที่ ${idx + 1}`"
+                  maxlength="200"
+                  class="flex-1 px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#B91C1C]"
+                />
+                <button
+                  type="button"
+                  :disabled="voteChoices.length <= 2"
+                  @click="removeChoice(idx)"
+                  title="ลบตัวเลือก"
+                  class="w-10 h-10 flex items-center justify-center rounded-xl border border-stone-200 text-stone-400 hover:text-[#B91C1C] hover:border-[#B91C1C]/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </div>
+            <button type="button" @click="addChoice" class="mt-2 text-sm text-[#B91C1C] hover:text-[#991B1B] font-medium flex items-center gap-1">
+              <i class="bi bi-plus-circle"></i> เพิ่มตัวเลือก
+            </button>
+          </div>
 
-        <!-- actions -->
-        <div class="flex gap-2 pt-2">
-          <button type="button" @click="open = false" class="flex-1 py-2.5 rounded-xl bg-stone-100 text-stone-700 hover:bg-stone-200 text-sm font-medium">
-            ยกเลิก
-          </button>
-          <button
-            type="button"
-            :disabled="submitting"
-            data-testid="approve-confirm"
-            @click="handleConfirm"
-            class="flex-1 py-2.5 rounded-xl bg-[#B91C1C] text-white hover:bg-[#991B1B] disabled:opacity-50 text-sm font-medium"
-          >
-            {{ submitting ? 'กำลังอนุมัติ...' : 'อนุมัติเผยแพร่' }}
-          </button>
+          <!-- talk board → เปิด/ปิดคอมเมนต์ -->
+          <div v-else class="mb-4">
+            <label class="flex items-center gap-2 text-sm text-stone-700 cursor-pointer select-none">
+              <input v-model="allowComments" type="checkbox" class="w-4 h-4 rounded bg-white border-stone-300 text-[#B91C1C] focus:ring-[#B91C1C] accent-[#B91C1C]" />
+              เปิดให้คอมเมนต์บนบอร์ดได้
+            </label>
+            <p class="text-xs text-stone-400 mt-1 ml-6">ปิดถ้าอยากให้เป็นบอร์ดอ่านอย่างเดียว (ไม่ให้คอมเมนต์)</p>
+          </div>
+
+          <!-- actions -->
+          <div class="flex gap-2 pt-2">
+            <button type="button" @click="open = false" class="flex-1 py-2.5 rounded-xl bg-stone-100 text-stone-700 hover:bg-stone-200 text-sm font-medium">
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              :disabled="submitting"
+              data-testid="approve-confirm"
+              @click="handleConfirm"
+              class="flex-1 py-2.5 rounded-xl bg-[#B91C1C] text-white hover:bg-[#991B1B] disabled:opacity-50 text-sm font-medium"
+            >
+              {{ submitting ? 'กำลังอนุมัติ...' : 'อนุมัติเผยแพร่' }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>

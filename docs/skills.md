@@ -813,3 +813,107 @@
 - **Correct Pattern/Solution:** header ที่ origin **เป็นคำแนะนำ ไม่ใช่คำสั่ง** เมื่อมี CDN ครอบ ⇒ ต้องแก้ที่ชั้น CDN ด้วย อย่างใดอย่างหนึ่ง: (1) **Cache Rule → Bypass cache** สำหรับ path `/sw.js` (และ `/manifest.json`) หรือ (2) เปิด **Origin Cache Control** ให้ CF เชื่อฟัง `Cache-Control` จากต้นทาง (3) ถ้าแตะ CF ไม่ได้ ให้ **เปลี่ยนชื่อไฟล์ทุกครั้งที่ SW เปลี่ยน** (`sw-<hash>.js` แล้ว register จาก `index.html`) ซึ่งเลี่ยงปัญหาได้โดยไม่ต้องพึ่ง CF — วิธีที่ (3) ทนที่สุดเพราะไม่ผูกกับผู้ให้บริการรายใด
 - **⚠️ อย่าด่วนสรุปว่า "nginx ไม่ทำงาน":** อาการ "cache header ไม่มีผล" ให้ดู `cf-cache-status` / `age` / `via` **ก่อน** ไล่แก้ config ต้นทาง · และ **purge cache หลัง deploy ทุกครั้งที่แตะ `sw.js`** ไม่งั้นผู้ใช้ที่ติดตั้งไปแล้วจะยังได้ SW เก่า
 - **Date Added:** 2026-09-28
+
+### 🔥 `z-index` ที่สูงกว่า **ไม่ชนะ** ถ้าอยู่ใน stacking context ของคนอื่น — modal `z-50` แพ้ bottom bar `z-40` แล้ว**กลืนคลิกปุ่มบันทึก**
+- **Context/Problem:** ผู้ใช้รายงานว่า "ตอนเพิ่มภาคเรียน layout มันบัง" — เปิด modal เพิ่มภาคเรียนบนมือถือแล้ว **กดปุ่ม "เพิ่มภาคเรียน" ไม่ติด** ทั้งที่โค้ด modal เป็น `fixed inset-0 z-50` (สูงกว่าแถบเมนูล่างซึ่งเป็น `z-40` ชัด ๆ) และปุ่มก็ไม่มีอะไรdisabled
+- **Root Cause:** **stacking context** — `MainLayout.vue` ห่อ `<RouterView>` ไว้ใน `<div class="relative z-10 …">` และ `position: relative` + `z-index: 10` (ที่ไม่ใช่ `auto`) **สร้าง stacking context ใหม่** ⇒ ลูกทุกตัวข้างในถูกจัดลำดับกันเองในชั้นนั้น และ **`z-index` ของลูกไม่มีทางหลุดออกไปแข่งข้างนอกได้** ⇒ modal `z-50` ข้างในถูกกักไว้ที่ชั้น 10 ส่วนแถบเมนูล่างเป็น **พี่น้อง** ของ `.maincol` ที่ชั้น 40 ⇒ แถบทับ modal ทั้งใบ และเพราะชั้นในสุดที่รับแตะคือ `<nav>` (มี `pointer-events-auto` ที่ div ลูก) **คลิกจึงถูกกลืน ไม่ใช่แค่ถูกบัง** · กับดักคือ **การอ่านค่า z-index จากโค้ดไม่ทำให้เห็นบั๊กนี้เลย** — ต้องรู้กติกา stacking context หรือวัดจริง
+- **Correct Pattern/Solution:** ครอบ modal ด้วย **`<Teleport to="body">`** ⇒ ออกจาก stacking context ของ layout ไปแข่งที่ระดับ root (และหลุดจาก `overflow-hidden` ของ `.maincol` ด้วย)
+  ```vue
+  <Teleport to="body">
+    <Transition name="sheet">
+      <div v-if="modalOpen" class="fixed inset-0 z-50 …">
+  ```
+  · **สโคปสไตล์ยังทำงาน** — เนื้อหาที่ teleport ยังติด `data-v-*` ของคอมโพเนนต์เดิม ⇒ `.sheet-enter-active` ใช้ได้ปกติ · **`Profile.vue:308` เป็นข้อยกเว้นที่ถูกต้องแล้ว** — overlay โปร่งใสสำหรับปิด dropdown *ควร* อยู่ใต้แถบเมนู เพื่อให้ยังกดเมนูได้ อย่าไป teleport มัน
+- **วิธีพิสูจน์ว่าถูกบังหรือแค่ดูเหมือนถูกบัง (ใช้ซ้ำได้ทุกครั้ง):** ยิง hit-test ที่ **จุดกึ่งกลางของปุ่มจริง** — `document.elementFromPoint(cx, cy)` แล้วดูว่าได้ element ที่คาดไหม
+  ```js
+  const r = btn.getBoundingClientRect()
+  document.elementFromPoint(r.left + r.width/2, r.top + r.height/2)  // ได้ <nav> = ถูกบัง
+  ```
+  วิธีนี้แม่นกว่าการอ่าน CSS และเร็วกว่าเดา — ใช้ Playwright วัดในหน้าเปล่าที่ลอกโครงสร้าง CSS จริงมาก็ได้ผลชัดเจนโดยไม่ต้องล็อกอิน
+- **Date Added:** 2026-09-28
+
+### 🚫 `cache.addAll` ใน service worker + nginx `try_files` = **แคชหน้า HTML ทับไอคอน/JS ติดถาวร** — ต้องเช็ค `Content-Type` ก่อนเก็บ
+- **Context/Problem:** Cloudflare แคช SPA fallback (`200 text/html`) ไว้ที่ path `/icons/icon-192.png` (ดูบทเรียน CDN ข้างบน) ⇒ พอ SW ติดตั้ง มันดึง path นั้นไป precache แล้วเก็บ **หน้า HTML ไว้ใต้คีย์ของไอคอน** และ `handleStatic` เป็น cache-first ⇒ ไอคอนเสีย **ติดอยู่ใน cache ของผู้ใช้ทุกคนถาวร** แม้ CDN จะหายเป็นปกติแล้ว — อาการที่เห็นคือ "ไอคอนไม่ขึ้น/ไฟล์เพี้ยน" ซึ่งไล่หาสาเหตุยากมาก เพราะต้นทางถูกต้องและ CF ก็ถูกต้องแล้ว
+- **Root Cause:** `cache.addAll()` (และ `cache.add()`) **ตัดสินจาก `res.ok` เท่านั้น** ⇒ `200 text/html` จาก `try_files $uri /index.html` ผ่านเกณฑ์ทุกข้อ ทั้งที่เนื้อไม่ใช่ไฟล์ที่ขอ · และเพราะ SW cache เป็น cache-first สำหรับ `/icons/` (path ไม่มี content hash) ของเสียจึงไม่มีวันถูกแทนที่จนกว่าจะขึ้น `SHELL_CACHE`
+- **Correct Pattern/Solution:** **ห้ามใช้ `cache.addAll` กับรายการที่ path คงที่** — เขียนตัวช่วยที่ตรวจเนื้อก่อนเก็บ:
+  ```js
+  const type = res.headers.get('Content-Type') || ''
+  const wantsHtml = u === '/' || u.endsWith('.html')
+  if (!res.ok || (!wantsHtml && type.includes('text/html'))) return   // ไม่เก็บ
+  await cache.put(u, res)
+  ```
+  · ตรวจ **ทั้งขาเข้าและขาออก** — ตอน `handleStatic` ถ้า `cache.match()` ได้ response ที่เป็น `text/html` ให้ **มองข้ามแล้วไปดึงใหม่** ไม่งั้นของเสียที่ค้างจากรุ่นก่อนจะยังถูกเสิร์ฟอยู่ · **อย่า `throw` เมื่อไฟล์ใดหาย** — `install` ที่ throw = SW ติดตั้งไม่สำเร็จทั้งตัว ซึ่งแย่กว่าการขาดไอคอนหนึ่งใบ ⇒ ใช้ `Promise.allSettled` + `console.warn` รายงานแทน · และ **ขึ้น `SHELL_CACHE`** (`piri-shell-v1` → `v2`) เมื่อแก้กลไก precache เพื่อล้างของเสียที่ค้างในเครื่องผู้ใช้เดิม
+- **⚠️ กฎที่กว้างกว่า:** `try_files $uri /index.html` ทำให้ **ทุก path ที่ไม่มีไฟล์จริงตอบ `200` พร้อม HTML** ⇒ โค้ดใดก็ตามที่ตัดสินใจจาก HTTP status ว่ามีไฟล์จริง (curl, health check, precache, `fetch().ok`) **จะเชื่อผิดทุกครั้ง** ให้ดู `Content-Type` เสมอ
+- **Date Added:** 2026-09-28
+
+### 🛠️ PWA: `beforeinstallprompt` ยิง**ครั้งเดียวและกู้คืนไม่ได้** — listener ต้องผูกตอน import ไม่ใช่หลัง `app.mount()` · และเบราว์เซอร์ **ห้าม** เว็บติดตั้งแอพเอง
+- **Context/Problem:** ผู้ใช้ถามว่า "แก้ให้เพิ่มลงหน้าจออัตโนมัติ" — ปัญหาจริงคือ **ติดตั้งไม่ขึ้นเลย** ตรวจแล้วพบสาเหตุจาก CDN cache (บทเรียนข้างบน) และยังเจอบั๊กในโค้ดอีกชั้น
+- **Root Cause:** `pwa.ts` ผูก `window.addEventListener('beforeinstallprompt', …)` ไว้ **ใน `registerPwa()`** ซึ่ง `main.ts` เรียก *หลัง* `app.mount()` ⇒ เกิด **race**: Chrome ประเมิน installability (manifest + SW + ไอคอนครบ) แล้วยิง event ได้ทันทีที่โหลดหน้า ถ้า event ยิงก่อน listener ผูก มัน **หายไปเลย ไม่มี replay** ⇒ ผู้ใช้ไม่เห็นแบนเนอร์ตลอดเซสชันนั้น · อีกสองบั๊กที่เจอพร้อมกัน: (1) `promptInstall()` ใช้ **คีย์เดียว** กับ `dismissInstall()` ⇒ คนที่ติดตั้งแล้วถอนการติดตั้ง **จะไม่ถูกชวนอีกเลยตลอดไป** (2) `showInstallBanner` เช็ค `isDismissed()` แค่ตอน event ยิง ไม่ได้เช็คตอนอ่านค่า
+- **Correct Pattern/Solution:** ผูก listener ที่ **ระดับโมดูล** ของไฟล์ที่ `main.ts` import ก่อน `mount()`:
+  ```ts
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); … })
+  }
+  ```
+  · **แยกคีย์ `piri_installed` ออกจาก `piri_install_dismissed`** — "ติดตั้งแล้ว" กับ "ไม่อยากติดตั้ง" คนละเรื่อง · **ต่อ `?v=<build-id>` ท้าย URL ของ `sw.js`** (`vite.config.ts` ฉีด `__BUILD_ID__` จาก short git SHA) ⇒ CDN ไม่มี URL เก่าให้เสิร์ฟ เป็นวิธีที่ทนที่สุดและไม่ต้องพึ่ง CF (ตรงกับข้อ (3) ของบทเรียน CDN)
+- **⚠️ ข้อจำกัดที่ **บอกผู้ใช้ตรง ๆ** ทุกครั้ง (อย่าสัญญาว่าทำได้):** **เว็บติดตั้งแอพเองโดยไม่ให้ผู้ใช้ยืนยันไม่ได้เลย** — Chrome ต้องเรียก `prompt()` และต้องมี user gesture (ยอมให้เรียกใน handler ของ `beforeinstallprompt` ได้) ส่วน **iOS Safari ไม่มี API ติดตั้งใด ๆ ทั้งสิ้น** และไม่ยิง `beforeinstallprompt` ⇒ ทางเดียวคือสอนให้กด **แชร์ → "เพิ่มไปที่หน้าจอ"** (เฉพาะ Safari — Chrome/Firefox บน iOS ทำไม่ได้เลย) · และ **อย่าเดาจาก user agent ว่า "ติดตั้งได้"** ให้แสดงปุ่มเฉพาะเมื่อได้ event จริง ไม่งั้นจะโชว์ปุ่มที่กดแล้วเงียบ
+- **Date Added:** 2026-09-28
+
+### ✋ "ติดตั้งอัตโนมัติ" ทำได้จริงแค่ไหน: `prompt()` ต้องอยู่ใน **user gesture** — แต่ gesture **ไม่จำเป็นต้องเป็นปุ่มติดตั้ง** ("แตะที่ไหนก็ได้" ก็พอ)
+- **Context/Problem:** ผู้ใช้สั่งว่า "แก้ให้เพิ่มลงหน้าจออัตโนมัติด้วยนะ เป็นไอคอน" — คำขอนี้ทำตามตรง ๆ ไม่ได้ และถ้าทำตามที่ผู้ใช้พูดแบบไม่ตรวจข้อจำกัด จะได้ปุ่มที่กดแล้วเงียบ
+- **Root Cause:** สองข้อจำกัดที่ **แก้ไม่ได้ด้วยโค้ด** และต้องบอกผู้ใช้ตรง ๆ เสมอ:
+  1. **เบราว์เซอร์ห้ามเว็บติดตั้งแอพเอง** — Chrome บังคับว่า `BeforeInstallPromptEvent.prompt()` ต้องเรียก **ระหว่าง user gesture** ("must be called during a user gesture") ⇒ dialog เด้งเองตอนโหลดหน้า ทำไม่ได้เลย
+  2. **iOS Safari ไม่มี API ติดตั้งใด ๆ** และไม่ยิง `beforeinstallprompt` ⇒ ทางเดียวคือ "แชร์ → เพิ่มไปที่หน้าจอ" (และ **Chrome/Firefox บน iOS ก็ทำไม่ได้เลย** ไม่ใช่แค่ Safari)
+- **Correct Pattern/Solution:** ข้อ 1 มีช่องว่างที่ใช้ได้ — **gesture ไม่จำเป็นต้องเป็นการกดปุ่มติดตั้ง** การแตะที่ไหนก็ได้ในหน้าถือเป็น gesture และ Chromium **ไม่ consume** gesture นั้น (แค่ตรวจว่ามี gesture ทำงานอยู่) ⇒ ยิง dialog ตอน **แตะแรกของผู้ใช้** ได้ โดยผู้ใช้ไม่ต้องหาปุ่ม:
+  ```ts
+  function onFirstGesture() {          // ผูกตอนได้ beforeinstallprompt
+    if (!autoPromptArmed) return
+    disarmAutoPrompt()                 // ถอด listener ทันที — ยิงครั้งเดียว
+    if (!deferredPrompt.value) return
+    writeFlag(AUTO_ASKED_KEY)
+    void promptInstall()               // ⚠️ ทุกบรรทัดก่อนนี้ต้อง synchronous
+  }
+  document.addEventListener('click', onFirstGesture, { capture: true })
+  document.addEventListener('keydown', onFirstGesture, { capture: true })  // ผู้ใช้คีย์บอร์ด
+  ```
+  · **ห้ามมี `await` คั่นก่อนเรียก `prompt()`** ไม่งั้น gesture หลุด (บทเรียนเดียวกันกับ `chrome.permissions.request`) — เคสคลาสสิกคือเผลอ `await` อะไรบางอย่างก่อน แล้วปุ่มเงียบโดยไม่มี error
+  · **ยิงเองได้ครั้งเดียวตลอดไป** ⇒ ใช้คีย์แยก `piri_install_auto_asked` ไม่งั้นจะยิงซ้ำทุกเซสชัน = การรบกวน · หลังจากนั้นกลับมาเป็นแบนเนอร์ให้กดเอง
+  · **ซ่อนแบนเนอร์ระหว่างรอแตะแรก** (`autoAskPending`) — ไม่งั้นผู้ใช้เห็นทั้ง dialog ของเบราว์เซอร์และแบนเนอร์ของเราพร้อมกัน ซึ่งดูเหมือนบั๊ก
+  · **`dismissInstall()` ต้องยกเลิกคำขอที่รออยู่ด้วย** — "ไม่เอา" ต้องชนะ "กำลังจะถาม"
+- **⚠️ กับดักตอนเทส (เจอจริงในรอบนี้):** กลไกนี้ผูก listener ระดับโมดูลและไม่เคยถอด ⇒
+  (1) **อย่า `vi.resetModules()` ต่อเทส** — listener ของโมดูลรุ่นเก่ายังค้างบน `document` แล้วแตะครั้งเดียวยิงพร้อมกันทุกรุ่น (mock ถูกเรียกซ้ำ → เทสล้มด้วยเหตุผลของการทดสอบเอง) ให้ import ครั้งเดียวตลอดไฟล์ (ตรงกับความจริงที่โมดูลเป็น singleton) แล้วแยกสถานะด้วย `localStorage.clear()` + `dismissInstall()`
+  (2) **jsdom ไม่มี `window.matchMedia`** (`typeof` = `"undefined"` ⇒ `registerPwa()` throw) ต้อง stub
+  (3) **`beforeinstallprompt` ไม่ใช่ event มาตรฐาน** ต้องสร้าง `new Event(...)` แล้วแปะ `prompt`/`userChoice` เอง (ของจริงต้องมี HTTPS + ไอคอนครบ + engagement heuristic ถึงยิง ⇒ จำลองไม่ได้ในเครื่อง dev)
+  (4) `typeof someUndeclaredVar` **ไม่มีวัน throw** ⇒ ใช้ `typeof` ตรวจว่ามี API ไหมไม่ได้ ให้ใช้ `try/catch` หรือ `in`
+- **Date Added:** 2026-09-28
+
+### 🔁 "ติดตั้งแล้ว" ≠ "ติดตั้งอยู่": การถอนแอพ **ไม่ล้าง site data** ⇒ ธงใน `localStorage` ค้าง แล้วบล็อกการติดตั้งตลอดไป
+- **Context/Problem:** ผู้ใช้ถามตรง ๆ ว่า *"ไอที่เช็คว่าติดตั้งหรือไม่ติดตั้งนี้ เช็คยังไงอ่ะ คือเก็บราย user เลยหรอ แล้วถ้ากดถอดการติดตั้ง เราจะทำให้มันกดติดตั้งใหม่ได้ยังไง"* — คำถามนี้ชี้บั๊กจริงที่ยังเหลืออยู่
+- **Root Cause:** **ไม่มีอะไรเก็บที่เซิร์ฟเวอร์เลย** (ไม่ผูกกับ user) — สถานะติดตั้งมีสองแหล่ง และมีอันเดียวที่เชื่อได้:
+  - **`window.matchMedia('(display-mode: standalone)').matches`** = เบราว์เซอร์บอกเองว่าตอนนี้รันในโหมดแอพ ⇒ **เป็นความจริงสด ๆ และรีเซ็ตเองเมื่อถอนแอพ**
+  - **ธงใน `localStorage`** (`piri_installed`) = ความจำของเราเอง ⇒ **การถอนแอพไม่ล้าง site data** ⇒ ธงค้างเป็น `1` ตลอดไป
+  ⇒ โค้ดเดิมเอา `isInstalled()` ไป **บล็อก** `canInstallState` และบล็อก `armAutoPrompt()` ⇒ ผู้ใช้ที่ติดตั้ง → ถอน **ไม่มีทางติดตั้งกลับได้อีกเลย**
+- **Correct Pattern/Solution:** **`beforeinstallprompt` ที่ยิงมา = เบราว์เซอร์ยืนยันสด ๆ ว่า "ตอนนี้ติดตั้งได้"** (Chrome **ไม่ยิง event นี้ให้แอพที่ติดตั้งอยู่แล้ว**) ⇒ ใช้เป็นจังหวะซ่อมธงให้หายเอง:
+  ```ts
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault()
+    deferredPrompt.value = event
+    clearFlag(INSTALLED_KEY)          // ★ ซ่อมตัวเอง — หลักฐานสดชนะความจำเก่า
+    canInstallState.value = !isDismissed()
+    armAutoPrompt()
+  })
+  ```
+  · **อย่าเอา "ติดตั้งแล้ว" ไปเป็นเงื่อนไขบล็อกการติดตั้ง** — มันซ้ำซ้อนกับสิ่งที่เบราว์เซอร์กรองให้แล้ว และกลายเป็นกับดักถาวร ⇒ `armAutoPrompt()` ไม่ต้องเช็ค `isInstalled()` เลย (เป็นโค้ดตาย)
+  · **ต้องมีทางกลับเมื่อผู้ใช้กด ✕ ปิดแบนเนอร์เองด้วย** — แบนเนอร์จำการปิดแล้วไม่ขึ้นอีก ⇒ เพิ่มปุ่ม "ติดตั้งเลย" ในการ์ด Profile ที่ **ไม่ผูก `DISMISS_KEY`** และให้ `installNow()` ล้างค่านั้นก่อนเรียก `promptInstall()` ("คำสั่งตรงของผู้ใช้" ชนะ "เคยกดปิด")
+  · **เทสที่เคยยืนยันพฤติกรรมเก่าต้องเขียนใหม่ ไม่ใช่ลบ** — เทสเดิมชื่อ *"เคยติดตั้งแล้ว → ไม่ยิงเอง"* ยืนยันบั๊กอยู่ ⇒ เปลี่ยนเป็นยืนยันกติกาใหม่ ("ไม่มี event = ไม่มีอะไรเกิดขึ้น") แล้วคอมเมนต์ว่าทำไม
+- **⚠️ กับดักตอนเทส:** `deferredPrompt` เป็น state ระดับโมดูลและ **`dismissInstall()` ไม่ล้างมัน** (เจตนา — การ์ด Profile ต้องใช้ต่อ) ⇒ เทสที่ dispatch event แต่ **ไม่ยิง prompt** จะทิ้ง event ค้างไปเทสถัดไป ⇒ ต้อง **บริโภคทิ้งด้วย API สาธารณะ** ใน `beforeEach` (`dispatchEvent(makeInstallEvent('dismissed').event)` แล้ว `await promptInstall()`) — เช่นเดียวกับ `standaloneState` ที่ต้องรีเซ็ตด้วย `registerPwa()` ทุกเทส
+- **Date Added:** 2026-09-28
+
+### 📱 ไอคอนลงหน้าจอ **เองไม่ได้** — เป็นสิทธิ์ของ launcher/OS ไม่ใช่ของเว็บ (และไอคอนแอพควรเป็นโลโก้ล้วน ๆ ไม่ต้องมีวงซ้อน)
+- **Context/Problem:** ผู้ใช้รายงาน *"ไม่ใช่ว่ามันติดตั้งไม่ได้นะ แต่ว่า ติดตั้งแล้ว มันไม่ไปโผล่หน้าหลักเฉยๆ ต้องลากไปเอง"* — เป็นคำถามต่อเนื่องจากคำขอเดิม "เพิ่มลงหน้าจออัตโนมัติ เป็นไอคอน"
+- **Root Cause:** **ไม่มี Web API ใด ๆ ที่สั่งให้ launcher วางไอคอนบนหน้าจอหลักได้** — การวางไอคอนเป็นการตัดสินใจของ launcher หลังติดตั้ง WebAPK เสร็จ · **การที่ไอคอนไม่อยู่บนหน้าจอ แต่แอพอยู่ใน app drawer = ติดตั้งเป็น WebAPK สำเร็จแล้ว** (ถ้าเป็น shortcut ธรรมดา มันจะอยู่แค่หน้าจอหลัก **และไม่มีใน drawer**) ⇒ อาการนี้มาจาก **ตั้งค่า launcher** ("เพิ่มไอคอนแอพใหม่ไปหน้าจอหลัก" ปิดอยู่) หรือบั๊กของ Android 15 + Chrome บางรุ่น — **ทั้งสองอย่างอยู่นอกเหนือการควบคุมของเว็บ**
+- **Correct Pattern/Solution:** สิ่งที่เว็บทำได้มีเท่านี้ และทำครบแล้ว — manifest ถูกต้อง + ไอคอนครบ + service worker ที่มี fetch handler (จำเป็นต่อการได้ **WebAPK** ไม่ใช่ shortcut) + ยิง dialog ตอนแตะแรก · **ที่เหลือต้องบอกผู้ใช้ตรง ๆ ว่าแก้ที่โค้ดไม่ได้** และชี้ทาง: ตั้งค่า launcher → "เพิ่มไอคอนแอพใหม่ไปหน้าจอหลัก" · หาแอพใน **app drawer** แล้วลากออกมา · บางรุ่น **กดค้างที่ไอคอนใน dialog ตอนติดตั้งแล้วลากไปวางเลย**
+- **⚠️ อย่าล่อใจ "ทำให้อ่อนลงเป็น shortcut" เพื่อบังคับให้ได้ไอคอน** — shortcut วางบนหน้าจอหลักแน่ก็จริง แต่แลกมาด้วยการเสีย `display: standalone` และไอคอนจะติดตราเบราว์เซอร์ ⇒ ไม่คุ้ม
+- **🎨 ไอคอนแอพ: ซ้อนหลายชั้นแล้วดูรก** — ของเดิมเป็น สี่เหลี่ยมแดง → วงกลมขาว → โลโก้โรงเรียน ⇒ ผู้ใช้ทักว่า *"โลโก้โรงเรียนซ้อนขาว ซ้อนแดง อะไรไม่รู้เยอะแยะ"* · โลโก้โรงเรียน (พิริยาลัย) **เป็นวงกลมมีขอบขาว/น้ำเงินในตัวอยู่แล้ว** ⇒ ใส่วงกลมซ้อนเข้าไปอีกจึงซ้ำซ้อน · ทางที่ถูกคือ **ใช้ภาพโลโก้ล้วน** แล้วครอปเฉพาะ 5% ที่เป็นขอบโปร่งใส ส่วน maskable ค่อยเติมพื้นขาว + ย่อโลโก้ลงใน safe zone 80%
+  · อัตราส่วนที่ใช้จริง: `any` = โลโก้เต็มกรอบ (โปร่งใส รอบนอก) · `maskable` = พื้นขาว + โลโก้ 76% · `apple-touch-icon` = พื้นขาว + โลโก้ 86% (iOS ไม่รองรับความโปร่งใส — ถ้าปล่อยโปร่งจะกลายเป็นพื้นดำ)
+- **Date Added:** 2026-09-28

@@ -17,9 +17,40 @@ import { getMyStats } from '@/services/me';
 import type { PersonalStats } from '@/types/me';
 import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
 import { useAuthStore } from '@/stores/auth';
+import { canPromptInstall, installNow, isIosSafari, isStandalone } from '@/pwa';
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+// ===== 📱 ติดตั้งแอป =====
+// ⚠️ การ์ดนี้คือ **ทางกลับมา** ของคนที่เคยกด ✕ ปิดแบนเนอร์ติดตั้งไว้ — แบนเนอร์จำการปิด
+//    แล้วไม่ขึ้นอีก ส่วนการ์ดนี้ไม่ผูกกับค่านั้น เพราะการที่ผู้ใช้เปิดมาหาเองคือการเปลี่ยนใจ
+const installing = ref(false);
+
+async function onInstall() {
+  if (installing.value) return;
+  installing.value = true;
+  try {
+    const outcome = await installNow();
+    if (outcome === 'accepted') {
+      await Swal.fire({
+        icon: 'success',
+        title: 'ติดตั้งแล้ว',
+        text: 'เปิด PIRIvoice ได้จากไอคอนบนหน้าจอเลย',
+        confirmButtonColor: '#b91c1c',
+      });
+    } else if (outcome === 'unavailable') {
+      await Swal.fire({
+        icon: 'info',
+        title: 'เครื่องนี้ติดตั้งอัตโนมัติไม่ได้',
+        text: 'เปิดด้วย Chrome แล้วเลือก "ติดตั้งแอป" จากเมนู ⋮ มุมขวาบน',
+        confirmButtonColor: '#b91c1c',
+      });
+    }
+  } finally {
+    installing.value = false;
+  }
+}
 
 const profile = ref<MyProfile | null>(null);
 const isLoading = ref(true);
@@ -404,6 +435,56 @@ onMounted(loadStats);
               ></span>
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- ===== 📱 ติดตั้งแอป ===== -->
+      <!-- ซ่อนเมื่อเปิดในโหมดแอพที่ติดตั้งแล้ว — ไม่มีอะไรให้ติดตั้งอีก -->
+      <div v-if="!isStandalone" class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
+        <div class="mb-5 flex items-center gap-3">
+          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
+            <i class="bi bi-phone"></i>
+          </span>
+          <div>
+            <h2 class="text-lg font-bold text-stone-900">ติดตั้งแอป</h2>
+            <p class="text-xs text-stone-500 mt-0.5">
+              เพิ่ม PIRIvoice ลงหน้าจอ เปิดได้เร็วเหมือนแอพ ไม่ต้องพิมพ์ที่อยู่เว็บอีก
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3">
+          <div class="min-w-0 flex-1">
+            <p v-if="canPromptInstall" class="text-sm font-semibold text-stone-800">
+              เครื่องนี้ติดตั้งได้เลย
+            </p>
+            <template v-else-if="isIosSafari">
+              <p class="text-sm font-semibold text-stone-800">iPhone / iPad ต้องติดตั้งเอง</p>
+              <ol class="mt-1.5 space-y-0.5 text-xs font-medium text-stone-600">
+                <li>1. แตะปุ่ม <i class="bi bi-box-arrow-up text-stone-800"></i> แชร์ ที่แถบล่างจอ</li>
+                <li>2. เลือก “เพิ่มไปที่หน้าจอ”</li>
+              </ol>
+            </template>
+            <template v-else>
+              <p class="text-sm font-semibold text-stone-800">เครื่องนี้ติดตั้งอัตโนมัติไม่ได้</p>
+              <!-- เบราว์เซอร์ในแอพอื่น (LINE/Facebook) ไม่มีเมนูติดตั้ง ⇒ ต้องบอกให้เปิด Chrome จริง -->
+              <p class="mt-1.5 text-xs font-medium text-stone-600">
+                เปิดหน้านี้ด้วย <b>Chrome</b> แล้วเลือก “ติดตั้งแอป” จากเมนู
+                <i class="bi bi-three-dots-vertical"></i> มุมขวาบน
+              </p>
+            </template>
+          </div>
+
+          <button
+            v-if="canPromptInstall"
+            type="button"
+            :disabled="installing"
+            @click="onInstall"
+            class="shrink-0 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-60"
+          >
+            <i v-if="installing" class="bi bi-arrow-repeat animate-spin"></i>
+            <span v-else>ติดตั้งเลย</span>
+          </button>
         </div>
       </div>
 

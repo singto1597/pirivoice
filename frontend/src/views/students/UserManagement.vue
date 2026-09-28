@@ -514,203 +514,209 @@ const editMeta = computed(() => {
     </div>
 
     <!-- ════════════ Modal เพิ่ม/แก้ไขผู้ใช้งาน ════════════ -->
-    <Transition name="sheet">
-      <div
-        v-if="modalOpen"
-        class="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-      >
-        <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeModal"></div>
+    <!-- ⚠️ ต้อง Teleport ออกไปที่ <body> — modal นี้เรนเดอร์อยู่ภายใน stacking context
+         ของ `.maincol` (`relative z-10` ใน MainLayout) ⇒ z-50 ข้างในถูกกักไว้ที่ชั้น 10
+         และแพ้ bottom tab bar (`fixed z-40`) ที่เป็นพี่น้องกัน ⇒ แถบเมนูล่างทับและกลืนคลิก
+         ปุ่มบันทึก. Teleport ทำให้ modal ไปแข่ง z-index ที่ระดับ root แทน -->
+    <Teleport to="body">
+      <Transition name="sheet">
         <div
-          class="relative z-10 mx-auto flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl sm:rounded-[1.5rem]"
+          v-if="modalOpen"
+          class="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
         >
-          <!-- Header -->
-          <div class="flex items-center justify-between border-b border-stone-100 px-5 py-4">
-            <div>
-              <h3 class="text-base font-bold text-stone-900">
-                {{ modalMode === 'add' ? 'เพิ่มผู้ใช้งาน' : 'แก้ไขสมาชิก' }}
-              </h3>
-              <p v-if="editMeta" class="mt-0.5 text-xs text-stone-500">
-                {{ form.first_name }} {{ form.last_name }} · ห้อง {{ editMeta.room }}
-              </p>
+          <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeModal"></div>
+          <div
+            class="relative z-10 mx-auto flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl sm:rounded-[1.5rem]"
+          >
+            <!-- Header -->
+            <div class="flex items-center justify-between border-b border-stone-100 px-5 py-4">
+              <div>
+                <h3 class="text-base font-bold text-stone-900">
+                  {{ modalMode === 'add' ? 'เพิ่มผู้ใช้งาน' : 'แก้ไขสมาชิก' }}
+                </h3>
+                <p v-if="editMeta" class="mt-0.5 text-xs text-stone-500">
+                  {{ form.first_name }} {{ form.last_name }} · ห้อง {{ editMeta.room }}
+                </p>
+              </div>
+              <button
+                type="button"
+                @click="closeModal"
+                class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
+              >
+                <i class="bi bi-x-lg"></i>
+              </button>
             </div>
-            <button
-              type="button"
-              @click="closeModal"
-              class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
-            >
-              <i class="bi bi-x-lg"></i>
-            </button>
-          </div>
 
-          <!-- Body -->
-          <div class="flex-1 space-y-4 overflow-y-auto px-5 py-4 custom-scrollbar">
-            <template v-if="modalMode === 'add'">
+            <!-- Body -->
+            <div class="flex-1 space-y-4 overflow-y-auto px-5 py-4 custom-scrollbar">
+              <template v-if="modalMode === 'add'">
+                <div>
+                  <label class="mb-1 block text-xs font-semibold text-stone-500"
+                    >รหัสนักเรียน / Username *</label
+                  >
+                  <input
+                    v-model="form.username"
+                    type="text"
+                    placeholder="เช่น 12345"
+                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold text-stone-500"
+                    >รหัสผ่านเริ่มต้น
+                    <span class="text-stone-400"
+                      >(ไม่กรอก = สุ่ม + บังคับเปลี่ยนครั้งแรก)</span
+                    ></label
+                  >
+                  <input
+                    v-model="form.password"
+                    type="text"
+                    placeholder="ปล่อยว่างได้"
+                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold text-stone-500">คำนำหน้า</label>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button
+                      v-for="p in PREFIX_OPTIONS"
+                      :key="p"
+                      type="button"
+                      @click="form.prefix = form.prefix === p ? '' : p"
+                      class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
+                      :class="
+                        form.prefix === p
+                          ? 'bg-stone-900 text-white'
+                          : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                      "
+                    >
+                      {{ p }}
+                    </button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-stone-500">ชื่อ *</label>
+                    <input
+                      v-model="form.first_name"
+                      type="text"
+                      class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-stone-500">นามสกุล *</label>
+                    <input
+                      v-model="form.last_name"
+                      type="text"
+                      class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold text-stone-500"
+                    >ชื่อเล่น <span class="text-stone-400">(ไม่บังคับ)</span></label
+                  >
+                  <input
+                    v-model="form.nickname"
+                    type="text"
+                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold text-stone-500">ห้อง *</label>
+                  <select
+                    v-model="form.room_code"
+                    class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C]"
+                  >
+                    <option value="">— เลือกห้อง —</option>
+                    <option v-for="r in addableRooms" :key="r.id" :value="r.room_code">
+                      {{ r.room_code }}{{ r.level ? ' (' + r.level + ')' : '' }}
+                    </option>
+                  </select>
+                </div>
+              </template>
+
               <div>
-                <label class="mb-1 block text-xs font-semibold text-stone-500"
-                  >รหัสนักเรียน / Username *</label
+                <label class="mb-1 block text-xs font-semibold text-stone-500">ตำแหน่ง</label>
+                <select
+                  v-model="form.class_role"
+                  class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C]"
                 >
-                <input
-                  v-model="form.username"
-                  type="text"
-                  placeholder="เช่น 12345"
-                  class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
-                />
+                  <option v-for="r in settableRoles" :key="r" :value="r">{{ roleLabel(r) }}</option>
+                </select>
               </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-stone-500"
-                  >รหัสผ่านเริ่มต้น
-                  <span class="text-stone-400"
-                    >(ไม่กรอก = สุ่ม + บังคับเปลี่ยนครั้งแรก)</span
-                  ></label
-                >
-                <input
-                  v-model="form.password"
-                  type="text"
-                  placeholder="ปล่อยว่างได้"
-                  class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
-                />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-stone-500">คำนำหน้า</label>
-                <div class="flex flex-wrap gap-1.5">
+
+              <!-- หน้าที่ — เฉพาะ role ที่รับผิดชอบหมวดได้ -->
+              <div v-if="canHaveResponsibilities">
+                <p class="mb-1 text-xs font-semibold text-stone-500">
+                  หน้าที่ที่รับผิดชอบ <span class="text-stone-400">(เลือกได้หลายหมวด)</span>
+                </p>
+                <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   <button
-                    v-for="p in PREFIX_OPTIONS"
-                    :key="p"
+                    v-for="opt in CATEGORY_OPTIONS"
+                    :key="opt.value"
                     type="button"
-                    @click="form.prefix = form.prefix === p ? '' : p"
-                    class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
+                    @click="toggleResponsibility(opt.value)"
+                    class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[13px] font-medium transition-colors"
                     :class="
-                      form.prefix === p
-                        ? 'bg-stone-900 text-white'
-                        : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                      form.responsibilities.includes(opt.value)
+                        ? 'border-[#B91C1C] bg-[#B91C1C]/5 text-[#B91C1C]'
+                        : 'border-stone-200 text-stone-600 hover:bg-stone-50'
                     "
                   >
-                    {{ p }}
+                    <i
+                      :class="[
+                        'bi',
+                        form.responsibilities.includes(opt.value)
+                          ? 'bi-check-square-fill'
+                          : 'bi-square',
+                        'text-sm',
+                      ]"
+                    ></i>
+                    {{ opt.label }}
                   </button>
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="mb-1 block text-xs font-semibold text-stone-500">ชื่อ *</label>
-                  <input
-                    v-model="form.first_name"
-                    type="text"
-                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
-                  />
-                </div>
-                <div>
-                  <label class="mb-1 block text-xs font-semibold text-stone-500">นามสกุล *</label>
-                  <input
-                    v-model="form.last_name"
-                    type="text"
-                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
-                  />
-                </div>
-              </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-stone-500"
-                  >ชื่อเล่น <span class="text-stone-400">(ไม่บังคับ)</span></label
-                >
-                <input
-                  v-model="form.nickname"
-                  type="text"
-                  class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
-                />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-stone-500">ห้อง *</label>
-                <select
-                  v-model="form.room_code"
-                  class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C]"
-                >
-                  <option value="">— เลือกห้อง —</option>
-                  <option v-for="r in addableRooms" :key="r.id" :value="r.room_code">
-                    {{ r.room_code }}{{ r.level ? ' (' + r.level + ')' : '' }}
-                  </option>
-                </select>
-              </div>
-            </template>
-
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-stone-500">ตำแหน่ง</label>
-              <select
-                v-model="form.class_role"
-                class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C]"
-              >
-                <option v-for="r in settableRoles" :key="r" :value="r">{{ roleLabel(r) }}</option>
-              </select>
-            </div>
-
-            <!-- หน้าที่ — เฉพาะ role ที่รับผิดชอบหมวดได้ -->
-            <div v-if="canHaveResponsibilities">
-              <p class="mb-1 text-xs font-semibold text-stone-500">
-                หน้าที่ที่รับผิดชอบ <span class="text-stone-400">(เลือกได้หลายหมวด)</span>
+              <p v-else class="rounded-xl bg-stone-50 px-3 py-2.5 text-xs text-stone-500">
+                ตำแหน่งนี้ไม่มีหมวดหน้าที่ (เฉพาะ สภานักเรียน / ผู้ช่วยหัวหน้าระดับ เท่านั้น)
               </p>
-              <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                <button
-                  v-for="opt in CATEGORY_OPTIONS"
-                  :key="opt.value"
-                  type="button"
-                  @click="toggleResponsibility(opt.value)"
-                  class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[13px] font-medium transition-colors"
-                  :class="
-                    form.responsibilities.includes(opt.value)
-                      ? 'border-[#B91C1C] bg-[#B91C1C]/5 text-[#B91C1C]'
-                      : 'border-stone-200 text-stone-600 hover:bg-stone-50'
-                  "
-                >
-                  <i
-                    :class="[
-                      'bi',
-                      form.responsibilities.includes(opt.value)
-                        ? 'bi-check-square-fill'
-                        : 'bi-square',
-                      'text-sm',
-                    ]"
-                  ></i>
-                  {{ opt.label }}
-                </button>
-              </div>
+
+              <p
+                v-if="saveError"
+                class="rounded-xl bg-red-50 px-3 py-2.5 text-[13px] font-medium text-red-600"
+              >
+                <i class="bi bi-exclamation-circle mr-1"></i> {{ saveError }}
+              </p>
             </div>
-            <p v-else class="rounded-xl bg-stone-50 px-3 py-2.5 text-xs text-stone-500">
-              ตำแหน่งนี้ไม่มีหมวดหน้าที่ (เฉพาะ สภานักเรียน / ผู้ช่วยหัวหน้าระดับ เท่านั้น)
-            </p>
 
-            <p
-              v-if="saveError"
-              class="rounded-xl bg-red-50 px-3 py-2.5 text-[13px] font-medium text-red-600"
-            >
-              <i class="bi bi-exclamation-circle mr-1"></i> {{ saveError }}
-            </p>
-          </div>
-
-          <!-- Footer -->
-          <div class="flex items-center justify-end gap-2 border-t border-stone-100 px-5 py-3.5">
-            <button
-              type="button"
-              @click="closeModal"
-              :disabled="saving"
-              class="rounded-xl px-4 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="button"
-              @click="submitForm"
-              :disabled="saving"
-              class="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] disabled:opacity-60"
-            >
-              <span
-                v-if="saving"
-                class="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-              ></span>
-              <i v-else class="bi bi-check-lg"></i>
-              {{ saving ? 'กำลังบันทึก…' : modalMode === 'add' ? 'เพิ่มผู้ใช้งาน' : 'บันทึก' }}
-            </button>
+            <!-- Footer -->
+            <div class="flex items-center justify-end gap-2 border-t border-stone-100 px-5 py-3.5">
+              <button
+                type="button"
+                @click="closeModal"
+                :disabled="saving"
+                class="rounded-xl px-4 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                @click="submitForm"
+                :disabled="saving"
+                class="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] disabled:opacity-60"
+              >
+                <span
+                  v-if="saving"
+                  class="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                ></span>
+                <i v-else class="bi bi-check-lg"></i>
+                {{ saving ? 'กำลังบันทึก…' : modalMode === 'add' ? 'เพิ่มผู้ใช้งาน' : 'บันทึก' }}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
