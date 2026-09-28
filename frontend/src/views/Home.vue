@@ -4,14 +4,14 @@ import { ref, computed, onMounted, nextTick } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useNotificationsStore } from '@/stores/notifications';
-import { getMyIssueSummary, listIssues } from '@/services/issue';
-import type { MyIssueSummary, Issue } from '@/types/issue';
+import { getHomeSummary } from '@/services/home';
+import type { HomeSummary } from '@/types/home';
+import { remainingLabel, voteCountLabel } from '@/types/home';
 import { getDashboardSummary } from '@/services/dashboard';
 import type { DashboardSummary } from '@/types/dashboard';
 import { listReports } from '@/services/board';
 import type { ReportItem } from '@/types/board';
-import { listPublicAnnouncements } from '@/services/public';
-import type { Announcement } from '@/services/public';
+import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
 import { STATUS_BADGE, statusShort } from '@/constants/status';
 
 const authStore = useAuthStore();
@@ -120,28 +120,13 @@ const quickActions = computed<QuickAction[]>(() => {
     accent: 'bg-stone-100 text-stone-700',
   });
   acts.push({
-    key: 'playbooks', label: 'P.R. Playbooks', desc: 'คู่มือสภานักเรียน', icon: 'bi-journal-bookmark-fill',
-    to: '/app/playbooks', badge: 0, accent: 'bg-stone-100 text-stone-700',
+    key: 'mine', label: 'เรื่องของฉัน', desc: 'ติดตามสถานะ', icon: 'bi-file-earmark-text',
+    to: '/app/issues/mine', badge: 0, accent: 'bg-stone-100 text-stone-700',
   });
-  if (authStore.isCouncilAuthority) {
-    acts.push({
-      key: 'moderation', label: 'จัดการรายงาน', desc: 'คิวรีวิวคอมเมนต์', icon: 'bi-flag-fill',
-      to: '/app/boards/reports', badge: notificationsStore.counts.report || 0,
-      accent: 'bg-stone-100 text-stone-700',
-    });
-  }
-  if (authStore.hasPermission('MANAGE_STUDENTS')) {
-    acts.push({
-      key: 'students', label: 'นักเรียน', desc: 'รายชื่อ + ระดับชั้น', icon: 'bi-people',
-      to: '/app/students', badge: 0, accent: 'bg-stone-100 text-stone-700',
-    });
-  }
-  if (authStore.hasPermission('VIEW_AUDIT_LOG')) {
-    acts.push({
-      key: 'audit', label: 'บันทึกการใช้งาน', desc: 'Audit log', icon: 'bi-clock-history',
-      to: '/app/audit-logs', badge: 0, accent: 'bg-stone-100 text-stone-700',
-    });
-  }
+  acts.push({
+    key: 'new', label: 'แจ้งเรื่องใหม่', desc: 'ส่งเสียงของคุณ', icon: 'bi-plus-circle',
+    to: '/app/issues/new', badge: 0, accent: 'bg-[#B91C1C] text-white', featured: true,
+  });
   return acts;
 });
 const canReceive = computed(() => authStore.hasPermission('RECEIVE_ISSUES'));
@@ -153,51 +138,51 @@ function unreadCount(key: string): number {
   return notificationsStore.counts[key] || 0;
 }
 
-// ============ My issue summary (GET /api/issues/summary) ============
-const summary = ref<MyIssueSummary | null>(null);
-const loadingSummary = ref(true);
-const summaryError = ref(false);
+// ============ Home summary (GET /api/home/summary) ============
+// ⭐ 1 call ได้ทุกอย่างที่ทุกคนเห็นเหมือนกัน: ประกาศ · สรุปเรื่องของฉัน ·
+//    รอฉันตอบ · โหวตที่ยังไม่โหวต · สถิติส่วนตัว (เดิมยิง 3 ตัวแยกกัน)
+// ❌ แดชบอร์ด + คิวรายงาน ยังยิงแยกโดยเจตนา — เป็น permission-gated
+//    และแดชบอร์ดรัน aggregate หนักทั้งโรงเรียน (ย้ายเข้ามาจะทำให้ Home ช้าลงทุกคน)
+const home = ref<HomeSummary | null>(null);
+const loadingHome = ref(true);
+const homeError = ref(false);
+
+async function loadHome() {
+  loadingHome.value = true;
+  homeError.value = false;
+  try {
+    home.value = await getHomeSummary();
+  } catch {
+    homeError.value = true;
+    // ล้างของเก่าทิ้ง — ไม่งั้นกด "ลองใหม่" แล้วพัง จะเห็นข้อมูลค้างของรอบก่อนปนกับ error
+    home.value = null;
+  } finally {
+    loadingHome.value = false;
+    void nextTick(() => runCountUps());
+  }
+}
+
+const summary = computed(() => home.value?.my_issues ?? null);
+const announcements = computed(() => home.value?.announcements ?? []);
+const pendingOnMe = computed(() => home.value?.pending_on_me ?? []);
+const pendingTotal = computed(() => home.value?.pending_on_me_total ?? 0);
+const unvotedBoards = computed(() => home.value?.unvoted_boards ?? []);
+const unvotedTotal = computed(() => home.value?.unvoted_boards_total ?? 0);
+const stats = computed(() => home.value?.stats ?? null);
+
+// "และอีก N …" — คิดจาก total จริงที่ backend ส่งมา ไม่ใช่เทียบกับ limit ที่ hardcode
+const pendingRestLabel = computed(() =>
+  remainingLabel(pendingTotal.value, pendingOnMe.value.length),
+);
+const unvotedRestLabel = computed(() =>
+  remainingLabel(unvotedTotal.value, unvotedBoards.value.length, 'บอร์ด'),
+);
 
 const statusMap = computed<Record<string, number>>(() => {
   const m: Record<string, number> = {};
   for (const s of summary.value?.by_status ?? []) m[s.status] = s.count;
   return m;
 });
-
-async function loadSummary() {
-  loadingSummary.value = true;
-  summaryError.value = false;
-  try {
-    summary.value = await getMyIssueSummary();
-  } catch {
-    summaryError.value = true;
-  } finally {
-    loadingSummary.value = false;
-    void nextTick(() => runCountUps());
-  }
-}
-
-// ============ Received queue (คนรับเรื่อง) ============
-const receivedIssues = ref<Issue[]>([]);
-const receivedTotal = ref(0);
-const loadingReceived = ref(canReceive.value);
-const receivedError = ref(false);
-
-async function loadReceived() {
-  if (!canReceive.value) return;
-  loadingReceived.value = true;
-  receivedError.value = false;
-  try {
-    // สถานะ "ยังไม่เสร็จ" = pending + in_progress + escalated (server รองรับหลายค่าคั่นด้วย ,)
-    const res = await listIssues({ received: true, status: 'pending,in_progress,escalated', limit: 5, sort: 'desc' });
-    receivedIssues.value = res.items ?? [];
-    receivedTotal.value = res.total ?? 0;
-  } catch {
-    receivedError.value = true;
-  } finally {
-    loadingReceived.value = false;
-  }
-}
 
 // ============ Moderation queue (สภา/แอดมิน) ============
 const reports = ref<ReportItem[]>([]);
@@ -238,36 +223,10 @@ async function loadDash() {
   }
 }
 
-// ============ ประกาศ (public) ============
-const announcements = ref<Announcement[]>([]);
-const loadingAnnounce = ref(true);
-const announceError = ref(false);
-
-const annIconColor: Record<string, string> = {
-  urgent: 'bg-[#B91C1C]',
-  high: 'bg-[#991B1B]',
-  normal: 'bg-stone-300',
-};
-
-async function loadAnnouncements() {
-  loadingAnnounce.value = true;
-  announceError.value = false;
-  try {
-    const res = await listPublicAnnouncements();
-    announcements.value = Array.isArray(res) ? res : [];
-  } catch {
-    announceError.value = true;
-  } finally {
-    loadingAnnounce.value = false;
-  }
-}
-
 onMounted(() => {
-  void loadSummary();
-  void loadReceived();
+  void loadHome();
   void loadReports();
   void loadDash();
-  void loadAnnouncements();
 });
 
 // ============ Count-up (ตัวเลขวิ่งเมื่อโหลดเสร็จ) ============
@@ -296,6 +255,13 @@ const hasActiveIssues = computed(() => {
   const t = statusMap.value;
   return (t['pending'] ?? 0) + (t['in_progress'] ?? 0) + (t['escalated'] ?? 0);
 });
+
+// ⚠️ ประกาศไม่ถูกตัดด้วยจำนวน (ห้าม slice) — ดูคอมเมนต์ใน template
+const annIconColor: Record<string, string> = {
+  urgent: 'bg-[#B91C1C]',
+  high: 'bg-[#991B1B]',
+  normal: 'bg-stone-300',
+};
 </script>
 
 <template>
@@ -348,20 +314,37 @@ const hasActiveIssues = computed(() => {
       </div>
     </section>
 
-    <!-- ============ ประกาศโรงเรียน ============
-         ⭐ โชว์ **ทั้งหมด** ที่ยังใช้งานอยู่ — ไม่มี slice()/เพดานจำนวนโดยเจตนา
-            (เจ้าของระบบสั่งว่า "ไม่ต้องกำหนดว่าให้โชว์กี่อัน ให้โชว์ทั้งหมดที่ยังไม่ถอดออก")
-            backend กรอง `deleted_at IS NULL AND retired_at IS NULL` มาให้แล้วใน
-            `/api/v1/public/announcements` ⇒ ที่นี่ไม่ต้องกรอง/ตัดอะไรอีก
-            ⚠️ endpoint เดียวกันนี้ถูกใช้โดย Landing.vue ด้วย (hero pill + marquee) -->
-    <section v-if="announceError" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-5 py-10 text-center">
-      <p class="text-sm font-semibold text-stone-700"><i class="bi bi-wifi-off mr-2"></i>โหลดประกาศไม่สำเร็จ</p>
-      <button type="button" @click="loadAnnouncements" class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800">
+    <!-- ============ โหลดหน้าแรกไม่สำเร็จ ============
+         ⚠️ ประกาศ/สรุปเรื่องของฉัน/รอฉันตอบ/โหวต/สถิติ มาจาก **call เดียว**
+            ⇒ ล้มพร้อมกันทั้งหมด · แสดงใบเดียวที่บนสุด ไม่กระจาย error ซ้ำ 5 ที่
+            (คิวรายงานกับแดชบอร์ดเป็น call แยก ⇒ มี error ของตัวเองอยู่แล้ว) -->
+    <section
+      v-if="homeError"
+      class="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-stone-200 bg-white px-6 py-12 text-center"
+    >
+      <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-stone-100 text-stone-400">
+        <i class="bi bi-wifi-off text-lg"></i>
+      </span>
+      <div>
+        <p class="text-sm font-semibold text-stone-700">โหลดข้อมูลหน้าแรกไม่สำเร็จ</p>
+        <p class="mt-1 text-xs text-stone-400">ประกาศ สรุปเรื่องของคุณ และสถิติ ยังโหลดไม่ได้</p>
+      </div>
+      <button
+        type="button"
+        @click="loadHome"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800"
+      >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
     </section>
 
-    <section v-else-if="!loadingAnnounce && announcements.length > 0" class="rounded-2xl border border-stone-200 bg-white px-5 py-4">
+    <!-- ============ ประกาศโรงเรียน ============
+         ⭐ โชว์ **ทั้งหมด** ที่ยังใช้งานอยู่ — ไม่มี slice()/เพดานจำนวนโดยเจตนา
+            (เจ้าของระบบสั่งว่า "ไม่ต้องกำหนดว่าให้โชว์กี่อัน ให้โชว์ทั้งหมดที่ยังไม่ถอดออก")
+            backend กรอง `deleted_at IS NULL AND retired_at IS NULL` มาให้แล้ว
+            ⇒ ที่นี่ไม่ต้องกรอง/ตัดอะไรอีก และ **ห้าม slice** แม้จะอยากให้สั้นลง
+            (endpoint/ข้อมูลชุดเดียวกันนี้ถูกใช้โดย Landing.vue ด้วย) -->
+    <section v-else-if="announcements.length > 0" class="rounded-2xl border border-stone-200 bg-white px-5 py-4">
       <div class="flex items-start gap-3">
         <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
           <i class="bi bi-megaphone"></i>
@@ -403,7 +386,7 @@ const hasActiveIssues = computed(() => {
     </section>
 
     <!-- ============ My-issue summary (ทุกคน) ============ -->
-    <section class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+    <section v-if="!homeError" class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
       <!-- Header -->
       <div class="flex items-center justify-between gap-3 px-6 pb-1 pt-6">
         <div class="flex items-center gap-3">
@@ -424,7 +407,7 @@ const hasActiveIssues = computed(() => {
       </div>
 
       <!-- Skeleton -->
-      <div v-if="loadingSummary" class="px-6 pb-6 pt-3">
+      <div v-if="loadingHome" class="px-6 pb-6 pt-3">
         <div class="flex flex-wrap items-center gap-3">
           <div class="h-14 w-14 animate-pulse rounded-2xl bg-stone-100"></div>
           <div class="space-y-2">
@@ -436,23 +419,6 @@ const hasActiveIssues = computed(() => {
           <div v-for="n in 4" :key="n" class="bg-white p-5">
             <div class="h-9 animate-pulse rounded-xl bg-stone-100"></div>
           </div>
-        </div>
-      </div>
-
-      <!-- Error -->
-      <div v-else-if="summaryError" class="px-6 pb-6 pt-3">
-        <div class="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-stone-200 bg-white px-6 py-12 text-center">
-          <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-stone-100 text-stone-400">
-            <i class="bi bi-wifi-off text-lg"></i>
-          </span>
-          <p class="text-sm font-semibold text-stone-700">โหลดข้อมูลไม่สำเร็จ</p>
-          <button
-            type="button"
-            @click="loadSummary"
-            class="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800"
-          >
-            <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-          </button>
         </div>
       </div>
 
@@ -577,12 +543,28 @@ const hasActiveIssues = computed(() => {
       </div>
     </section>
 
-    <!-- ============ เรื่องที่รอจัดการ (คนรับเรื่อง) ============ -->
-    <section v-if="canReceive" class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+    <!-- ============ สถิติของฉัน (C3) ============
+         ใช้การ์ดตัวเดียวกับ Profile.vue — ข้อมูลมาจาก home summary ไม่ต้องยิงซ้ำ
+         ⚠️ ไม่ต้องใส่หัวข้อเอง การ์ดมีหัวข้อ + ช่วงภาค (พ.ศ.) ในตัวแล้ว -->
+    <PersonalStatsCard
+      v-if="!homeError"
+      :stats="stats"
+      :loading="loadingHome"
+      compact
+    />
+
+    <!-- ============ รอฉันตอบ (คนรับเรื่อง) ============
+         แทนบล็อก "เรื่องที่รอจัดการ" เดิม — เป้าแคบกว่าโดยเจตนา:
+         `current_assignee_id = ฉัน` เท่านั้น (เดิมใช้ received=true ซึ่งกว้างกว่ามาก
+         รวมเรื่องที่ฉันแค่เป็นผู้แจ้ง/มี countdown ของฉัน ⇒ ไม่ใช่ "รอฉันตอบ")
+         ⚠️ ไม่พิมพ์ยอดไว้ข้างลิงก์ "คิวทั้งหมด" — ยอดนี้เป็นเป้าแคบ
+            ไม่เท่ากับที่หน้าคิว (`/app/issues/received`) แสดง ⇒ ใส่ไปจะดูเหมือนบั๊ก
+            (ขึ้นยอดจริงไว้ในตัวบล็อกแทน) -->
+    <section v-if="!homeError && canReceive" class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
       <div class="flex items-center justify-between gap-3 px-6 pb-1 pt-6">
         <div class="flex items-center gap-3">
           <span class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-[#B91C1C] text-white">
-            <i class="bi bi-inbox text-lg"></i>
+            <i class="bi bi-reply-all text-lg"></i>
             <span
               v-if="unreadCount('issue_received') > 0"
               class="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-[#B91C1C] ring-1 ring-stone-200"
@@ -591,46 +573,39 @@ const hasActiveIssues = computed(() => {
             </span>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">เรื่องที่รอจัดการ</h2>
-            <p class="text-[11px] font-medium text-stone-400 sm:text-xs">ในระดับความรับผิดชอบของคุณ</p>
+            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">รอฉันตอบ</h2>
+            <p class="text-[11px] font-medium text-stone-400 sm:text-xs">เรื่องที่ค้างอยู่ที่คุณและยังไม่ปิด</p>
           </div>
         </div>
         <RouterLink
           to="/app/issues/received"
           class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100"
         >
-          ทั้งหมด {{ receivedTotal > 0 ? `(${receivedTotal})` : '' }} <i class="bi bi-arrow-right"></i>
+          คิวทั้งหมด <i class="bi bi-arrow-right"></i>
         </RouterLink>
       </div>
 
       <div class="px-6 pb-6 pt-3">
         <!-- Skeleton -->
-        <div v-if="loadingReceived" class="space-y-2">
+        <div v-if="loadingHome" class="space-y-2">
           <div v-for="n in 3" :key="n" class="h-14 animate-pulse rounded-2xl bg-stone-100"></div>
         </div>
-        <!-- Error -->
-        <div v-else-if="receivedError" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-5 py-10 text-center">
-          <p class="text-sm font-semibold text-stone-700">โหลดคิวไม่สำเร็จ</p>
-          <button type="button" @click="loadReceived" class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800">
-            <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-          </button>
-        </div>
         <!-- Empty -->
-        <div v-else-if="receivedIssues.length === 0" class="rounded-2xl border border-dashed border-stone-200 px-5 py-8 text-center">
+        <div v-else-if="pendingOnMe.length === 0" class="rounded-2xl border border-dashed border-stone-200 px-5 py-8 text-center">
           <p class="text-sm font-bold text-stone-500">🎉 ไม่มีเรื่องค้างรอคุณอยู่</p>
           <p class="mt-1 text-xs text-stone-400">เมื่อมีเรื่องถูกส่งมาถึงระดับคุณ จะขึ้นที่นี่</p>
         </div>
         <!-- List -->
         <div v-else class="space-y-1">
           <RouterLink
-            v-for="it in receivedIssues"
+            v-for="it in pendingOnMe"
             :key="it.id"
             :to="{ name: 'issue-detail', params: { id: it.id } }"
             class="group flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors hover:bg-stone-50"
           >
             <span
               class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-              :class="it.priority === 'high' ? 'bg-[#B91C1C]/10 text-[#B91C1C]' : it.priority === 'urgent' ? 'bg-[#991B1B] text-white' : 'bg-stone-100 text-stone-500'"
+              :class="it.priority === 'urgent' ? 'bg-[#991B1B] text-white' : it.priority === 'high' ? 'bg-[#B91C1C]/10 text-[#B91C1C]' : 'bg-stone-100 text-stone-500'"
             >
               <i class="bi bi-exclamation-lg"></i>
             </span>
@@ -649,6 +624,70 @@ const hasActiveIssues = computed(() => {
             </span>
             <i class="bi bi-chevron-right text-xs text-stone-300 transition-transform group-hover:translate-x-0.5"></i>
           </RouterLink>
+
+          <p v-if="pendingRestLabel" class="pt-2 text-center text-[11px] font-semibold text-stone-400">
+            {{ pendingRestLabel }} — <RouterLink to="/app/issues/received" class="text-[#B91C1C] hover:underline">ดูในคิวทั้งหมด</RouterLink>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ โหวตที่ยังไม่โหวต (ทุกคน) ============
+         ⭐ เป็น "สิ่งที่ทำให้กลับมาเปิดซ้ำ" คู่กับ "รอฉันตอบ"
+         แสดงเฉพาะเมื่อ **มีของให้ทำ** (หรือกำลังโหลด) — โหวตครบทุกบอร์ดแล้วบล็อกหายไปเอง
+         ไม่ต้องมี empty state ให้รกตา -->
+    <section
+      v-if="!homeError && (loadingHome || unvotedBoards.length > 0)"
+      class="overflow-hidden rounded-2xl border border-stone-200 bg-white"
+    >
+      <div class="flex items-center justify-between gap-3 px-6 pb-1 pt-6">
+        <div class="flex items-center gap-3">
+          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
+            <i class="bi bi-bar-chart-steps text-lg"></i>
+          </span>
+          <div>
+            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">โหวตที่ยังไม่โหวต</h2>
+            <p class="text-[11px] font-medium text-stone-400 sm:text-xs">บอร์ดที่ยังเปิดอยู่ และคุณยังไม่ได้ออกเสียง</p>
+          </div>
+        </div>
+        <RouterLink
+          to="/app/boards"
+          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100"
+        >
+          PIRI Boards <i class="bi bi-arrow-right"></i>
+        </RouterLink>
+      </div>
+
+      <div class="px-6 pb-6 pt-3">
+        <div v-if="loadingHome" class="space-y-2">
+          <div v-for="n in 2" :key="n" class="h-14 animate-pulse rounded-2xl bg-stone-100"></div>
+        </div>
+        <div v-else class="space-y-1">
+          <RouterLink
+            v-for="b in unvotedBoards"
+            :key="b.id"
+            :to="{ name: 'board-detail', params: { id: b.id } }"
+            class="group flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors hover:bg-stone-50"
+          >
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#B91C1C]/10 text-[#B91C1C]">
+              <i class="bi bi-hand-thumbs-up"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-[#B91C1C]">{{ b.title }}</span>
+              <span class="flex items-center gap-1.5 text-[11px] font-medium text-stone-400">
+                <i class="bi bi-people"></i> {{ voteCountLabel(b.vote_count) }}
+                <span class="text-stone-300">•</span> {{ formatDate(b.created_at) }}
+              </span>
+            </span>
+            <span class="hidden shrink-0 rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-bold text-stone-600 sm:inline">
+              ไปโหวต
+            </span>
+            <i class="bi bi-chevron-right text-xs text-stone-300 transition-transform group-hover:translate-x-0.5"></i>
+          </RouterLink>
+
+          <p v-if="unvotedRestLabel" class="pt-2 text-center text-[11px] font-semibold text-stone-400">
+            {{ unvotedRestLabel }} — <RouterLink to="/app/boards" class="text-[#B91C1C] hover:underline">ดูใน PIRI Boards</RouterLink>
+          </p>
         </div>
       </div>
     </section>
