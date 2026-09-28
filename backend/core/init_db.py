@@ -493,6 +493,56 @@ async def init_db(pool: asyncpg.Pool):
                     )
                     logger.info("📣 Seeded default announcements.")
 
+                # --- 8.9 push_subscriptions: ปลายทาง push ของแต่ละอุปกรณ์ (migration 018 / A3) ---
+                #   - ⭐ unique บน `endpoint` **เดี่ยว ๆ** ไม่ใช่ (user_id, endpoint): endpoint
+                #     คือ "เบราว์เซอร์เครื่องนี้" ไม่ใช่ "ผู้ใช้คนนี้" — เครื่องเรียนเครื่องเดียว
+                #     ถูกใช้หลายคน ถ้า unique เป็นคู่จะเหลือแถวของคนเก่าค้าง ⇒ push ไปหาคนเก่า
+                #     = รั่วข้ามผู้ใช้ · `ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id`
+                #     ยึดเครื่องกับผู้ใช้ที่ล็อกอินอยู่ใหม่ทุกครั้ง (สัญญาณสดชนะความจำ)
+                #   - `failure_count` / `last_success_at` มีไว้สำหรับวินิจฉัยเท่านั้น
+                #     (ไม่ได้ใช้ตัดสินใจลบ — ตัวตัดสินคือ HTTP 404/410 ซึ่งแม่นกว่า)
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    endpoint TEXT NOT NULL,
+                    p256dh TEXT NOT NULL,
+                    auth TEXT NOT NULL,
+                    user_agent TEXT,
+                    failure_count INTEGER NOT NULL DEFAULT 0,
+                    last_success_at TIMESTAMP WITH TIME ZONE,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT chk_push_subscriptions_endpoint_len
+                        CHECK (length(endpoint) BETWEEN 8 AND 1000)
+                );
+                """)
+
+                # --- 8.10 push_outbox: คิวส่ง push (transactional outbox — migration 018 / A3) ---
+                #   - เก็บแค่ `notification_id` ไม่ denormalize ข้อความ: `notifications` ถูก
+                #     mark_read เท่านั้น ไม่มีโค้ดไหนลบ ⇒ JOIN ไม่มีทางพลาด + source of truth เดียว
+                #   - `next_attempt_at` = เวลาที่จะลองใหม่ (exponential backoff) ·
+                #     `processing_at` = ถูก claim ไปแล้ว (worker ตายกลางคันจะกู้คืนตอน startup)
+                #   - `processed_at IS NOT NULL` = จบแล้ว ไม่ว่าจะสำเร็จหรือทิ้ง
+                #
+                # ⚠️ **trigger `trg_notifications_push_outbox` ไม่ได้ mirror มาที่นี่โดยเจตนา**
+                #    มันอยู่ใน `migrations/018_push_notifications.py` ที่เดียว — ถ้า copy มาสองที่
+                #    sẽ drift กันได้ง่าย (และ init_db ไม่ได้อยู่ใน transaction เดียวกับ migration)
+                #    ⇒ ไฟล์นี้มีแค่ "ตาราง" ส่วน "พฤติกรรม" อยู่ที่ migration
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS push_outbox (
+                    id BIGSERIAL PRIMARY KEY,
+                    notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    attempts SMALLINT NOT NULL DEFAULT 0,
+                    next_attempt_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    processing_at TIMESTAMP WITH TIME ZONE,
+                    processed_at TIMESTAMP WITH TIME ZONE,
+                    last_error TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """)
+
                 # --- 9. ตารางคิวงาน Import นักเรียนจาก Excel (Queue: ARQ Worker) ---
                 # status: 'PENDING' (อัปโหลดแล้ว ยังไม่สั่งเริ่ม) / 'QUEUED' (ยิงเข้า Redis แล้ว)
                 #         'PROCESSING' (worker กำลังทำงาน) / 'COMPLETED' / 'FAILED'
@@ -618,6 +668,22 @@ async def init_db(pool: asyncpg.Pool):
                 -- คิวรีหลัก = "ภาคที่คลุมวันนี้" / "ภาคตามช่วงวันที่" ⇒ index บนช่วงวัน
                 CREATE INDEX IF NOT EXISTS idx_academic_terms_dates
                     ON academic_terms(start_date, end_date);
+                -- push_subscriptions / push_outbox (A3 / migration 018) — Web Push
+                --   ⚠️ unique บน `endpoint` เดี่ยว ๆ (ไม่ใช่คู่กับ user_id) — ดูเหตุผลยาวใน
+                --      migrations/018_*.py: endpoint คือ "เครื่องนี้" ซึ่งเปลี่ยนเจ้าของได้
+                --   ⚠️ ลบ index นี้ไม่ได้ — `ON CONFLICT (endpoint) DO UPDATE` พึ่งมันอยู่
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_push_subscriptions_endpoint
+                    ON push_subscriptions(endpoint);
+                CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+                    ON push_subscriptions(user_id);
+                -- กัน trigger ยิงซ้ำแล้วได้ 2 แถวสำหรับ (notification, user) เดียวกัน
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_push_outbox_notification_user
+                    ON push_outbox(notification_id, user_id);
+                -- ⭐ partial index: key = `id` ล้วน (ไม่ใช่ next_attempt_at) เพราะคิวรีจริงคือ
+                --    `WHERE processed_at IS NULL ORDER BY id LIMIT n` — ของเข้าก่อนได้ก่อน
+                --    และ partial ทำให้ index เล็กลงมากเมื่อของที่ processed แล้วสะสม (retention 7 วัน)
+                CREATE INDEX IF NOT EXISTS idx_push_outbox_pending
+                    ON push_outbox(id) WHERE processed_at IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_students_room_no_active
                     ON students(room_id, student_no)
                     WHERE deleted_at IS NULL;

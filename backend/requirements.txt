@@ -35,3 +35,11 @@ redis>=5.0.0
 arq==0.28.0
 bcrypt>=4.0.0
 python-multipart>=0.0.9
+# --- Web Push (A3) ------------------------------------------------------------------
+# ⭐ เลือก "ประกอบเอง" แทน `pywebpush` โดยเจตนา: pywebpush==2.5.0 ลาก 20 แพ็กเกจ
+#    รวม **HTTP client อีกสองชุดที่ไม่มีโค้ดไหนใช้** (`requests` + `aiohttp`)
+#    ⇒ ใช้ `httpx==0.28.1` ที่มีอยู่แล้วในไฟล์นี้แทน และประกอบ VAPID/ECE จาก 2 ตัวนี้
+#    ซึ่ง **พึ่งแค่ `cryptography` ที่ pin อยู่แล้ว ⇒ transitive dependency = 0**
+# ⚠️ `py-vapid==1.9.3` ถูก **yank** จาก PyPI (Missing wheels) — ห้าม pin 1.9.3
+http-ece==1.2.1
+py-vapid==1.9.4

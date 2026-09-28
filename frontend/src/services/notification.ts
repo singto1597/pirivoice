@@ -6,6 +6,11 @@ import type {
   MarkReadPayload,
   NotificationPreference,
   NotificationPreferencesResponse,
+  PushStatus,
+  PushSubscribePayload,
+  PushSubscribeResponse,
+  PushUnsubscribePayload,
+  PushUnsubscribeResponse,
 } from '@/types/notification'
 
 // 🔔 Notification API — api interceptor unwrap response.data แล้ว (ดู services/api.ts)
@@ -48,4 +53,24 @@ export async function updateNotificationPreferences(
   return (await api.put('/api/notifications/preferences', {
     preferences,
   })) as NotificationPreferencesResponse
+}
+
+// 🔔 Web Push (A3) — 3 ฟังก์ชันนี้รับ/ส่งกับ backend เท่านั้น
+//    ส่วนการคุยกับ `PushManager` ของเบราว์เซอร์อยู่ใน `src/push.ts` (คนละชั้นกัน)
+
+/** สถานะ push ของ **ฉัน** — `device_count` นับเฉพาะอุปกรณ์ที่ผูกกับบัญชีนี้ */
+export async function getPushStatus(): Promise<PushStatus> {
+  return (await api.get('/api/notifications/push/status')) as PushStatus
+}
+
+/** ⚠️ ห้ามใส่ `user_id` ในพารามิเตอร์ — backend เอาเจ้าของจาก JWT เท่านั้น (ดูคอมเมนต์ใน types) */
+export async function subscribePush(payload: PushSubscribePayload): Promise<PushSubscribeResponse> {
+  return (await api.post('/api/notifications/push/subscribe', payload)) as PushSubscribeResponse
+}
+
+/** ยิงด้วย endpoint ของ **เครื่องนี้** เสมอ — ถ้าไม่ตรงกับที่มีใน DB ก็แค่ `removed: 0` (ไม่ error) */
+export async function unsubscribePush(
+  payload: PushUnsubscribePayload,
+): Promise<PushUnsubscribeResponse> {
+  return (await api.post('/api/notifications/push/unsubscribe', payload)) as PushUnsubscribeResponse
 }
