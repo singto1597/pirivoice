@@ -20,20 +20,24 @@
 // ⚠️ ขึ้นเวอร์ชันเมื่อ **รายการไฟล์หรือวิธี precache เปลี่ยน** — ไม่ใช่ทุก deploy
 //    (asset ของแอพมี content hash ในชื่ออยู่แล้ว จึงไม่ต้องพึ่งเวอร์ชันนี้)
 //    v2: เปลี่ยนมาใช้ precacheStrict — ของเดิมเคยเก็บ HTML ทับไอคอนได้ (ดูคอมเมนต์ล่าง)
-const SHELL_CACHE = 'piri-shell-v2';
+//    v3: ไอคอนเปลี่ยนเป็นโลโก้โรงเรียนล้วน ⇒ ขึ้นเวอร์ชันเพื่อทิ้ง cache เก่า
+//        (ถ้าไม่ขึ้น ของเดิมจะค้างใน cache ใต้ URL เดิม แล้วผู้ใช้ที่ติดตั้งไว้จะเห็นไอคอนเก่า)
+const SHELL_CACHE = 'piri-shell-v3';
 
 // ไฟล์ที่ต้องมีแน่ ๆ — precache ตอน install
 // ⚠️ ถ้าไฟล์ใดหาย จะถูกรายงานใน console (ไม่ทำให้ install ล้มทั้งอัน — ดู precacheStrict)
 //    (ไอคอน generate ไว้ใน `public/icons/` แล้ว — อย่าลบ)
+// ⚠️ ไอคอนต่อ `?v=` ให้ตรงกับ `manifest.json` เสมอ — `cache.match()` นับ query เป็นส่วนหนึ่ง
+//    ของคีย์ ⇒ สอง URL นี้เป็นคนละรายการกัน ใส่ไม่ตรงจะได้ไอคอนเก่าค้างอยู่อีกชุด
 const SHELL_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/logos/school-logo.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-512-maskable.png',
-  '/icons/apple-touch-icon.png',
+  '/icons/icon-192.png?v=3',
+  '/icons/icon-512.png?v=3',
+  '/icons/icon-512-maskable.png?v=3',
+  '/icons/apple-touch-icon.png?v=3',
 ];
 
 /** หน้าที่แสดงเมื่อออฟไลน์และ **ไม่มี** shell ใน cache เลย (ครั้งแรกสุด) */

@@ -82,6 +82,14 @@ function writeFlag(key: string): void {
   }
 }
 
+function clearFlag(key: string): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // ล้างไม่ได้ก็ไม่เป็นไร — ตัวตัดสินจริงคือสัญญาณสดจากเบราว์เซอร์ ไม่ใช่ธงนี้
+  }
+}
+
 function isDismissed(): boolean {
   return readFlag(DISMISS_KEY)
 }
@@ -118,7 +126,18 @@ if (typeof window !== 'undefined') {
     // ห้ามเบราว์เซอร์โชว์แบนเนอร์ของตัวเอง — เราคุมจังหวะเอง
     event.preventDefault()
     deferredPrompt.value = event as unknown as BeforeInstallPromptEvent
-    canInstallState.value = !isDismissed() && !isInstalled()
+
+    // ⚠️ **Chrome ยิง event นี้ "ก็ต่อเมื่อแอพยังไม่ได้ติดตั้ง"** (ถ้าติดตั้งอยู่จะไม่ยิงเลย)
+    //    ⇒ การที่มันยิง = เบราว์เซอร์ยืนยันสด ๆ ว่า "ตอนนี้ติดตั้งได้"
+    //    ⇒ ล้างธง "ติดตั้งแล้ว" ที่อาจค้างอยู่ทิ้ง
+    //
+    //    ทำไมต้องล้าง: **การถอนการติดตั้งไม่ล้าง site data** ⇒ ผู้ใช้ที่ติดตั้ง → ถอน
+    //    จะเหลือ `piri_installed=1` ค้างอยู่ใน localStorage ตลอดไป
+    //    ถ้าเอาธงนั้นมาบล็อกการติดตั้ง เท่ากับ **ผู้ใช้ไม่มีทางติดตั้งกลับได้อีกเลย**
+    //    ทั้งที่เบราว์เซอร์เพิ่งบอกว่า "ติดตั้งได้" — ล้างตรงนี้ทำให้ธงซ่อมตัวเอง
+    //    โดยไม่ต้องรอเบราว์เซอร์ล้าง storage ให้
+    clearFlag(INSTALLED_KEY)
+    canInstallState.value = !isDismissed()
     armAutoPrompt()
   })
 
@@ -161,7 +180,10 @@ function onFirstGesture(): void {
 function armAutoPrompt(): void {
   if (autoPromptArmed) return
   if (typeof document === 'undefined') return
-  if (readFlag(AUTO_ASKED_KEY) || isDismissed() || isInstalled()) return
+  // ⚠️ **ไม่เช็ค `isInstalled()` ที่นี่** — ฟังก์ชันนี้ถูกเรียกจาก handler ของ
+  //    `beforeinstallprompt` เท่านั้น ซึ่งการที่ event ยิงก็แปลว่า "ยังไม่ติดตั้ง" อยู่แล้ว
+  //    ⇒ เงื่อนไขนั้นเป็นเท็จเสมอ (โค้ดตาย) แถมเคยเป็นกับดักหลังถอนการติดตั้ง
+  if (readFlag(AUTO_ASKED_KEY) || isDismissed()) return
 
   autoPromptArmed = true
   autoAskPending.value = true
@@ -191,6 +213,23 @@ export const showInstallBanner = computed(
 )
 
 export const showUpdateBanner = computed(() => ready.value && updateAvailableState.value)
+
+/** เปิดอยู่ในโหมดแอพที่ติดตั้งแล้ว (ไม่มีแถบที่อยู่) */
+export const isStandalone = computed(() => standaloneState.value)
+
+/** iOS/iPadOS Safari — เบราว์เซอร์เดียวบน iOS ที่ติดตั้งลงหน้าจอได้ */
+export const isIosSafari = computed(() => iosSafariState.value)
+
+/**
+ * ตอนนี้เรียกหน้าต่างติดตั้งของเบราว์เซอร์ได้จริงไหม (มี event ที่ยังไม่ถูกใช้)
+ *
+ * ใช้กับการติดตั้งที่ **ผู้ใช้สั่งเอง** (การ์ดใน Profile) ซึ่งเจตนา **ไม่ผูกกับ
+ * `DISMISS_KEY`** — "เคยกด ✕ ปิดแบนเนอร์" ไม่เท่ากับ "ห้ามติดตั้งตลอดไป"
+ * ⇒ เป็นทางกลับมาสำหรับคนที่เคยกดปิดไว้ หรือเพิ่งถอนการติดตั้งไป
+ */
+export const canPromptInstall = computed(
+  () => deferredPrompt.value !== null && !standaloneState.value,
+)
 
 /**
  * ควรแสดงคำแนะนำติดตั้งแบบ iOS ไหม (แชร์ → เพิ่มไปที่หน้าจอ)
@@ -279,6 +318,21 @@ export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unava
   if (outcome === 'accepted') writeFlag(INSTALLED_KEY)
 
   return outcome
+}
+
+/**
+ * ติดตั้งตามที่ **ผู้ใช้สั่งเอง** (ปุ่มในการ์ด Profile) — ทางกลับมาของคนที่เคยกด ✕ ไว้
+ *
+ * ต่างจาก `promptInstall()` ตรงที่ **ล้าง `DISMISS_KEY` ให้ก่อน** เพราะการที่ผู้ใช้มากด
+ * ปุ่มนี้เองคือการเปลี่ยนใจ — คำสั่งตรงจากผู้ใช้ต้องชนะ "เคยกดปิด"
+ * (ถ้าไม่ล้าง ผู้ใช้จะติดตั้งได้ก็จริง แต่พอถอนแล้วจะไม่ถูกชวนอีกเลย)
+ *
+ * ⚠️ ต้องเรียกจาก event handler ของผู้ใช้เท่านั้น (แบบเดียวกับ `promptInstall()`)
+ */
+export async function installNow(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
+  if (!deferredPrompt.value) return 'unavailable'
+  clearFlag(DISMISS_KEY)
+  return promptInstall()
 }
 
 /** ผู้ใช้กดปิดแบนเนอร์ — จำไว้ ไม่ถามซ้ำอีก */

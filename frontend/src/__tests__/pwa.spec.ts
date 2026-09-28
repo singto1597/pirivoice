@@ -51,7 +51,14 @@ function tap() {
 /** ปล่อย microtask ให้ `promptInstall()` ได้ทำงาน */
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
-beforeEach(() => {
+beforeEach(async () => {
+  // ⚠️ `deferredPrompt` เป็น state ระดับโมดูล และ **`dismissInstall()` ไม่ได้ล้างมันให้**
+  //    (เจตนา — การ์ด "ติดตั้งแอพ" ใน Profile ต้องเรียกใช้ต่อได้หลังผู้ใช้กด ✕)
+  //    ⇒ เทสที่ dispatch event แต่ **ไม่ยิง prompt** จะเหลือ event ค้างไปเทสถัดไป
+  //    ⇒ ต้องบริโภคทิ้งด้วย API สาธารณะก่อน (`'dismissed'` = ไม่เขียนธงใด ๆ)
+  window.dispatchEvent(makeInstallEvent('dismissed').event)
+  await pwa.promptInstall()
+
   // ⚠️ เคลียร์ "สถานะรอแตะแรก" ที่อาจค้างจากเทสก่อน ด้วย API สาธารณะเท่านั้น
   //    (`dismissInstall()` ยกเลิกคำขอที่รออยู่ — ดูเหตุผลใน `pwa.ts`)
   //    แล้วล้าง localStorage ทีหลัง เพื่อไม่ให้ flag ที่มันเพิ่งเขียนค้างมาที่เทสนี้
@@ -61,6 +68,9 @@ beforeEach(() => {
   window.matchMedia = vi
     .fn<(query: string) => MediaQueryList>()
     .mockReturnValue({ matches: false } as MediaQueryList) as unknown as typeof window.matchMedia
+  // ⚠️ `standaloneState` ก็เป็น state ระดับโมดูลเหมือนกัน — ต้องรีเซ็ตทุกเทส
+  //    ไม่งั้นเทสที่ตั้ง matchMedia(true) จะทำให้เทสถัดไปเห็น "ติดตั้งแล้ว" ค้างอยู่
+  pwa.registerPwa()
 })
 
 afterEach(() => {
@@ -124,14 +134,23 @@ describe('ไม่ยิงอัตโนมัติเมื่อไม่�
     expect(prompt).not.toHaveBeenCalled()
   })
 
-  it('เคยติดตั้งแล้ว → ไม่ยิงเอง', async () => {
+  /**
+   * ⚠️ เทสนี้ **เคยยืนยันว่า "มีธงติดตั้งแล้ว ⇒ ห้ามยิง"** ซึ่งกลายเป็นบั๊ก
+   *    — เบราว์เซอร์ **ไม่ยิง `beforeinstallprompt` ให้แอพที่ติดตั้งอยู่แล้ว** ตั้งแต่แรก
+   *      ⇒ การเอา `INSTALLED_KEY` มาบล็อกจึงไม่ได้กันอะไร แต่กลับทำให้คนที่
+   *        **ถอนแอพแล้ว** ติดตั้งกลับไม่ได้ตลอดไป (ดู describe "ถอนการติดตั้งแล้ว")
+   *    ⇒ สิ่งที่ต้องยืนยันจริงคือ "ไม่มี event = ไม่มีอะไรเกิดขึ้น" ไม่ใช่ "ธงบล็อก"
+   */
+  it('เคยติดตั้งแล้ว → เบราว์เซอร์ไม่ยิง event อยู่แล้ว ⇒ ไม่มีอะไรเกิดขึ้น', async () => {
     localStorage.setItem(INSTALLED_KEY, '1')
-    const { event, prompt } = makeInstallEvent()
 
-    window.dispatchEvent(event)
     tap()
     await flush()
-    expect(prompt).not.toHaveBeenCalled()
+
+    expect(pwa.showInstallBanner.value).toBe(false)
+    expect(pwa.canPromptInstall.value).toBe(false)
+    // ไม่มี event ⇒ ไม่มีอะไรถูกแตะต้อง รวมถึงไม่ไปล้างธงทิ้ง
+    expect(localStorage.getItem(INSTALLED_KEY)).toBe('1')
   })
 
   it('⚠️ ยิงเองได้ครั้งเดียวตลอดไป — เซสชันถัดไปกลับมาเป็นแบนเนอร์ให้กดเอง', async () => {
@@ -181,5 +200,64 @@ describe('หลังยิงเองสำเร็จ', () => {
     expect(localStorage.getItem(DISMISS_KEY)).toBeNull()
     // แต่จำว่าเคยยิงเองแล้ว ⇒ ไม่ยิงเองซ้ำ
     expect(localStorage.getItem(AUTO_ASKED_KEY)).toBe('1')
+  })
+})
+
+describe('ถอนการติดตั้งแล้ว — ต้องติดตั้งกลับได้', () => {
+  /**
+   * ⚠️ **การถอนแอพไม่ล้าง site data** ⇒ `piri_installed` ค้างอยู่ใน localStorage
+   *    ถ้าเอาธงนั้นมาบล็อกการติดตั้ง ผู้ใช้จะ **ไม่มีทางติดตั้งกลับได้อีกเลย**
+   *    ทั้งที่เบราว์เซอร์เพิ่งยืนยันว่า "ติดตั้งได้" (มันไม่ยิง event ถ้าติดตั้งอยู่)
+   */
+  it('★ เบราว์เซอร์ยิง event ใหม่ → ล้างธง "ติดตั้งแล้ว" ที่ค้างอยู่ทิ้ง', async () => {
+    localStorage.setItem(INSTALLED_KEY, '1')
+
+    window.dispatchEvent(makeInstallEvent().event)
+
+    expect(localStorage.getItem(INSTALLED_KEY)).toBeNull()
+  })
+
+  it('★ คนที่เคยติดตั้ง+ถอน กลับมาเห็นแบนเนอร์อีกครั้ง (เดิมถูกบล็อกถาวร)', async () => {
+    // สภาพจริงหลังถอน: เคยถูกถามไปแล้ว (AUTO_ASKED) + ธงติดตั้งยังค้าง
+    localStorage.setItem(AUTO_ASKED_KEY, '1')
+    localStorage.setItem(INSTALLED_KEY, '1')
+
+    pwa.registerPwa()
+    window.dispatchEvent(makeInstallEvent().event)
+
+    expect(pwa.showInstallBanner.value).toBe(true)
+  })
+})
+
+describe('ติดตั้งเองจากในการ์ด Profile — ทางกลับของคนที่เคยกด ✕', () => {
+  it('★ ผู้ที่เคยกด ✕ ปิดไว้ ยังติดตั้งเองได้ และคำสั่งนั้นล้างการปิดทิ้ง', async () => {
+    pwa.dismissInstall() // ผู้ใช้กด ✕ ปิดแบนเนอร์
+    const { event, prompt } = makeInstallEvent()
+    window.dispatchEvent(event)
+
+    expect(pwa.showInstallBanner.value).toBe(false) // แบนเนอร์ไม่ขึ้น (จำการปิดไว้)
+    expect(pwa.canPromptInstall.value).toBe(true) // แต่ยังติดตั้งได้
+
+    await pwa.installNow()
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(DISMISS_KEY)).toBeNull()
+  })
+
+  it('ไม่มี event จากเบราว์เซอร์ → ติดตั้งเองไม่ได้ (คืน unavailable ไม่ throw)', async () => {
+    expect(pwa.canPromptInstall.value).toBe(false)
+    await expect(pwa.installNow()).resolves.toBe('unavailable')
+  })
+
+  it('กำลังเปิดในโหมดแอพที่ติดตั้งแล้ว → ไม่ต้องติดตั้งซ้ำ', async () => {
+    window.matchMedia = vi.fn<(query: string) => MediaQueryList>().mockReturnValue({
+      matches: true,
+    } as MediaQueryList) as unknown as typeof window.matchMedia
+
+    pwa.registerPwa()
+    window.dispatchEvent(makeInstallEvent().event)
+
+    expect(pwa.isStandalone.value).toBe(true)
+    expect(pwa.canPromptInstall.value).toBe(false)
   })
 })
