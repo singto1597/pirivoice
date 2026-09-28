@@ -53,6 +53,30 @@ DEFAULT_PUSH_URL = "/app/notifications"
 # เวลารอสูงสุดต่อ 1 คำขอ — FCM/APNs ปกติตอบใน <1 วิ, 10 วิคือ "ปลายทางตายแล้ว"
 _SEND_TIMEOUT_SECONDS = 10.0
 
+# ค่า `Urgency` ที่ RFC 8030 §5.3 นิยามไว้ — **มีแค่ 4 ตัวนี้** ค่าอื่นผู้ให้บริการตอบ 400
+_URGENCIES = frozenset({"very-low", "low", "normal", "high"})
+
+
+def _urgency() -> str:
+    """`Urgency` ของข้อความนี้ — กรองค่าจาก `.env` ก่อนปล่อยออกเน็ต
+
+    ⚠️ **ทำไมต้องกรอง ไม่ส่งค่าดิบ ๆ:** ค่าที่ผิดจะได้ **400 จากผู้ให้บริการ**
+       ⇒ `_classify` ตัดสินเป็น `permanent` ⇒ push **ตายทุกอัน** โดยที่ in-app ยังทำงาน
+       = อาการ "เปิด push แล้วแต่ไม่มีอะไรเด้งเลย" ซึ่งหาสาเหตุยากมาก
+       (ค่า default ของ pydantic Settings คือ `str` ⇒ `.env` เขียนอะไรลงไปก็ผ่านเข้ามาได้)
+
+    ค่าที่ผิด → เตือนใน log แล้วใช้ `high` ต่อ (เลือก `high` ไม่ใช่ `normal` เพราะ
+    อาการของ `normal` คือ "เงียบ" ซึ่งผู้ใช้ตีความว่า "พัง" และเราไม่รู้ตัว)
+    """
+    value = (settings.PUSH_URGENCY or "").strip().lower()
+    if value in _URGENCIES:
+        return value
+    logger.warning(
+        f"⚠️ PUSH_URGENCY={settings.PUSH_URGENCY!r} ไม่ใช่ค่าที่ RFC 8030 นิยาม "
+        f"({sorted(_URGENCIES)}) — ใช้ 'high' แทน"
+    )
+    return "high"
+
 
 # ============================================================
 # 🔑 VAPID — โหลดคีย์แบบ lazy + cache
@@ -191,7 +215,19 @@ async def _send_one(
 
     # ⚠️ ไม่ส่ง `Content-Type` — pywebpush ก็ไม่ส่ง (ปลายทางไม่ต้องการ และการใส่ค่าผิด
     #    อาจทำให้ผู้ให้บริการบางรายปฏิเสธ) · `Content-Length` httpx จัดการเอง
-    headers.update({"Content-Encoding": "aes128gcm", "TTL": str(ttl)})
+    #
+    # 🚨 **`Urgency` (RFC 8030 §5.3) — ห้ามลบ** เป็นตัวตัดสินว่าเครื่องผู้ใช้จะเด้งทันที
+    #    หรือจะกองไว้จนกว่าเขาจะเปิดแอพเอง
+    #    · ไม่ส่ง header นี้ = `normal` ⇒ **FCM (Android) เลื่อนการส่งได้** จนกว่าเครื่องจะตื่น
+    #      อาการที่เกิดขึ้นจริง: ปิดแอพอยู่เงียบ พอเปิดแอพทีเดียวเด้งมาทั้งกองเก่า
+    #    · `high` ⇒ FCM ตื่นเครื่องทันที (APNs ก็ส่งแบบ immediate)
+    #    · ค่าที่ถูกต้องมีแค่ 4 ตัว: `very-low` `low` `normal` `high` — ค่าอื่นผู้ให้บริการ
+    #      อาจตอบ 400 ⇒ ต้องกรองก่อน ไม่ปล่อยค่าจาก .env ผ่านดิบ ๆ
+    headers.update({
+        "Content-Encoding": "aes128gcm",
+        "TTL": str(ttl),
+        "Urgency": _urgency(),
+    })
 
     try:
         r = await client.post(sub["endpoint"], content=body, headers=headers)

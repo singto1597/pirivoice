@@ -260,6 +260,22 @@ self.addEventListener('push', (event) => {
   // ไม่มีเนื้อหาให้แสดง — จบเงียบ ๆ (ไม่ throw: ปล่อยให้เป็น error ใน console ไม่มีประโยชน์)
   if (!payload || !payload.title) return;
 
+  // ⚠️ **ไม่มีสิทธิ์แจ้งเตือน = `showNotification()` โยน TypeError** —
+  //    ข้อความเต็ม: "No notification permission has been granted for this origin"
+  //    เกิดได้จริง 2 ทาง และ **ทั้งสองทางไม่ใช่ความผิดของผู้ใช้**:
+  //      1. ทดสอบด้วยปุ่ม Push ใน DevTools โดยที่ยังไม่ได้กดสวิตช์เปิด (ข้อ 01 ของเช็กลิสต์)
+  //         — ปุ่มนี้ยิง `push` event ตรง ๆ ข้าม UI เรา จึงไม่มีการขอสิทธิ์เลย
+  //      2. ผู้ใช้ไปเพิกถอนสิทธิ์ในตั้งค่าเบราว์เซอร์ทีหลัง แต่ subscription ยังค้างอยู่
+  //         (ฝั่งเซิร์ฟเวอร์ยังส่งอยู่จนกว่าจะได้ 410)
+  //    ⇒ ถ้าไม่ดักไว้ จะได้ **uncaught promise rejection** ทุกครั้งที่ push มา
+  //      ซึ่งอ่านดูเหมือน "แอพพัง" ทั้งที่แค่ไม่มีสิทธิ์ — และทำให้หาสาเหตุจริงยากขึ้น
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+    // เตือนแบบ `warn` ไม่ใช่ `error` — อันนี้ *คาดหมายได้* ไม่ใช่ความผิดพลาด
+    // (ทางแก้อยู่ที่ผู้ใช้กดสวิตช์เปิดในหน้าโปรไฟล์ ไม่ใช่ที่โค้ด)
+    console.warn('[sw] มี push เข้ามาแต่ยังไม่ได้สิทธิ์แจ้งเตือน — ข้ามข้อความนี้');
+    return;
+  }
+
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body || '',

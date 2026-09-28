@@ -28,6 +28,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 import http_ece
 import httpx
@@ -191,6 +192,10 @@ async def test_E1_real_send_returns_status_and_rfc8292_headers(push_server, brow
     assert sent["path"] == "/push/device-1"
     assert sent["headers"]["content-encoding"] == "aes128gcm"
     assert sent["headers"]["ttl"] == "3600"
+    # ★ `Urgency` **ต้องมีจริง** — ถ้าลบ `"Urgency": _urgency()` ออกจาก `headers.update({...})`
+    #   header นี้จะหาย ⇒ FCM กลับไปใช้ `normal` = เลื่อนการส่งจนกว่าเครื่องจะตื่น
+    #   ⇒ อาการจริงที่เจอ: "ปิดแอพอยู่ไม่เด้ง พอเปิดแอพเด้งมาทั้งกองเก่า"
+    assert sent["headers"]["urgency"] == "high"
     # ⚠️ **ห้ามมี Content-Type** — pywebpush ก็ไม่ส่ง (ดูคอมเมนต์ใน `_send_one`)
     assert "content-type" not in sent["headers"]
 
@@ -405,3 +410,46 @@ async def test_E8_sign_rejects_non_mailto_subject(push_server, browser, monkeypa
 
     assert "sub" in str(err.value).lower()
     assert push_server.captured == [], "ต้องไม่มีการยิง request ออกไปเลย"
+
+
+# ============================================================
+# 4) `Urgency` — ค่าที่ผิดทำให้ push "ตายทุกอัน" ไม่ใช่แค่ช้า
+# ============================================================
+
+@pytest.mark.parametrize("raw", ["high", "HIGH", "  High  ", "NORMAL", "very-low", "low"])
+def test_E9_urgency_accepts_valid_values_and_normalizes(raw):
+    """ค่าที่ RFC 8030 นิยาม → ผ่าน (ปรับเป็นตัวพิมพ์เล็ก + ตัดช่องว่าง)
+
+    ⭐ `"  High  "` คือเคสที่พังเงียบที่สุดถ้าไม่ `.strip()` — `.env` ที่เขียน
+       `PUSH_URGENCY=high ` (เว้นวรรคท้ายบรรทัด) จะกลายเป็นค่าที่ผู้ให้บริการปฏิเสธ
+    """
+    value = raw.strip().lower()
+    with patch.object(settings, "PUSH_URGENCY", raw):
+        assert push_service._urgency() == value
+
+
+@pytest.mark.parametrize("bad", ["", "  ", "urgent", "high ", "critical", "10", "0"])
+def test_E10_urgency_rejects_invalid_values_and_falls_back_to_high(bad):
+    """ค่าที่ไม่รู้จัก → **ห้ามปล่อยผ่าน** เด็ดขาด
+
+    ⚠️ **ทำไมนี่สำคัญกว่าเรื่องความสวยงาม:** ค่า `Urgency` ที่ผิดจะได้ **400**
+       จากผู้ให้บริการ ⇒ `_classify` ตัดสินเป็น `permanent` ⇒ **push ทุกอันตาย**
+       โดย in-app ยังทำงานปกติ ⇒ อาการคือ "เปิด push แล้วแต่ไม่มีอะไรเด้งเลย"
+       ซึ่งแยกไม่ออกจาก "ผู้ใช้ไม่ได้รับอนุญาต" ด้วยตาเปล่า
+
+    ⇒ เลือก `high` เป็นค่าถอย เพราะอาการของ `normal` คือ "เงียบ" ซึ่งผู้ใช้
+      ตีความว่า "พัง" และเราจะไม่รู้ตัวเลย
+
+    mutation ที่ต้องทำให้แตก: `return settings.PUSH_URGENCY` ตรง ๆ → เคส `"urgent"` ล้ม
+    """
+    with patch.object(settings, "PUSH_URGENCY", bad):
+        assert push_service._urgency() == "high"
+
+
+def test_E11_urgency_constant_matches_rfc8030():
+    """ลิสต์ค่าที่อนุญาตต้องตรงกับ RFC 8030 §5.3 เป๊ะ — เพิ่ม/ลดไม่ได้
+
+    ⚠️ `"normal"` **ต้องอยู่ในลิสต์** — เป็นค่า default ของสเปก ถ้าถอดออก
+       จะทำให้ทุกคนที่ตั้ง `normal` โดยเจตนาโดนปรับเป็น `high` เงียบ ๆ (กินแบตขึ้น)
+    """
+    assert push_service._URGENCIES == {"very-low", "low", "normal", "high"}
