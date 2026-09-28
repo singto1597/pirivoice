@@ -85,3 +85,49 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   report_new: 'bi bi-flag-fill',
   report_actioned: 'bi bi-check2-circle',
 }
+
+// ============================================================
+// 🔔 Web Push (A3)
+// ============================================================
+
+/** สถานะ push ของฉัน — `GET /api/notifications/push/status`
+ *
+ * ⚠️ `enabled: false` = **เซิร์ฟเวอร์ยังไม่ได้ตั้งคีย์ VAPID** ⇒ UI ต้องซ่อนการ์ดทั้งใบ
+ *    ไม่ใช่โชว์ปุ่มที่กดแล้วไม่เกิดอะไร (สวิตช์ปิดฉุกเฉินฝั่งเซิร์ฟเวอร์ ไม่เกี่ยวกับ
+ *    สิทธิ์ของเบราว์เซอร์ — สองอย่างนี้คนละเรื่องและผู้ใช้สับสนได้ง่าย)
+ */
+export interface PushStatus {
+  enabled: boolean
+  public_key: string
+  device_count: number
+}
+
+/** body ของ `POST /api/notifications/push/subscribe`
+ *
+ * 🚨 **ไม่มีฟิลด์ `user_id` โดยเจตนา — ห้ามเพิ่ม** เจ้าของปลายทางมาจาก JWT เท่านั้น
+ *    (ฝั่ง backend มีเทสต์ S8 ล็อกไว้ว่าการส่ง `user_id` มาใน body ต้องถูกเมิน)
+ *    — เมินโดย pydantic ⇒ ส่งไปก็ไม่มีผล แต่การประกาศฟิลด์ที่นี่จะชวนให้คนเขียนตาม
+ */
+export interface PushSubscribePayload {
+  endpoint: string
+  keys: {
+    /** P-256 public key ของอุปกรณ์ (base64url จาก `PushSubscription.getKey('p256dh')`) */
+    p256dh: string
+    /** shared secret ของอุปกรณ์ (base64url จาก `getKey('auth')`) */
+    auth: string
+  }
+}
+
+export interface PushSubscribeResponse {
+  device_count: number
+}
+
+export interface PushUnsubscribePayload {
+  endpoint: string
+}
+
+/** `removed: 0` = ไม่มีปลายทางของตัวเองที่ตรงกัน — **ไม่ใช่ error** (endpoint idempotent) */
+export interface PushUnsubscribeResponse {
+  removed: number
+  device_count: number
+}

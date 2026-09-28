@@ -81,6 +81,36 @@ services:
         parallelism: 1
         order: start-first
 
+  # 📲 ARQ Worker: ส่ง Web Push (A3) — cron ทุก 20 วินาที + cleanup วันละครั้ง
+  # ⭐ แยก service จาก `worker` ข้างบนโดยเจตนา: `worker` ตั้ง max_jobs=1 + job_timeout=3600
+  #    ⇒ ถ้ารวมกัน import นักเรียนตอนเปิดเทอมจะบล็อก push ทั้งชั่วโมง (ดู workers/push_worker.py)
+  # ⚠️ ไม่มี volume — push worker ไม่แตะไฟล์เลย (อ่าน/เขียน DB อย่างเดียว)
+  #    แต่ต้องออก HTTPS ได้ เพราะยิงไป FCM/APNs (network `shared_network` มี gateway ออกเน็ตอยู่แล้ว)
+  push_worker:
+    image: pirivoice-${ENV_NAME}-backend:${IMAGE_TAG:-latest}
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${ENV_NAME}_infra_db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://${ENV_NAME}_infra_redis:6379/0
+    networks:
+      - shared_network
+    command: ["python", "-m", "arq", "workers.push_worker.WorkerSettings"]
+    deploy:
+      # replicas 1 — ยังไม่ต้องมากกว่านี้: throughput ของ cron 20 วิ × batch 100
+      # = 300 ข้อความ/นาที ซึ่งเกินความต้องการของโรงเรียนมาก
+      # ⚠️ ถ้าจะเพิ่ม replica ในอนาคต ต้องรู้ว่า `FOR UPDATE SKIP LOCKED` รองรับอยู่แล้ว
+      #    แต่ `unique=True` ของ ARQ cron จะทำให้มีตัวเดียวได้ cron — ตัวอื่นว่าง
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        parallelism: 1
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        order: start-first
+
 volumes:
   # Shared volume เก็บไฟล์ .xlsx ที่อัปโหลด — backend เขียน, worker อ่าน
   # (ตั้งชื่อตาม ENV_NAME → staging/production ใช้คนละ volume กัน)

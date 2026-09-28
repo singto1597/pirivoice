@@ -16,6 +16,7 @@ import {
 import { getMyStats } from '@/services/me';
 import type { PersonalStats } from '@/types/me';
 import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
+import PushSettingsCard from '@/components/PushSettingsCard.vue';
 import { useAuthStore } from '@/stores/auth';
 import {
   canPromptInstall,
@@ -462,6 +463,11 @@ onMounted(loadStats);
           </div>
         </div>
       </div>
+
+      <!-- ===== 🔔 แจ้งเตือนถึงมือถือ (A3) ===== -->
+      <!-- วางต่อจากการ์ดตั้งค่ากลุ่มโดยเจตนา — สองการ์ดนี้เป็นเรื่องเดียวกันคนละชั้น:
+           การ์ดบน = "รับเรื่องอะไร" (ทั้ง in-app และ push) · การ์ดนี้ = "เครื่องนี้รับไหม" -->
+      <PushSettingsCard />
 
       <!-- ===== 📱 ติดตั้งแอป ===== -->
       <!-- ซ่อนเมื่อเปิดในโหมดแอพที่ติดตั้งแล้ว — ไม่มีอะไรให้ติดตั้งอีก -->

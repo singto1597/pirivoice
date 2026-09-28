@@ -9,6 +9,11 @@
 - เปิดหน้ารายละเอียด (เรื่อง/บอร์ด/รายงาน) → mark_read → badge ลดลง
 
 ทุกฟังก์ชันรับ `conn` ที่อยู่ใน transaction ของ caller (ไม่เปิด transaction เอง)
+
+🔔 **Web Push (A3) แขวนอยู่ที่ trigger ของ DB ไม่ใช่ที่ไฟล์นี้** — ทุกแถวที่ insert เข้า `notifications`
+จะถูก `trg_notifications_push_outbox` (migration 018) คัดลอกลง `push_outbox` ให้อัตโนมัติ
+⇒ ที่นี่ **ไม่มีโค้ด push เลยแม้บรรทัดเดียว** และไม่ควรมี · เพิ่ม/แก้คิวรีที่ insert notification
+ต้องผ่าน `notify*` เสมอ ไม่งั้นแถวนั้นจะไม่ถูก push (ดู `services/push_service.py` ฝั่งส่ง)
 """
 from typing import Iterable, List, Optional
 

@@ -239,10 +239,84 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// ── push: ❗ที่ว่างไว้ให้ A3 (Push Notification) มาเติม ───────────────────────
-// A3 จะต้อง: อ่าน event.data.json() → self.registration.showNotification(...)
-// และเพิ่ม 'notificationclick' handler สำหรับ deep link (A4)
-// ⚠️ ตอนนี้ยังไม่มี push subscription (ยังไม่ได้ทำ A3) ⇒ handler นี้ไม่มีทางถูกเรียก
-self.addEventListener('push', () => {
-  // ยังไม่ทำ — ดูคอมเมนต์ข้างบน
+// ── push: ข้อความที่เซิร์ฟเวอร์ส่งมา (A3) ────────────────────────────────────
+// รูป payload เป็น **สัญญาระหว่าง backend กับไฟล์นี้** — ฝั่งโน้นคือ
+// `services/push_service.build_payload()` (pure function มีเทสต์ล็อกไว้)
+//   { title, body, tag, data: { url, notification_id, type, entity_type, … } }
+// ⚠️ เปลี่ยนชื่อคีย์ที่ฝั่งใดฝั่งหนึ่ง = อีกฝั่งพังเงียบ ๆ (ไม่มี type ให้ compiler จับ)
+const DEFAULT_PUSH_URL = '/app/notifications';
+
+self.addEventListener('push', (event) => {
+  // ⚠️ `event.data` เป็น **null ได้** (push เปล่า / ผู้ให้บริการส่งสัญญาณไม่มีเนื้อหา)
+  //    และ `.json()` **โยน** ถ้าเนื้อหาไม่ใช่ JSON ⇒ ต้องครอบ try/catch ไม่งั้น
+  //    handler ตายทั้งอันและผู้ใช้ไม่เห็นอะไรเลยโดยที่เราไม่รู้
+  let payload = null;
+  try {
+    payload = event.data ? event.data.json() : null;
+  } catch {
+    payload = null;
+  }
+
+  // ไม่มีเนื้อหาให้แสดง — จบเงียบ ๆ (ไม่ throw: ปล่อยให้เป็น error ใน console ไม่มีประโยชน์)
+  if (!payload || !payload.title) return;
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body || '',
+      // ⭐ ใช้ `?v=3` ให้ตรงกับ `SHELL_ASSETS` ด้านบน — `cache.match()` นับ query เป็น
+      //    ส่วนหนึ่งของคีย์ ⇒ URL เปล่ากับ URL มี `?v=` เป็นคนละรายการ
+      //    และไอคอนที่มี `?v=` ถูก precache ไว้แล้ว ⇒ ทำงานได้ตอนออฟไลน์ด้วย
+      //    (URL เปล่าเคยถูก Cloudflare แคชเป็นหน้า HTML ทับไปแล้วรอบหนึ่ง — ดู SHELL_ASSETS)
+      icon: '/icons/icon-192.png?v=3',
+      // `badge` ใช้เฉพาะ Android (จุดเล็ก ๆ ในแถบสถานะ) — ไม่มี asset ขาวดำในโปรเจค
+      // ⇒ ใช้ไอคอนเดียวกัน (Android จะ render เป็นทรงทึบ) ดีกว่าไม่ส่งเลย
+      badge: '/icons/icon-192.png?v=3',
+      // `tag` = ให้อันใหม่ **แทนที่** อันเก่าของเรื่องเดียวกัน — กันมือถือขึ้นซ้ำ 5 อัน
+      //   เวลามีคนตอบรัว ๆ หรือ worker ส่งซ้ำหลัง retry
+      tag: payload.tag || undefined,
+      data: payload.data || { url: DEFAULT_PUSH_URL },
+    }),
+  );
+});
+
+// ── notificationclick: ผู้ใช้แตะ notification (deep link ของ A4 มาที่นี่) ─────
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const raw = (event.notification.data && event.notification.data.url) || DEFAULT_PUSH_URL;
+  const target = new URL(raw, self.location.origin);
+
+  // ⚠️ **ต้องเป็น `/app/notifications` ไม่ใช่ `/notifications`** — route เปล่าใน router
+  //    เป็น **string redirect** ที่ทำ query หลุด ⇒ deep link ของ A4 (เช่น `?focus=12`)
+  //    จะหายไปทั้งอันถ้าชี้ไป `/notifications` — และอาการคือ "กดแล้วไม่ไปไหน" หาสาเหตุยาก
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const sameOrigin = windows.filter((c) => {
+        try {
+          return new URL(c.url).origin === target.origin;
+        } catch {
+          return false;
+        }
+      });
+
+      if (sameOrigin.length) {
+        // ⭐ เลือกตัวที่ **อยู่ในการควบคุมของ SW นี้** ก่อน — `client.navigate()` โยน
+        //    ถ้า client ไม่อยู่ใต้ scope (เกิดขึ้นได้เพราะ `includeUncontrolled: true`)
+        const controlled = sameOrigin.find((c) => c.frameType === 'top-level' && 'navigate' in c);
+        const tab = controlled || sameOrigin[0];
+        await tab.focus();
+        try {
+          await tab.navigate(target.href);
+        } catch {
+          // พาไปไม่ได้ก็ไม่เป็นไร — การโฟกัสแท็บยังมีค่าอยู่ดี (อย่าปล่อยให้ throw
+          // ทำให้ waitUntil ล้ม ซึ่งจะทำให้เบราว์เซอร์มองว่า handler ทำงานไม่สำเร็จ)
+        }
+        return;
+      }
+
+      // ไม่มีแท็บของแอพเปิดอยู่เลย → เปิดใหม่
+      if (self.clients.openWindow) await self.clients.openWindow(target.href);
+    })(),
+  );
 });

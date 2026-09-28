@@ -1,0 +1,176 @@
+<!-- eslint-disable vue/multi-word-component-names -- ชื่อตาม spec A3 -->
+<script setup lang="ts">
+/**
+ * 🔔 การ์ด "แจ้งเตือนถึงมือถือ" (A3)
+ *
+ * แยกเป็นคอมโพเนนต์เพราะ `Profile.vue` ยาวอยู่แล้ว และการ์ดนี้มี **5 สถานะ**
+ * ที่ต้องแยกให้ผู้ใช้อ่านออก (ต่างจากการ์ดตั้งค่ากลุ่มใน A2 ที่มีสถานะเดียว)
+ *
+ * ⚠️ การ์ดนี้เป็น **per-เครื่อง** ไม่ใช่ per-บัญชี — เครื่องเดียวถูกใช้หลายคนได้
+ *    (มือถือโรงเรียน) ⇒ สวิตช์นี้ควบคุม "อุปกรณ์นี้" ส่วนจำนวนที่แสดงคือทุกอุปกรณ์
+ *    ของบัญชีที่ล็อกอินอยู่ · การยึดเครื่องกับเจ้าของใหม่เกิดตอน subscribe (ดู S3)
+ */
+import { computed, onMounted, ref } from 'vue'
+import Swal from 'sweetalert2'
+import { isIosSafari, isStandalone } from '@/pwa'
+import {
+  disablePush,
+  enablePush,
+  pushBusy,
+  pushDeviceCount,
+  pushEnabled,
+  pushPermission,
+  pushReady,
+  pushSubscribed,
+  pushSupported,
+  refreshPushStatus,
+} from '@/push'
+
+/**
+ * 6 สถานะที่แสดงผล — เรียงตามลำดับความสำคัญ (ตัวที่มาก่อนชนะ)
+ *
+ * ⚠️ `ios-needs-install` ต้องมาก่อน `blocked` — บน iOS ที่ยังไม่ติดตั้ง
+ *    `Notification.permission` อาจเป็น `denied` ค้างจากตอนที่ยังใช้ในแท็บปกติ
+ *    ⇒ ถ้าเอา `blocked` มาก่อน จะบอกผู้ใช้ผิด ๆ ว่า "ถูกบล็อก" ทั้งที่แค่ยังไม่ติดตั้ง
+ */
+type CardState = 'loading' | 'unsupported' | 'ios-needs-install' | 'blocked' | 'on' | 'off'
+
+const state = computed<CardState>(() => {
+  if (!pushReady.value) return 'loading'
+  if (!pushSupported.value) return 'unsupported'
+  if (isIosSafari.value && !isStandalone.value) return 'ios-needs-install'
+  if (pushPermission.value === 'denied') return 'blocked'
+  return pushSubscribed.value ? 'on' : 'off'
+})
+
+const busy = computed(() => pushBusy.value)
+const toggling = ref(false)
+
+onMounted(() => {
+  // ⚠️ ที่นี่คือที่ที่คีย์ public ถูกโหลด — **จำเป็นต่อความถูกต้อง ไม่ใช่แค่ความสวย**
+  //    `enablePush()` ห้ามมี `await` ก่อนขอสิทธิ์ (iOS ตัด gesture chain) ⇒ คีย์ต้องพร้อมก่อน
+  void refreshPushStatus()
+})
+
+async function onToggle() {
+  if (toggling.value || busy.value) return
+  toggling.value = true
+  try {
+    if (pushSubscribed.value) {
+      await disablePush()
+      await Swal.fire({
+        icon: 'success',
+        title: 'ปิดการแจ้งเตือนบนเครื่องนี้แล้ว',
+        text: 'ยังเปิดในอุปกรณ์อื่นได้ตามเดิม',
+        timer: 2000,
+        showConfirmButton: false,
+      })
+      return
+    }
+
+    const result = await enablePush()
+    if (result === 'enabled') {
+      await Swal.fire({
+        icon: 'success',
+        title: 'เปิดการแจ้งเตือนแล้ว',
+        text: 'มีเรื่องใหม่หรือกระทู้ใหม่ เดี๋ยวแจ้งให้ทราบแม้ปิดแอปอยู่',
+        timer: 2400,
+        showConfirmButton: false,
+      })
+    } else if (result === 'denied') {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'เบราว์เซอร์บล็อกการแจ้งเตือนไว้',
+        text: 'เปิดได้ที่ ตั้งค่าเบราว์เซอร์ → การแจ้งเตือน → อนุญาตสำหรับเว็บนี้',
+      })
+    }
+    // `dismissed` = ผู้ใช้ปิด dialog เอง — ไม่ต้องเด้งอะไรตามไป ซ้ำซาก
+  } catch (e: unknown) {
+    await Swal.fire({
+      icon: 'error',
+      title: 'เปิดการแจ้งเตือนไม่สำเร็จ',
+      text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่',
+    })
+  } finally {
+    toggling.value = false
+  }
+}
+</script>
+
+<template>
+  <!--
+    ⚠️ ซ่อนทั้งใบเมื่อเซิร์ฟเวอร์ยังไม่ได้ตั้งคีย์ VAPID (`pushEnabled === false`)
+    — เป็นสวิตช์ปิดฉุกเฉินฝั่งเซิร์ฟเวอร์ ไม่ใช่ปัญหาของผู้ใช้ ⇒ โชว์ปุ่มที่กดแล้ว
+    ไม่มีอะไรเกิดขึ้นจะทำให้เข้าใจผิดว่าแอพพัง · เงื่อนไขนี้ครอบ `pushSupported` ด้วย
+    คือ "ซ่อนทั้งใบ" ชนะ "อธิบายว่าทำไมเครื่องนี้ใช้ไม่ได้" (เจตนา — ดูคอมเมนต์ใน types)
+  -->
+  <div v-if="pushReady && pushEnabled" class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
+    <div class="mb-5 flex items-center gap-3">
+      <span
+        class="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-500"
+      >
+        <i class="bi bi-bell"></i>
+      </span>
+      <div>
+        <h2 class="text-lg font-bold text-stone-900">แจ้งเตือนถึงมือถือ</h2>
+        <p class="mt-0.5 text-xs text-stone-500">
+          มีเรื่องใหม่หรือกระทู้ใหม่ เด้งขึ้นหน้าจอแม้ยังไม่เปิดแอป
+        </p>
+      </div>
+    </div>
+
+    <!-- ① เบราว์เซอร์ไม่รองรับ -->
+    <p v-if="state === 'unsupported'" class="text-sm leading-relaxed text-stone-600">
+      เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือนแบบ push — ลองเปิดด้วย Chrome หรือ Safari รุ่นใหม่
+      (ในแอปของ LINE / Facebook จะใช้ไม่ได้)
+    </p>
+
+    <!-- ② iOS ต้องติดตั้งลงหน้าจอก่อน (Safari บนแท็บธรรมดาไม่มี PushManager) -->
+    <div v-else-if="state === 'ios-needs-install'" class="text-sm leading-relaxed text-stone-600">
+      <p>
+        บน iPhone/iPad ต้อง <strong class="font-semibold text-stone-800">ติดตั้ง PIRIvoice
+        ลงหน้าจอหลักก่อน</strong> แล้วเปิดจากไอคอนนั้น จึงจะรับการแจ้งเตือนได้
+      </p>
+      <p class="mt-2 text-xs text-stone-500">
+        วิธีติดตั้ง: แตะปุ่มแชร์ <i class="bi bi-box-arrow-up"></i> ด้านล่าง → “เพิ่มไปที่หน้าจอหลัก”
+      </p>
+    </div>
+
+    <!-- ③ ผู้ใช้บล็อกไว้ที่เบราว์เซอร์ — เราเปิดให้ไม่ได้ ต้องให้เขาไปเปิดเอง -->
+    <p v-else-if="state === 'blocked'" class="text-sm leading-relaxed text-stone-600">
+      การแจ้งเตือนสำหรับเว็บนี้ <strong class="font-semibold text-stone-800">ถูกบล็อกอยู่</strong>
+      — เปิดได้ที่ ตั้งค่าเบราว์เซอร์ → การแจ้งเตือน → อนุญาตสำหรับเว็บนี้ แล้วกลับมาเปิดอีกครั้ง
+    </p>
+
+    <!-- ④/⑤ ปกติ — สวิตช์ของ "เครื่องนี้" + จำนวนอุปกรณ์ทั้งบัญชี -->
+    <div v-else class="flex items-start gap-4">
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-semibold text-stone-800">
+          {{ pushSubscribed ? 'เปิดอยู่บนเครื่องนี้' : 'ยังไม่ได้เปิดบนเครื่องนี้' }}
+        </p>
+        <p class="mt-0.5 text-xs leading-snug text-stone-500">
+          <template v-if="pushDeviceCount > 0">
+            บัญชีนี้เปิดรับอยู่ {{ pushDeviceCount }} อุปกรณ์
+          </template>
+          <template v-else> เปิดแล้วจะได้รับแจ้งเตือนแม้ปิดแอป </template>
+        </p>
+      </div>
+      <!-- role="switch" + aria-checked → screen reader อ่านสถานะออก ไม่ต้องเดาจากสี -->
+      <button
+        type="button"
+        role="switch"
+        :aria-checked="pushSubscribed"
+        :aria-label="pushSubscribed ? 'ปิดการแจ้งเตือนบนเครื่องนี้' : 'เปิดการแจ้งเตือนบนเครื่องนี้'"
+        :disabled="toggling || busy"
+        class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 disabled:opacity-50"
+        :class="pushSubscribed ? 'bg-[#B91C1C]' : 'bg-stone-300'"
+        @click="onToggle"
+      >
+        <span
+          class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none"
+          :class="pushSubscribed ? 'translate-x-[22px]' : 'translate-x-0.5'"
+        ></span>
+      </button>
+    </div>
+  </div>
+</template>

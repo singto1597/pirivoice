@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 import asyncpg
 
 from core.dependencies import get_db_pool, get_current_user
@@ -7,8 +7,10 @@ from models.notification_schemas import (
     NotificationListOut, NotificationOut, UnreadCountsOut,
     MarkReadRequest, MarkReadOut,
     NotificationPreferencesOut, UpdateNotificationPreferencesRequest,
+    PushStatusOut, PushSubscribeOut, PushSubscriptionIn,
+    PushUnsubscribeIn, PushUnsubscribeOut,
 )
-from services import notification_service
+from services import notification_service, push_service
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -106,3 +108,75 @@ async def update_preferences(
         )
     except ValidationError as e:
         raise _err(e)
+
+
+# ============================================================
+# 🔔 Web Push (A3)
+# ------------------------------------------------------------
+# ⚠️ **ไม่ต้องมี `require_permission` เลย** — ทั้งสาม route เป็น "การตั้งค่าส่วนตัว"
+#    ตัวตนคือสิทธิ์ (แบบเดียวกับ `/api/me/stats` และ `/api/issues/summary`)
+#    ผู้ใช้แก้ได้เฉพาะปลายทางของ *ตัวเอง* เพราะ `user_id` มาจาก JWT เสมอ
+#    ⇒ ไม่ต้อง backfill permission และไม่ต้องแตะ `rbac.py`/`roles.json`
+# ============================================================
+
+@router.get("/push/status", response_model=PushStatusOut)
+async def push_status(
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """สถานะ push ของฉัน + VAPID public key ที่เบราว์เซอร์ต้องใช้ subscribe
+
+    ⭐ **public key ต้องเสิร์ฟจากที่นี่ ไม่ใช่ฝังตอน build frontend**
+       เพราะ `docker build` ของ frontend ไม่อ่าน root `.env` (รับ build-arg ตัวเดียว
+       คือ `VITE_API_BASE_URL`) ⇒ ถ้าฝังตอน build จะต้อง rebuild image ทุกครั้งที่
+       rotate key และ staging/production จะได้คีย์เดียวกันโดยแยกไม่ออก
+    """
+    uid = _ensure_user(user_ctx)
+    return await push_service.get_status(pool, uid)
+
+
+@router.post("/push/subscribe", response_model=PushSubscribeOut)
+async def push_subscribe(
+    req: PushSubscriptionIn,
+    request: Request,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """บันทึกปลายทาง push ของอุปกรณ์นี้ — idempotent (กดซ้ำได้ ไม่เกิดแถวซ้ำ)
+
+    ⚠️ **`user_id` มาจาก JWT เท่านั้น** — `PushSubscriptionIn` ไม่มีฟิลด์นี้
+       โดยเจตนา (ดู docstring ของ schema) · ถ้าส่ง `user_id` มาใน body จะถูก
+       pydantic ตัดทิ้งเงียบ ๆ ⇒ ลงทะเบียนปลายทางให้คนอื่นไม่ได้ (เทสต์ S8)
+
+    📱 `user_agent` อ่านจาก header ตรงนี้ (ไม่ใช่จาก `user_ctx`) — `get_current_user`
+       คืนแค่ `user_id`/`is_system` เท่านั้น · เก็บไว้ **เพื่อการวินิจฉัยเท่านั้น**
+       ("เครื่องนี้คือ iPhone ของใคร" ตอนมีคนบ่นว่า push ไม่ขึ้น) ไม่มีตรรกะใดอ่านค่านี้
+       ⇒ ถูกตัดให้สั้น 255 ตัวอักษรกันแถวบวม
+    """
+    uid = _ensure_user(user_ctx)
+    await push_service.save_subscription(
+        pool, uid,
+        endpoint=req.endpoint, p256dh=req.keys.p256dh, auth=req.keys.auth,
+        user_agent=(request.headers.get("user-agent") or "")[:255] or None,
+    )
+    return PushSubscribeOut(device_count=(await push_service.get_status(pool, uid))["device_count"])
+
+
+@router.post("/push/unsubscribe", response_model=PushUnsubscribeOut)
+async def push_unsubscribe(
+    req: PushUnsubscribeIn,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ลบปลายทางของอุปกรณ์นี้
+
+    ⚠️ **ไม่คืน 404 เมื่อไม่พบ** — คืน `removed: 0` แทน โดยเจตนา
+       เพราะ "ลบสิ่งที่ไม่มีอยู่" = ผลลัพธ์ที่ client ต้องการแล้ว (idempotent)
+       และเบราว์เซอร์อาจ unsubscribe ไปแล้วรอบหนึ่งก่อนถึงที่นี่
+    """
+    uid = _ensure_user(user_ctx)
+    removed = await push_service.delete_subscription(pool, uid, endpoint=req.endpoint)
+    return PushUnsubscribeOut(
+        removed=removed,
+        device_count=(await push_service.get_status(pool, uid))["device_count"],
+    )
