@@ -51,6 +51,11 @@ const ACTION_LABELS: Record<string, string> = {
   //    ไม่งั้นหน้าจอใดหน้าจอหนึ่งจะโชว์ชื่อ action ดิบ ๆ ภาษาอังกฤษ
   RETIRE_ANNOUNCEMENT: 'ปลดระวางประกาศ',
   UNRETIRE_ANNOUNCEMENT: 'นำประกาศกลับมาใช้',
+  CREATE_ACADEMIC_TERM: 'สร้างภาคเรียน',
+  UPDATE_ACADEMIC_TERM: 'แก้ไขภาคเรียน',
+  DELETE_ACADEMIC_TERM: 'ลบภาคเรียน',
+  RESTORE_ACADEMIC_TERM: 'กู้คืนภาคเรียน',
+  SET_CURRENT_TERM: 'ตั้งภาคปัจจุบัน',
 };
 
 function actionLabel(action: string): string {

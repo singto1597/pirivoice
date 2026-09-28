@@ -1,0 +1,72 @@
+// ประเภทข้อมูลของหน้าแรก (B1) — GET /api/home/summary
+//
+// 🎯 หน้าแรกยิง **call เดียว** แล้วได้ทุกอย่างที่ทุกคนเห็นเหมือนกัน
+//    (ประกาศ · สรุปเรื่องของฉัน · รอฉันตอบ · โหวตที่ยังไม่โหวต · สถิติส่วนตัว)
+//    ❌ แดชบอร์ดและคิวรายงาน **ไม่อยู่ในนี้** — เป็น permission-gated และแดชบอร์ดหนัก
+//       ⇒ Home ยังยิงสองตัวนั้นแยก เฉพาะคนที่มีสิทธิ์
+//
+// ⚠️ ฟิลด์ต้องตรงกับ backend/models/home_schemas.py — ที่นี่ไม่ประกาศ type ของ
+//    `announcements` / `my_issues` / `stats` ใหม่ แต่ **reuse** ของเดิม
+//    (ถ้าประกาศซ้ำ วันหน้า backend เพิ่มฟิลด์แล้วจะลืมแก้ที่ใดที่หนึ่ง)
+
+import type { PublicAnnouncement } from '@/types/announcement'
+import type { MyIssueSummary } from '@/types/issue'
+import type { PersonalStats } from '@/types/me'
+
+/**
+ * เรื่องที่ `current_assignee_id` เป็นฉันและยังไม่จบ — "รอฉันตอบ"
+ *
+ * ⚠️ เป้าแคบกว่า `GET /api/issues?received=true` โดยเจตนา — ตัวนั้นรวมเรื่องที่ฉัน
+ * แค่ไปเกี่ยวข้อง (เป็นผู้แจ้ง / มี countdown ของฉัน) ซึ่งไม่ใช่ "ต้องรอฉันตอบ"
+ */
+export interface PendingOnMeItem {
+  id: number
+  title: string
+  status: string
+  priority: string
+  current_level: string
+  created_at: string
+  room_name: string | null
+}
+
+/** บอร์ดโหวตที่ยังเปิดอยู่และฉันยังไม่ได้โหวต */
+export interface UnvotedBoardItem {
+  id: number
+  title: string
+  created_at: string
+  /** จำนวนโหวตของ **ทั้งบอร์ด** (ไม่ใช่ของฉัน) — ให้เห็นว่าคนอื่นสนใจแค่ไหน */
+  vote_count: number
+}
+
+export interface HomeSummary {
+  /** ⚠️ ไม่ถูกตัด/slice โดยเจตนา — เจ้าของระบบสั่ง "โชว์ทั้งหมดที่ยังไม่ถอดออก" */
+  announcements: PublicAnnouncement[]
+  my_issues: MyIssueSummary
+  pending_on_me: PendingOnMeItem[]
+  /** ยอดจริง (ไม่ถูก LIMIT ตัด) — ใช้ขึ้น "และอีก N เรื่อง" */
+  pending_on_me_total: number
+  unvoted_boards: UnvotedBoardItem[]
+  unvoted_boards_total: number
+  stats: PersonalStats
+}
+
+/**
+ * ข้อความ "และอีก N …" — คืน `null` เมื่อไม่มีอะไรเหลือ
+ *
+ * ทำเป็นฟังก์ชันเพราะต้องใช้ทั้งสองคิว (รอฉันตอบ / โหวตที่ยังไม่โหวต) และต้องคิด
+ * จาก `total - shown` เท่านั้น — **ห้ามเทียบ `total` กับ limit ที่ hardcode**
+ * เพราะ limit อยู่ฝั่ง backend
+ *
+ * `noun` ให้แต่ละคิวใช้คำของตัวเอง ("เรื่อง" / "บอร์ด") — ค่าเริ่มต้นคือ "เรื่อง"
+ */
+export function remainingLabel(total: number, shown: number, noun = 'เรื่อง'): string | null {
+  const rest = total - shown
+  return rest > 0 ? `และอีก ${rest} ${noun}` : null
+}
+
+/**
+ * ป้ายไอออนของบอร์ดโหวต — บอก "มีคนโหวตแล้วกี่คน" ให้อ่านออกในบรรทัดเดียว
+ */
+export function voteCountLabel(count: number): string {
+  return count > 0 ? `มีผู้โหวตแล้ว ${count} คน` : 'ยังไม่มีใครโหวต — คุณเป็นคนแรกได้'
+}

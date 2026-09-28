@@ -13,6 +13,9 @@ import {
   GROUP_DESCRIPTIONS,
   type NotificationGroup,
 } from '@/types/notification';
+import { getMyStats } from '@/services/me';
+import type { PersonalStats } from '@/types/me';
+import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
@@ -170,6 +173,26 @@ const infoRows = computed(() => {
   }
   return rows;
 });
+
+// ===== 📊 สถิติของฉัน (C3) =====
+// โหลดแยกจากการ์ดอื่นโดยเจตนา — ถ้า /api/me/stats ล่ม ผู้ใช้ยังเห็นโปรไฟล์และการตั้งค่าได้
+const stats = ref<PersonalStats | null>(null);
+const statsLoading = ref(true);
+const statsError = ref(false);
+
+async function loadStats() {
+  statsLoading.value = true;
+  statsError.value = false;
+  try {
+    stats.value = await getMyStats();
+  } catch {
+    // ไม่เด้ง Swal — การ์ดมีปุ่ม "ลองใหม่" ของตัวเองอยู่แล้ว
+    statsError.value = true;
+  } finally {
+    statsLoading.value = false;
+  }
+}
+onMounted(loadStats);
 </script>
 
 <template>
@@ -383,6 +406,14 @@ const infoRows = computed(() => {
           </div>
         </div>
       </div>
+
+      <!-- ===== 📊 สถิติของฉัน (C3) ===== -->
+      <PersonalStatsCard
+        :stats="stats"
+        :loading="statsLoading"
+        :error="statsError"
+        @retry="loadStats"
+      />
 
       <p class="text-center text-[11px] text-stone-400 pb-4">
         แก้ไขโปรไฟล์หรือเปลี่ยนรหัสผ่านได้จากเมนู <i class="bi bi-three-dots-vertical"></i> มุมขวาบน

@@ -1,0 +1,48 @@
+{
+  "name": "PIRIvoice — เสียงจากชาวพิริยาลัย",
+  "short_name": "PIRIvoice",
+  "description": "ระบบรับฟังเสียงนักเรียนและแจ้งเรื่องสู่สภานักเรียน โรงเรียนพิริยาลัยจังหวัดแพร่",
+  "lang": "th",
+  "dir": "ltr",
+  "start_url": "/app/home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#b91c1c",
+  "background_color": "#ffffff",
+  "categories": ["education", "social"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "แจ้งเรื่องใหม่",
+      "short_name": "แจ้งเรื่อง",
+      "url": "/app/issues/new",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "เรื่องของฉัน",
+      "short_name": "เรื่องของฉัน",
+      "url": "/app/issues/mine",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

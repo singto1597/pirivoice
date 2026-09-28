@@ -5,6 +5,7 @@ import Swal from 'sweetalert2'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import PlaybookSidebarMenu from '@/components/playbooks/PlaybookSidebarMenu.vue'
+import InstallPrompt from '@/components/InstallPrompt.vue'
 import { PLAYBOOKS } from '@/types/playbook'
 
 const authStore = useAuthStore()
@@ -93,6 +94,8 @@ const routeTitles: Record<string, string> = {
   users: 'จัดการสมาชิก',
   students: 'รายชื่อนักเรียน',
   'import-students': 'นำเข้านักเรียน',
+  announcements: 'จัดการประกาศ',
+  'academic-terms': 'ภาคเรียน',
   'audit-logs': 'บันทึกการใช้งาน',
 }
 const routeTitle = computed(() => routeTitles[(route.name as string) || ''] || 'PIRIvoice')
@@ -185,6 +188,14 @@ const menuItems = computed<NavItem[]>(() => {
       name: 'จัดการประกาศ',
       path: '/app/announcements',
       icon: 'bi-megaphone-fill',
+      badge: 0,
+    })
+  }
+  if (authStore.hasPermission('MANAGE_SETTINGS')) {
+    items.push({
+      name: 'ภาคเรียน',
+      path: '/app/settings/terms',
+      icon: 'bi-calendar3-range',
       badge: 0,
     })
   }
@@ -730,6 +741,10 @@ const goHome = () => {
         </div>
       </div>
     </Transition>
+
+    <!-- 📱 แบนเนอร์ติดตั้ง PWA + แจ้งเวอร์ชันใหม่ (A1)
+         วางไว้ที่ MainLayout ⇒ ขึ้นเฉพาะหน้าหลังล็อกอิน ไม่รบกวน Landing สาธารณะ -->
+    <InstallPrompt />
   </div>
 </template>
 

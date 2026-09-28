@@ -37,11 +37,26 @@ COPY --from=build-stage /app/dist /usr/share/nginx/html
 # ⚠️ ห้ามใช้ $uri/ — ถ้า path นั้นมีโฟลเดอร์จริงอยู่ (เช่น /playbooks/ ที่เก็บรูป) nginx จะ
 #    จับว่าเป็น directory แล้วคืน 403 (ไม่มี index) แทนที่จะส่งต่อไปที่ SPA
 #    ใช้แค่ try_files $uri /index.html → ไฟล์จริงถูกเสิร์ฟ, route ที่เหลือ fallback ไป SPA
+#
+# ⚠️ PWA (A1): `sw.js` + `manifest.json` **ต้องไม่ถูก cache** — ต่างจากไฟล์อื่นทั้งหมด
+#    ถ้า cache ไว้ อัปเดต service worker รอบหน้าจะไม่มีผลเลยบนเครื่องที่ติดตั้งไปแล้ว
+#    และจะหาสาเหตุไม่ได้ (เบราว์เซอร์ไม่ยอมโหลด sw.js ใหม่)
+#    · /assets/* ไม่ต้องใส่ header — Vite ใส่ content hash ในชื่อไฟล์อยู่แล้ว
+#    · index.html ไม่ต้องใส่ — `location /` ไม่ได้ให้ Cache-Control เลย ⇒ เบราว์เซอร์
+#      ใช้ heuristic caching แต่ navigation ส่วนใหญ่ยิงผ่าน SW (network-first) อยู่แล้ว
 RUN echo 'server { \
     listen 80; \
     server_name _; \
     root /usr/share/nginx/html; \
     index index.html; \
+    location = /sw.js { \
+        add_header Cache-Control "no-cache, must-revalidate"; \
+        try_files $uri =404; \
+    } \
+    location = /manifest.json { \
+        add_header Cache-Control "no-cache"; \
+        try_files $uri =404; \
+    } \
     location / { \
         try_files $uri /index.html; \
     } \
