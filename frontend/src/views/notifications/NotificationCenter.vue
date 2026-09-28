@@ -73,14 +73,21 @@ function iconFor(n: NotificationItem): string {
 }
 
 // ✅ mark อ่านรายการเดียว (ไม่ navigate)
+// ⚠️ `read()` **กลืน error เองและคืนผลลัพธ์** ⇒ ต้องเช็คค่าที่คืน ไม่ใช่ try/catch
+//    (เดิมครอบ try/catch ไว้ แต่ catch ไม่มีทางทำงาน เพราะ read() ไม่ throw
+//     ⇒ ผู้ใช้กดแล้วล้มเหลวก็ไม่เห็นอะไรเลย ป้ายยังขึ้นว่าอ่านแล้ว)
 async function markOne(n: NotificationItem) {
   if (n.read_at) return
-  try {
-    await notificationsStore.read({ ids: [n.id] })
-    n.read_at = new Date().toISOString()
-  } catch (e) {
-    Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: e instanceof Error ? e.message : String(e) })
+  const ok = await notificationsStore.read({ ids: [n.id] })
+  if (!ok) {
+    Swal.fire({
+      icon: 'error',
+      title: 'ไม่สำเร็จ',
+      text: 'ทำเครื่องหมายว่าอ่านแล้วไม่สำเร็จ — ลองใหม่อีกครั้ง',
+    })
+    return
   }
+  n.read_at = new Date().toISOString()
 }
 
 // ✅ อ่านทั้งหมด
@@ -94,13 +101,17 @@ async function markAll() {
     cancelButtonText: 'ยกเลิก',
   })
   if (!isConfirmed) return
-  try {
-    await notificationsStore.read({ read_all: true })
-    page.value = 1
-    await load()
-  } catch (e) {
-    Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: e instanceof Error ? e.message : String(e) })
+  // ไม่สำเร็จ = ไม่ reload รายการ (ไม่งั้นป้าย "อ่านแล้ว" จะขึ้นทั้งที่เซิร์ฟเวอร์ไม่ได้บันทึก)
+  if (!(await notificationsStore.read({ read_all: true }))) {
+    Swal.fire({
+      icon: 'error',
+      title: 'ไม่สำเร็จ',
+      text: 'ทำเครื่องหมายว่าอ่านแล้วไม่สำเร็จ — ลองใหม่อีกครั้ง',
+    })
+    return
   }
+  page.value = 1
+  await load()
 }
 
 // 🧭 คลิกแถว → navigate ไปที่ entity + mark อ่าน

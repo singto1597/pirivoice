@@ -17,8 +17,10 @@ import Swal from 'sweetalert2'
 import {
   applyUpdate,
   dismissInstall,
+  dismissIosHint,
   promptInstall,
   showInstallBanner,
+  showIosHint,
   showUpdateBanner,
 } from '@/pwa'
 
@@ -101,6 +103,48 @@ async function onInstall() {
           aria-label="ปิด"
           class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
           @click="dismissInstall"
+        >
+          <i class="bi bi-x-lg text-xs"></i>
+        </button>
+      </div>
+    </div>
+  </Transition>
+
+  <!--
+    iOS Safari — ไม่มี `beforeinstallprompt` และไม่มี API ติดตั้งใด ๆ เลย
+    เบราว์เซอร์ห้ามเว็บติดตั้งแอพเองโดยไม่ให้ผู้ใช้ยืนยัน ⇒ ทางเดียวที่ทำได้คือ **สอน**
+
+    ⚠️ สองการ์ดนี้ไม่มีทางซ้อนกัน — iOS ไม่ยิง `beforeinstallprompt` เลย
+       จึงไม่มีทางที่ showInstallBanner จะเป็น true พร้อมกับ showIosHint
+  -->
+  <Transition name="prompt">
+    <div
+      v-if="showIosHint && !showUpdateBanner"
+      class="banner-anchor pointer-events-none fixed inset-x-0 z-40 px-3"
+    >
+      <div
+        class="pointer-events-auto mx-auto flex w-full max-w-[440px] items-start gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-lg shadow-stone-900/5"
+      >
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#B91C1C] text-white">
+          <i class="bi bi-phone text-lg"></i>
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-stone-900">ติดตั้ง PIRIvoice</p>
+          <p class="mt-0.5 text-[11px] font-medium text-stone-500">
+            เพิ่มลงหน้าจอ เปิดได้เร็วเหมือนแอพ
+          </p>
+          <ol class="mt-1.5 space-y-0.5 text-[11px] font-medium text-stone-600">
+            <li>
+              1. แตะปุ่ม <i class="bi bi-box-arrow-up text-stone-800"></i> แชร์ ที่แถบล่างจอ
+            </li>
+            <li>2. เลือก “เพิ่มไปที่หน้าจอ”</li>
+          </ol>
+        </div>
+        <button
+          type="button"
+          aria-label="ปิด"
+          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+          @click="dismissIosHint"
         >
           <i class="bi bi-x-lg text-xs"></i>
         </button>
