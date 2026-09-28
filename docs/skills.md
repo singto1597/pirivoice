@@ -744,3 +744,58 @@
 - **Correct Pattern/Solution:** **อย่าหวังให้ `flex-wrap` แก้ปัญหาแทน** — `flex-wrap` ตัดบรรทัดก็ต่อเมื่อผลรวม *ขนาดสมมติ* เกินความกว้าง ซึ่ง **ไม่เกิด** เมื่อมี `basis 0` อยู่ในแถว ⇒ ต้องบังคับโครงสร้างด้วย breakpoint: มือถือให้ทั้งสองกล่อง `w-full` (⇒ คนละบรรทัดแน่นอน) แล้ว `sm:w-auto sm:flex-1` / `sm:w-auto sm:shrink-0` ให้กลับไปวางข้างกันบนจอใหญ่ ; กล่องปุ่มใส่ `flex-wrap` ด้วยเพื่อให้จอแคบมาก (~320px) ปุ่มตัดขึ้นบรรทัดใหม่ได้ ไม่ล้นการ์ด
 - **กฎ: ในแถว flex แนวนอนที่มี `shrink-0` อยู่ ห้ามปล่อยให้กล่องข้อความเป็น `flex-1` เฉย ๆ — ต้องมี breakpoint บังคับให้ซ้อนกันบนจอแคบ (`w-full` แล้วค่อย `sm:` กลับไปข้างกัน) หรือกำหนด `flex-basis` ที่ไม่ใช่ 0; และเมื่อเพิ่มหรือลบปุ่มในแถวใด ต้องกลับไปตรวจที่ความกว้าง ~360px ทุกครั้ง ไม่ใช่ดูแค่จอ desktop**
 - **Date Added:** 2026-09-27
+
+### 🔥 pool มี connection แค่ 10 ใบ — **ห้ามเรียก service ที่ `acquire()` เอง ขณะถือ connection อยู่** และห้าม `asyncio.gather` ข้ามการ acquire
+- **Context/Problem:** เขียน `me_service.get_personal_stats(pool, user_id)` ที่ต้องรู้ด้วยว่า "ภาคปัจจุบัน" คืออะไร ซึ่งมี `term_service.get_current_term(pool)` ให้เรียกอยู่แล้ว ⇒ ทางที่สั้นที่สุดคือเรียกมันตรง ๆ จากในฟังก์ชันที่กำลังถือ connection อยู่ (เปิด connection ไว้ → `fetchval` 6 ตัว → แล้วค่อยเรียก term) · โค้ดแบบนี้ **ผ่านเทสทุกตัว** และทำงานถูกต้องตอนเทสรันทีละเคส ⇒ ไม่มีอะไรฟ้องจนขึ้น production
+- **Root Cause:** `backend/main.py:38-41` สร้าง pool ด้วย `min_size=1, max_size=10` ⇒ **ทั้งระบบมี connection 10 ใบ** และทุก request ที่รันพร้อมกันแย่งกันใช้ · `get_current_term(pool)` เรียก `pool.acquire()` เอง ⇒ การเรียกมันขณะถือ connection อยู่ = **ยึด 2 ใบต่อ 1 request** · พอมี request แบบนี้พร้อมกัน 6 ใบ ก็กินครบ 10 ⇒ ใบที่ 11 ต้อง **รอคิว** ซึ่งไม่ error ไม่ timeout ทันที (ขึ้นกับ `command_timeout`) — อาการที่เห็นคือ **"บาง request ค้าง บางทีก็ผ่าน"** ซึ่งแทบจะ debug ไม่ถูกถ้าไม่รู้เรื่อง pool มาก่อน · ถ้าเป็น `asyncio.gather` ที่เรียกหลาย service พร้อมกัน ตัวคูณจะยิ่งสูงขึ้น (1 request = N ใบ) ⇒ อาการเดียวกันนี้จะโผล่ที่ concurrency ต่ำกว่ามาก ; **เทสไม่จับเพราะ fixture ยิงทีละเคส** ⇒ คลาสของบั๊กนี้รอดจาก integration test เสมอ
+- **Correct Pattern/Solution:** (1) **แยก 2 เวอร์ชัน**ของทุกฟังก์ชันที่ต้องถูกเรียกซ้อน — เวอร์ชันรับ `pool` (สร้าง connection เอง) กับเวอร์ชันรับ `conn` (caller ส่งมา) ⇒ `term_service` มีทั้ง `get_current_term(pool)` และ `fetch_current_term(conn)` ; ตัวในเรียกเวอร์ชัน `conn` เสมอ (2) ถ้าต้องเรียก **service อื่น** จริง ๆ ให้ `await` **เรียงลำดับ นอก** block ที่ถือ connection — ปล่อย connection ของตัวเองคืน pool ให้หมดก่อน แล้วค่อยเรียกตัวถัดไป (ดูรูปใน `home_service.get_home_summary`) (3) **ห้าม `asyncio.gather` ข้ามการ acquire connection** — connection เดียวกันรัน query พร้อมกันไม่ได้อยู่แล้ว และการ acquire หลายใบพร้อมกันจะยึด pool ตามจำนวน branch (4) เขียน comment อธิบายไว้ในไฟล์ service นั้นเลย เพราะคนอ่านบรรทัด `await term_service.get_current_term(pool)` เดี่ยว ๆ จะไม่เห็นว่ามันผิด
+- **กฎ: service ที่รับ `pool` = "เปิด connection เองได้" ⇒ เรียกได้เฉพาะจากชั้น router หรือจากที่ที่ยังไม่ถือ connection; เมื่ออยู่ลึกกว่านั้นให้ใช้เวอร์ชัน `conn` เสมอ**
+- **Date Added:** 2026-09-28
+
+### 🔥 `date` เทียบกับ `timestamptz` ตรง ๆ = เพี้ยนตาม TimeZone ของ session — ต้อง `AT TIME ZONE 'Asia/Bangkok'` และ `end_date + 1` เมื่อขอบเขตเป็น inclusive
+- **Context/Problem:** สถิติส่วนตัว (C3) ต้องนับเฉพาะช่วง "ภาคเรียน" — `academic_terms.start_date`/`end_date` เป็น `DATE` แต่ `issues.created_at` เป็น `TIMESTAMP WITH TIME ZONE` ⇒ เขียนเงื่อนไขตามสัญชาตญาณว่า `AND i.created_at >= $2::date AND i.created_at < $3::date` **แล้วเทสผ่าน** ถ้าข้อมูลที่ใส่ในเทสอยู่กลางวัน
+- **Root Cause:** Postgres cast `date` → `timestamp` **ด้วย TimeZone ของ session** ไม่ใช่ของไทย · container ตั้ง `TZ=UTC` ⇒ `2026-05-16::date` = `2026-05-16 00:00:00+00` = **07:00 น. เวลาไทย** ⇒ เรื่องที่แจ้งตอน 06:00 น. ของวันแรกของภาค **หลุดออกจากสถิติ** และเรื่องที่แจ้ง 06:00 น. ของวันถัดจากวันสุดท้าย **หลุดเข้ามา** — ผิดทั้งสองหัวท้ายโดยที่เทสกลางวันผ่านหมด · ยังมีกับดักที่สองซ้อนอยู่: ถ้าเขียน `< end_date` ตรง ๆ วันสุดท้ายของภาคจะหายไปทั้งวัน เพราะ `end_date` เป็น **inclusive** (คนละธรรมเนียมกับ `created_at < …` ที่ต้อง exclusive)
+- **Correct Pattern/Solution:** แปลงเป็น **เที่ยงคืนเวลาไทย** ด้วย `AT TIME ZONE` ทั้งสองข้าง และบวก 1 วันเมื่อขอบเขตเป็น inclusive:
+  ```sql
+  AND i.created_at >= (($2::date)::timestamp AT TIME ZONE 'Asia/Bangkok')
+  AND i.created_at <  ((($3::date + 1)::timestamp) AT TIME ZONE 'Asia/Bangkok')
+  ```
+  · ตรึงด้วยเทส **3 เคสขอบ**ที่เวลาไทย: `start_date` 00:30 น. (ต้องนับ) · `end_date` 23:30 น. (ต้องนับ) · `end_date + 1` 00:30 น. (ต้องไม่นับ) — เทสที่สร้างข้อมูลกลางวันจะไม่จับบั๊กนี้เลย ; `dashboard_service.py` นิยาม `BKK` ไว้ที่ต้นไฟล์แล้ว ใช้เป็นแบบอย่างได้
+- **⚠️ อย่าใช้ `new Date(...)` กับ string `date` ฝั่ง frontend ด้วย:** `new Date('2026-05-16')` ถูกตีความเป็น UTC เที่ยงคืน ⇒ พอ format ในไทย timezone จะกลายเป็นวันที่ 15 ⇒ ฝั่ง FE ให้แยก string เองหรือเติม `T00:00:00+07:00` (ดู `types/me.ts`)
+- **Date Added:** 2026-09-28
+
+### 🔥 `nginx` ที่ไม่มี `Cache-Control` เลย ⇒ **`sw.js` ถูก cache แล้วค้างถาวร** — service worker ไม่อัปเดตอีกเลย และหาสาเหตุไม่ได้
+- **Context/Problem:** ทำ PWA (A1) แล้วแก้ `sw.js` รอบสอง ปรากฏว่าเบราว์เซอร์ **ไม่ยอมโหลด `sw.js` ใหม่เลย** ทั้งที่ build ใหม่ขึ้น production แล้ว — ลบ cache ในเว็บก็ไม่หาย ต้องไป unregister service worker เองแบบมือเปล่า
+- **Root Cause:** `frontend/Dockerfile` สร้าง nginx config inline ด้วย `RUN echo '…' > /etc/nginx/conf.d/default.conf` **โดยไม่มี `add_header Cache-Control` แม้แต่บรรทัดเดียว** ⇒ nginx ใส่แค่ `Last-Modified` + `ETag` ให้ ⇒ เบราว์เซอร์ใช้ **heuristic caching** (ตีความว่าอายุ cache = 10% ของเวลาตั้งแต่ไฟล์ถูกแก้ ล่าสุด) กับไฟล์ที่ path คงที่อย่าง `/sw.js` ⇒ ครั้งแรกที่ cache ก็ค้างเป็นสัปดาห์ · **ต่างจากไฟล์อื่นทั้งหมดในโปรเจกต์** เพราะ `/assets/*` มี content hash ในชื่อไฟล์ (Vite ใส่ให้) ⇒ cache นานแค่ไหนก็ปลอดภัย และ `index.html` ไม่มีใคร cache ยาวเพราะ navigation ยิงผ่าน SW (network-first) อยู่แล้ว ⇒ อาการนี้โผล่ที่ `sw.js` กับ `manifest.json` เท่านั้น ซึ่งเป็น **สองไฟล์ที่ต้องสดที่สุดในระบบ**
+- **Correct Pattern/Solution:** ใส่ `location` block เฉพาะสองไฟล์นี้ **ก่อน** `location /` (nginx เลือก longest-prefix match ⇒ `location =` ที่ตรงเป๊ะชนะเสมอ แต่เขียนไว้บนอ่านง่ายกว่า):
+  ```nginx
+  location = /sw.js        { add_header Cache-Control "no-cache, must-revalidate"; try_files $uri =404; }
+  location = /manifest.json { add_header Cache-Control "no-cache"; try_files $uri =404; }
+  ```
+  · `no-cache` = "เก็บได้ แต่ต้อง revalidate ก่อนใช้" (ไม่ใช่ `no-store`) ⇒ ได้ `304` เมื่อไม่เปลี่ยน ไม่เสีย bandwidth · **`try_files $uri =404` จำเป็น** — ถ้าไม่ใส่ nginx จะตอบ `index.html` แทน `sw.js` เมื่อไฟล์หาย ⇒ เบราว์เซอร์จะได้ HTML มาเป็น JS แล้ว throw `Unexpected token '<'` ซึ่งอ่านไม่ออกว่าเกิดอะไร
+- **กฎ: ไฟล์ที่ต้องสดเสมอ (service worker, manifest) ต้องมี `Cache-Control` ระบุชัด ห้ามพึ่ง default ของ nginx; และไฟล์ที่ไม่อยากให้ fallback ไป SPA ต้องมี `=404`**
+- **Date Added:** 2026-09-28
+
+### 🛠️ precache ของ service worker: รายการคงที่ **ไม่พอ** — ต้อง parse `index.html` เอา `/assets/*` ที่ Vite ใส่ hash มาด้วย ไม่งั้นออฟไลน์ครั้งแรกจอขาว
+- **Context/Problem:** เขียน `sw.js` โดย precache รายการที่รู้ล่วงหน้า (`/`, `/index.html`, `/manifest.json`, ไอคอน, โลโก้) แล้วคิดว่าจบ — ตอนเทสออฟไลน์ **หน้าเว็บขาวสนิท** ทั้งที่ DevTools บอก SW `activated` และ cache ก็มีไฟล์ครบตามรายการ
+- **Root Cause:** ตัว HTML ที่ precache ไว้ไม่มีอะไรผิด แต่มัน **อ้างถึงไฟล์ที่ไม่ได้อยู่ใน cache** — Vite แตก bundle แล้วตั้งชื่อแบบมี content hash (`/assets/index-DHUqUxjD.js`, `/assets/index-BigNA-4Q.css`) ซึ่งเปลี่ยนทุกครั้งที่ build และ **ไม่มีทาง hardcode ไว้ใน `sw.js` ได้** ⇒ ตอนออฟไลน์ได้ HTML มาแต่โหลด JS/CSS ไม่ได้ ⇒ Vue ไม่ mount ⇒ `#app` ว่าง = จอขาว · และเพราะ `index.html` เองถูก cache ไว้แล้ว (ไม่ error) จึงดูเหมือน "cache ทำงาน" ทั้งที่ shell ไม่ครบ
+- **Correct Pattern/Solution:** ตอน `install` ให้ **ดึง `/index.html` ตัวจริงมาแกะหา URL** แล้ว cache ต่อ:
+  ```js
+  const html = await (await fetch('/index.html', { cache: 'reload' })).text()
+  const urls = [...html.matchAll(/["'](\/assets\/[^"']+)["']/g)].map((m) => m[1])
+  await Promise.allSettled(urls.map((u) => cache.add(u)))   // allSettled ไม่ใช่ all — ไฟล์เดียวพังต้องไม่ล้ม install
+  ```
+  · ใช้ `{ cache: 'reload' }` กันได้ HTML จาก HTTP cache มาแกะ (จะได้ชุด asset เก่า) · ใช้ `Promise.allSettled` + `try/catch` เพราะ `cache.add` throw เมื่อ response ไม่ใช่ 2xx และ **`install` ที่ throw = SW ทั้งตัวติดตั้งไม่สำเร็จ** ⇒ แย่กว่าไม่มี asset · วิธีเทสที่เชื่อได้คือ **`context.setOffline(true)` แล้ว reload จริง** ไม่ใช่ดูว่า SW `activated` (สถานะ activated ไม่ได้แปลว่า shell ครบ — บทเรียนนี้มาจากตรงนั้น)
+- **⚠️ ขอบเขตที่ตั้งใจ:** ทำเฉพาะ app shell — `/api/*` **ห้ามเข้า cache เด็ดขาด** เพราะ SW cache เป็น **per-origin ไม่ใช่ per-session** ⇒ เก็บไว้แล้วผู้ใช้คนถัดไปบนเครื่องเดียวกัน (หรือหลัง logout) จะเห็นข้อมูลของคนก่อน ; cross-origin (Google Fonts, jsdelivr) ก็ห้าม cache เพราะเป็น opaque response ที่อ่านค่าไม่ได้
+- **Date Added:** 2026-09-28
+
+### 🛠️ service ที่ **ไม่เปิด transaction เอง** (รับ `conn` จาก caller) — การเพิ่ม "ตัวกรอง" เข้าไปต้องรับ `conn` ด้วย ไม่ใช่ `pool`
+- **Context/Problem:** เพิ่มการตั้งค่าการแจ้งเตือน (A2) แล้วต้องให้ `notify*` ทั้ง 3 ตัวเคารพค่าที่ผู้ใช้ปิดไว้ — สัญชาตญาณคือเขียน helper `_pref_allows(pool, user_id, group_type)` ตาม service อื่น ๆ
+- **Root Cause:** `notification_service.py` เป็นข้อยกเว้นของกฎ transaction ในโปรเจกต์นี้ — `notify()` / `notify_bulk()` / `notify_fanout()` **ไม่เปิด transaction เอง** แต่รับ `conn` จาก caller เพราะถูกเรียกจากใน transaction ของ service อื่น (accept issue, comment, vote, …) ⇒ ถ้า helper เปิด connection ใบใหม่ จะ (1) กิน pool ซ้ำซ้อนตามบทเรียน pool ข้างบน (2) **อ่านคนละ snapshot กับ transaction ที่กำลังเขียน** ⇒ ผู้ใช้ที่เพิ่งปิดการแจ้งเตือนใน request อื่นอาจถูกมองว่ายังเปิดอยู่ (3) ตัวที่แย่ที่สุด: `notify_fanout` เป็น `INSERT … SELECT` ก้อนเดียว ถ้าแยกไปกรองใน Python ต้องดึง user ทั้งโรงเรียนออกมาก่อน
+- **Correct Pattern/Solution:** helper รับ `conn` เป็น arg แรก แล้วเรียกด้วย `conn` ที่ caller ถืออยู่ — `_pref_allows(conn, user_id, group_type)` และ `_filter_allowed(conn, user_ids, group_type)` ที่กรองด้วย query เดียว (`WHERE … AND user_id = ANY($2::int[])`) ไม่ใช่ N query ; สำหรับ `notify_fanout` ให้เติมเงื่อนไข **ใน SQL** ไม่ใช่กรองหลัง query:
+  ```sql
+  AND NOT EXISTS (SELECT 1 FROM notification_preferences p
+                  WHERE p.user_id = s.user_id AND p.group_type = $1 AND p.enabled = FALSE)
+  ```
+  · ⚠️ การเพิ่ม `$1` กลาง SQL ทำให้ **เลข placeholder ของคอลัมน์ที่เหลือต้องเลื่อนทั้งหมด** ⇒ ใส่ `assert sql.count("$") == len(params)` กำกับไว้ (บทเรียนเดิม) ; การอ่านตารางที่ไม่มีใครล็อกอยู่ใน transaction เดียวกันไม่ทำให้เกิด deadlock
+- **Date Added:** 2026-09-28
