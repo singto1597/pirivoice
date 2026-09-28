@@ -54,6 +54,36 @@ function tap() {
 /** ปล่อย microtask ให้ `promptInstall()` ได้ทำงาน */
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
+/**
+ * stub `matchMedia` ให้ **ตอบตามคำถาม** ไม่ใช่ตอบค่าเดียว
+ *
+ * ⚠️ jsdom ไม่มี `matchMedia` เลย · เดิม stub ให้คืน `matches: false` ทุก query
+ *    ซึ่งใช้ไม่ได้อีกต่อไป เพราะ `pwa.ts` ถาม `(pointer: coarse)` เพื่อแยกว่ามือถือหรือคอม
+ *    ⇒ ถ้าตอบ false ทุก query **ทุกเทสในไฟล์นี้จะกลายเป็น "เดสก์ท็อป" ไปหมด**
+ *      แล้วแบนเนอร์/การยิงอัตโนมัติจะไม่ทำงาน — เทสล้มด้วยเหตุผลของการทดสอบเอง ไม่ใช่ของโค้ด
+ *
+ * ค่าตั้งต้น = **มือถือ** (`coarse: true`) เพราะเทสส่วนใหญ่ในไฟล์นี้ตรวจเส้นทางของมือถือ
+ */
+function stubMatchMedia({ standalone = false, coarse = true } = {}) {
+  const answers: Record<string, boolean> = {
+    '(pointer: coarse)': coarse,
+    '(display-mode: standalone)': standalone,
+  }
+  window.matchMedia = vi.fn<(query: string) => MediaQueryList>().mockImplementation(
+    (query: string) =>
+      ({
+        matches: answers[query] ?? false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn<() => void>(),
+        removeListener: vi.fn<() => void>(),
+        addEventListener: vi.fn<() => void>(),
+        removeEventListener: vi.fn<() => void>(),
+        dispatchEvent: vi.fn<() => boolean>(),
+      }) as unknown as MediaQueryList,
+  ) as unknown as typeof window.matchMedia
+}
+
 beforeEach(async () => {
   // ⚠️ `deferredPrompt` เป็น state ระดับโมดูล และ **`dismissInstall()` ไม่ได้ล้างมันให้**
   //    (เจตนา — การ์ด "ติดตั้งแอพ" ใน Profile ต้องเรียกใช้ต่อได้หลังผู้ใช้กด ✕)
@@ -67,12 +97,9 @@ beforeEach(async () => {
   //    แล้วล้าง localStorage ทีหลัง เพื่อไม่ให้ flag ที่มันเพิ่งเขียนค้างมาที่เทสนี้
   pwa.dismissInstall()
   localStorage.clear()
-  // jsdom ไม่มี matchMedia — stub ให้คืน false (= ไม่ได้ติดตั้งอยู่)
-  window.matchMedia = vi
-    .fn<(query: string) => MediaQueryList>()
-    .mockReturnValue({ matches: false } as MediaQueryList) as unknown as typeof window.matchMedia
-  // ⚠️ `standaloneState` ก็เป็น state ระดับโมดูลเหมือนกัน — ต้องรีเซ็ตทุกเทส
-  //    ไม่งั้นเทสที่ตั้ง matchMedia(true) จะทำให้เทสถัดไปเห็น "ติดตั้งแล้ว" ค้างอยู่
+  stubMatchMedia()
+  // ⚠️ `standaloneState`/`touchPrimaryState` ก็เป็น state ระดับโมดูลเหมือนกัน —
+  //    ต้องรีเซ็ตทุกเทส ไม่งั้นเทสที่ตั้ง matchMedia(true) จะทำให้เทสถัดไปเห็นค่าค้างอยู่
   pwa.registerPwa()
 })
 
@@ -253,15 +280,93 @@ describe('ติดตั้งเองจากในการ์ด Profile �
   })
 
   it('กำลังเปิดในโหมดแอพที่ติดตั้งแล้ว → ไม่ต้องติดตั้งซ้ำ', async () => {
-    window.matchMedia = vi.fn<(query: string) => MediaQueryList>().mockReturnValue({
-      matches: true,
-    } as MediaQueryList) as unknown as typeof window.matchMedia
+    stubMatchMedia({ standalone: true })
 
     pwa.registerPwa()
     window.dispatchEvent(makeInstallEvent().event)
 
     expect(pwa.isStandalone.value).toBe(true)
     expect(pwa.canPromptInstall.value).toBe(false)
+  })
+})
+
+/**
+ * 🖥 **เดสก์ท็อปต้องเงียบสนิท** — คำสั่งตรงจากเจ้าของระบบ (28 ก.ย. 2026):
+ * *"เปิดในคอม เบราเซอร์ในคอม ไม่ต้องขอ install มา เปิดผ่านเว็บก็โอเคแล้ว
+ *   แค่ว่า ใครจะกดโหลดก็ไปที่หน้าโปรไฟล์ แค่นั้นเอง"*
+ *
+ * ⚠️ **นี่คือบั๊กจริง ไม่ใช่ความเห็นเรื่องดีไซน์** — `beforeinstallprompt` ยิงบน Chrome/Edge
+ *    **เดสก์ท็อป** ด้วย ไม่ใช่แค่ Android ⇒ เดิมผู้ใช้ที่เปิดในคอมโดนทั้งแบนเนอร์ **และ**
+ *    dialog ของเบราว์เซอร์ที่เด้งเองตอนแตะแรก · เทสชุดนี้ล็อกทั้งสองทางนั้นไว้
+ *
+ * ⚠️ และล็อก **เส้นทางกลับ** ด้วย — การ์ด "ติดตั้งแอป" ใน Profile ต้องยังกดได้ในคอม
+ *    ถ้าเผลอเอาเงื่อนไขมือถือไปใส่ `canPromptInstall`/`installNow()` ด้วย จะกลายเป็น
+ *    "ไม่มีทางติดตั้งได้เลยในคอม" ซึ่งไม่ใช่สิ่งที่สั่ง
+ */
+describe('🖥 เดสก์ท็อป — ห้ามชวนติดตั้ง แต่ยังติดตั้งเองได้', () => {
+  beforeEach(() => {
+    stubMatchMedia({ coarse: false })
+    pwa.registerPwa()
+  })
+
+  it('★ ไม่มีแบนเนอร์ แม้เบราว์เซอร์ยิง event ว่า "ติดตั้งได้"', () => {
+    window.dispatchEvent(makeInstallEvent().event)
+
+    expect(pwa.showInstallBanner.value).toBe(false)
+  })
+
+  it('★ ไม่ยิง dialog เองด้วย — แตะไปกี่ครั้งก็ไม่เด้ง', async () => {
+    const { event, prompt } = makeInstallEvent()
+
+    window.dispatchEvent(event)
+    tap()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    await flush()
+
+    expect(prompt).not.toHaveBeenCalled()
+  })
+
+  it('★ ไม่เผาโควตา "ถามเองครั้งเดียว" ทิ้งไปกับเดสก์ท็อป', async () => {
+    window.dispatchEvent(makeInstallEvent().event)
+    tap()
+    await flush()
+
+    // เดสก์ท็อปไม่ควรเขียนธงนี้ — เผื่อผู้ใช้เปิดเครื่องอื่น/เปิดมือถือในภายหลัง
+    expect(localStorage.getItem(AUTO_ASKED_KEY)).toBeNull()
+  })
+
+  it('★ เส้นทางกลับ: การ์ด "ติดตั้งแอป" ใน Profile ยังใช้ได้เต็มรูปแบบ', async () => {
+    const { event, prompt } = makeInstallEvent()
+    window.dispatchEvent(event)
+
+    // การ์ด Profile อ่านสองค่านี้ ⇒ ต้องเป็น true ทั้งคู่ ไม่งั้นปุ่ม "ติดตั้งเลย" หายไป
+    expect(pwa.canPromptInstall.value).toBe(true)
+
+    await expect(pwa.installNow()).resolves.toBe('accepted')
+    expect(prompt).toHaveBeenCalledTimes(1)
+  })
+
+  it('★ คำแนะนำ iOS ก็ไม่ขึ้นบนเดสก์ท็อป (กฎต้องเป็นจริงเชิงตรรกะ ไม่ใช่เพราะบังเอิญ)', () => {
+    // จำลอง UA ของ iPad ปลอมบนเดสก์ท็อป — `detectIosSafari()` เป็น true แต่ `pointer`
+    // ยังเป็น `fine` ⇒ ต้องไม่ทะลุผ่านด่านมือถือ (ถ้าไม่มี `touchPrimaryState` ใน
+    // `showIosHint` เทสนี้จะล้ม = บทพิสูจน์ว่าเงื่อนไขนั้นมีผลจริง ไม่ใช่ของประดับ)
+    //
+    // ⚠️ ใช้ `defineProperty` ไม่ใช่ `vi.spyOn` — `userAgent` เป็น getter บน
+    //    `Navigator.prototype` ไม่ใช่สมบัติของ instance ⇒ spyOn แตะไม่ได้
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1',
+      configurable: true,
+    })
+    try {
+      stubMatchMedia({ coarse: false })
+      pwa.registerPwa()
+
+      expect(pwa.isIosSafari.value).toBe(true) // ยืนยันว่าเข้าเคสนี้จริง ไม่ใช่ผ่านเพราะไม่เข้าเงื่อนไข
+      expect(pwa.showIosHint.value).toBe(false)
+    } finally {
+      // ลบสมบัติที่ทับไว้ ⇒ getter เดิมบน prototype กลับมาทำงาน
+      delete (navigator as unknown as Record<string, unknown>).userAgent
+    }
   })
 })
 

@@ -51,6 +51,30 @@ const iosSafariState = ref(false)
 const iosHintDismissedState = ref(false)
 const registration = ref<ServiceWorkerRegistration | null>(null)
 
+/** เครื่องนี้เป็นมือถือ/แท็บเล็ตไหม — ตัวคุมว่าจะ **ชวนติดตั้ง** หรือไม่ (ดู `detectTouchPrimary`) */
+const touchPrimaryState = ref(false)
+
+/**
+ * เครื่องนี้ใช้นิ้วเป็นตัวชี้หลักไหม (มือถือ/แท็บเล็ต) — ตัวตัดสินว่า **จะชวนติดตั้งหรือไม่**
+ *
+ * ⚠️ **เดสก์ท็อปห้ามชวน** — `beforeinstallprompt` ยิงบน Chrome/Edge เดสก์ท็อปด้วย ไม่ใช่แค่
+ *    Android ⇒ เดิมผู้ใช้ที่เปิดในคอมโดนชวนติดตั้ง **ทั้งแบนเนอร์และ dialog เองตอนแตะแรก**
+ *    ทั้งที่เจ้าของระบบต้องการให้ใช้ผ่านเว็บเฉย ๆ ⇒ ใครอยากติดตั้งไปกดเองที่การ์ดใน Profile
+ *
+ * ⚠️ **ทำไมไม่ใช่ user agent** — ไฟล์นี้ออกแบบโดย "ไม่เดาจาก UA" มาตั้งแต่ A1 (UA ปลอมได้
+ *    และ iPadOS รายงานเป็น `Macintosh`) ⇒ ใช้ `(pointer: coarse)` = เบราว์เซอร์รายงานเองว่า
+ *    "อุปกรณ์ชี้หลักเป็นนิ้ว" · แล็ปท็อปจอสัมผัสที่มีเมาส์เป็นตัวหลักจะได้ `fine` = ไม่นับเป็นมือถือ (ถูกต้อง)
+ */
+function detectTouchPrimary(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia('(pointer: coarse)').matches
+}
+
+/** อ่านค่าล่าสุดจากเบราว์เซอร์เข้าตัวแปร — เรียกจาก `registerPwa()` (เหตุผลอยู่ในนั้น) */
+function refreshTouchPrimary(): void {
+  touchPrimaryState.value = detectTouchPrimary()
+}
+
 /**
  * กำลังรอแตะแรกเพื่อยิง dialog เองอยู่
  *
@@ -200,6 +224,10 @@ function onFirstGesture(): void {
 function armAutoPrompt(): void {
   if (autoPromptArmed) return
   if (typeof document === 'undefined') return
+  // ⚠️ **เดสก์ท็อปไม่ต้องยิงเอง** — ตัวที่รบกวนที่สุดคือ dialog ของเบราว์เซอร์ที่เด้งขึ้น
+  //    เองตอนแตะแรก (ผู้ใช้ที่เปิดในคอมไม่ได้ขอติดตั้งอะไรเลย) ⇒ ตรวจ **สด ๆ จาก matchMedia**
+  //    ไม่ใช่จาก ref เพราะ handler นี้ผูกตอน import และอาจยิงก่อน `registerPwa()` จะได้อ่านค่า
+  if (!detectTouchPrimary()) return
   // ⚠️ **ไม่เช็ค `isInstalled()` ที่นี่** — ฟังก์ชันนี้ถูกเรียกจาก handler ของ
   //    `beforeinstallprompt` เท่านั้น ซึ่งการที่ event ยิงก็แปลว่า "ยังไม่ติดตั้ง" อยู่แล้ว
   //    ⇒ เงื่อนไขนั้นเป็นเท็จเสมอ (โค้ดตาย) แถมเคยเป็นกับดักหลังถอนการติดตั้ง
@@ -224,12 +252,22 @@ function disarmAutoPrompt(): void {
 /**
  * ควรแสดงแบนเนอร์ชวนติดตั้งไหม
  *
+ * ⚠️ **มือถือ/แท็บเล็ตเท่านั้น** (`touchPrimaryState`) — เจ้าของระบบขอว่า *"เปิดในคอม
+ *    ไม่ต้องขอ install มา เปิดผ่านเว็บก็โอเคแล้ว"* ⇒ เดสก์ท็อปเงียบสนิท · ใครอยากติดตั้ง
+ *    ไปกดเองที่การ์ด "ติดตั้งแอป" ใน Profile (ใช้ `canPromptInstall`/`installNow()`
+ *    ซึ่ง **ไม่ผูกกับเงื่อนไขนี้โดยเจตนา** — คำสั่งตรงของผู้ใช้ต้องใช้ได้เสมอ)
+ *
  * ⚠️ ซ่อนระหว่างรอแตะแรก (`autoAskPending`) — ถ้าโชว์พร้อมกัน ผู้ใช้จะเห็นทั้ง
  *    dialog ของเบราว์เซอร์และแบนเนอร์ของเราพร้อมกัน ซึ่งดูเหมือนบั๊ก
  *    และแบนเนอร์จะกลับมาแสดงเองในเซสชันถัดไป (ตอนที่ไม่ได้ยิงอัตโนมัติแล้ว)
  */
 export const showInstallBanner = computed(
-  () => ready.value && canInstallState.value && !standaloneState.value && !autoAskPending.value,
+  () =>
+    ready.value &&
+    touchPrimaryState.value &&
+    canInstallState.value &&
+    !standaloneState.value &&
+    !autoAskPending.value,
 )
 
 export const showUpdateBanner = computed(() => ready.value && updateAvailableState.value)
@@ -320,10 +358,15 @@ export const installHint = computed(() => installHintFor(installDiagnostics.valu
  * iOS ไม่มี event ให้ดัก ⇒ ถ้าไม่แสดงอะไรเลย ผู้ใช้ iOS จะไม่มีทางรู้ว่าติดตั้งได้
  * ⇒ ใช้ช่องเดียวกับแบนเนอร์ติดตั้ง (สองอย่างนี้ไม่มีทางเกิดพร้อมกัน เพราะ iOS
  *    ไม่ยิง `beforeinstallprompt` เลย)
+ *
+ * ⚠️ มี `touchPrimaryState` ด้วยเหตุผลเดียวกับ `showInstallBanner` — iOS คือมือถืออยู่แล้ว
+ *    ในทางปฏิบัติ เงื่อนไขนี้จึงเป็นจริงเสมอ · ใส่ไว้เพื่อให้กฎ "เดสก์ท็อปไม่ถูกชวน"
+ *    **เป็นจริงเชิงตรรกะ** ไม่ใช่จริงเพราะบังเอิญ (UA ปลอมบนเดสก์ท็อปก็ไม่ทะลุ)
  */
 export const showIosHint = computed(
   () =>
     ready.value &&
+    touchPrimaryState.value &&
     iosSafariState.value &&
     !iosHintDismissedState.value &&
     !standaloneState.value &&
@@ -346,6 +389,9 @@ export function registerPwa(): void {
   if (typeof window === 'undefined') return
 
   standaloneState.value = window.matchMedia('(display-mode: standalone)').matches
+  // ⚠️ อ่านที่นี่ **ไม่ใช่ตอน import** — `matchMedia` ของ jsdom ในเทสถูก stub ทีหลัง
+  //    การ import (และในเบราว์เซอร์จริงก็ไม่มีเหตุให้อ่านก่อนมี DOM)
+  refreshTouchPrimary()
   iosSafariState.value = detectIosSafari()
   iosHintDismissedState.value = readFlag(IOS_HINT_KEY)
   dismissedState.value = readFlag(DISMISS_KEY)
