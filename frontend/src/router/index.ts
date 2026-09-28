@@ -163,6 +163,13 @@ const router = createRouter({
           meta: { requiresAuth: true, requiresPermission: 'MANAGE_ANNOUNCEMENTS' },
         },
         {
+          // 📅 ภาคเรียน — ใช้ MANAGE_SETTINGS ที่มีอยู่แล้ว (ไม่ต้อง backfill สิทธิ์)
+          path: 'settings/terms',
+          name: 'academic-terms',
+          component: () => import('@/views/settings/AcademicTerms.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_SETTINGS' },
+        },
+        {
           path: 'audit-logs',
           name: 'audit-logs',
           component: () => import('@/views/audit/AuditLogs.vue'),

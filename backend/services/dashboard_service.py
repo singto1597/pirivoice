@@ -67,6 +67,11 @@ ACTION_LABELS = {
     "RESTORE_ANNOUNCEMENT": "กู้คืนประกาศ",
     "RETIRE_ANNOUNCEMENT": "ปลดระวางประกาศ",
     "UNRETIRE_ANNOUNCEMENT": "นำประกาศกลับมาใช้",
+    "CREATE_ACADEMIC_TERM": "สร้างภาคเรียน",
+    "UPDATE_ACADEMIC_TERM": "แก้ไขภาคเรียน",
+    "DELETE_ACADEMIC_TERM": "ลบภาคเรียน",
+    "RESTORE_ACADEMIC_TERM": "กู้คืนภาคเรียน",
+    "SET_CURRENT_TERM": "ตั้งภาคปัจจุบัน",
 }
 
 
