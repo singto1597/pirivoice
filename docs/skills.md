@@ -917,3 +917,83 @@
 - **🎨 ไอคอนแอพ: ซ้อนหลายชั้นแล้วดูรก** — ของเดิมเป็น สี่เหลี่ยมแดง → วงกลมขาว → โลโก้โรงเรียน ⇒ ผู้ใช้ทักว่า *"โลโก้โรงเรียนซ้อนขาว ซ้อนแดง อะไรไม่รู้เยอะแยะ"* · โลโก้โรงเรียน (พิริยาลัย) **เป็นวงกลมมีขอบขาว/น้ำเงินในตัวอยู่แล้ว** ⇒ ใส่วงกลมซ้อนเข้าไปอีกจึงซ้ำซ้อน · ทางที่ถูกคือ **ใช้ภาพโลโก้ล้วน** แล้วครอปเฉพาะ 5% ที่เป็นขอบโปร่งใส ส่วน maskable ค่อยเติมพื้นขาว + ย่อโลโก้ลงใน safe zone 80%
   · อัตราส่วนที่ใช้จริง: `any` = โลโก้เต็มกรอบ (โปร่งใส รอบนอก) · `maskable` = พื้นขาว + โลโก้ 76% · `apple-touch-icon` = พื้นขาว + โลโก้ 86% (iOS ไม่รองรับความโปร่งใส — ถ้าปล่อยโปร่งจะกลายเป็นพื้นดำ)
 - **Date Added:** 2026-09-28
+
+### 🔁 ลบไอคอนออกจากหน้าจอ **ไม่ใช่** การถอนแอพ — WebAPK ยังลงทะเบียนกับ Chrome อยู่ ⇒ `beforeinstallprompt` ไม่ยิงอีกเลย (และสถานะการติดตั้งเป็น **per-เบราว์เซอร์ ไม่ใช่ per-บัญชี**)
+- **Context/Problem:** ผู้ใช้ถามว่า *"ทำไงให้แจ้งเตือนให้ติดตั้งมันโผล่ … นี่สลับบัญชีเข้าไป ก็ยังไม่ขึ้นให้ หรือเป็นเพราะเคยกดติดตั้งในบัญชีแอดมินไปแล้ว ละมันจำ หรอ แต่กุกด uninstall ไปแล้วนะ"* — ขณะที่ฝั่งเซิร์ฟเวอร์ถูกครบแล้ว (manifest · `sw.js` · ไอคอน · `content-type` ถูกทุกตัว)
+- **Root Cause:** **สองความเข้าใจผิดที่ต้องแยกให้ออก**
+  1. **ไม่มีสถานะการติดตั้งอยู่บนเซิร์ฟเวอร์เลย** — PWA install state อยู่ที่ `localStorage` ของเบราว์เซอร์ (per-origin) + ทะเบียน WebAPK ของ Chrome ⇒ **สลับบัญชี PIRIvoice ไม่มีผลใด ๆ** ต่อการติดตั้ง (คนละเรื่องกับ auth โดยสิ้นเชิง)
+  2. **"ลากไอคอนทิ้ง" ≠ "ถอนการติดตั้ง"** — การลบ shortcut บนหน้าจอหลักไม่แตะทะเบียน WebAPK · และ **การถอนแอพก็ไม่ล้าง site data** ⇒ `localStorage` ยังอยู่ ⇒ Chrome ยังถือว่า "ติดตั้งอยู่" ⇒ **ไม่ยิง `beforeinstallprompt`** ⇒ แบนเนอร์/ปุ่มไม่ขึ้นตลอดไป (อาการเดียวกับ [[บทเรียน "ติดตั้งแล้ว ≠ ติดตั้งอยู่"]] แต่คนละสาเหตุ)
+- **Correct Pattern/Solution:** ตรวจที่ **`chrome://webapks`** บน Android — **ไม่ใช่หน้าจอหลัก** · ถ้ายังเห็น PIRIvoice อยู่ ให้กด **Uninstall ที่นั่น** แล้วเปิดเว็บใหม่ ⇒ event ยิงทันที (ผู้ใช้ยืนยันเองว่าได้ผล: *"กุลบ มันขึันแล้ว สุดยอด"*)
+  · ฝั่งโค้ดมี **การ์ด "ติดตั้งแอป" ใน `Profile.vue`** เป็นเครื่องมือวินิจฉัยในตัว — เห็นปุ่ม "ติดตั้งเลย" = event ยิงแล้ว (ปัญหาอยู่ที่แบนเนอร์) · เห็นข้อความ "เปิดด้วย Chrome แล้วเลือก ⋮" = event ไม่ยิง (ปัญหาอยู่ที่ Chrome/OS)
+  · และเมื่อ `beforeinstallprompt` ยิง = **หลักฐานสดว่า installable** ⇒ ใช้โอกาสนั้น **ล้างธง "ติดตั้งแล้ว" ที่ค้าง** (self-healing — ดูบทเรียนก่อนหน้า)
+- **Date Added:** 2026-09-28
+
+### 🛠️ migration แบบ **additive ล้วน** (`CREATE TABLE IF NOT EXISTS` + index · ไม่มี `ALTER`/`DROP`) ⇒ **rollback กลับ image เก่าได้** — ต่างจากคำเตือนกว้าง ๆ ว่า "migrate แล้ว rollback ไม่ได้"
+- **Context/Problem:** แผน §11 เขียนเตือนไว้กว้าง ๆ ว่า *"migrate แล้วจะ rollback กลับ image เก่าไม่ได้"* ⇒ ทำให้การตัดสินใจ deploy production ช้ากว่าที่ควร ทั้งที่ migration รอบนี้เป็น **การเพิ่มตารางใหม่** เท่านั้น
+- **Root Cause:** คำเตือนนั้น **จริงเฉพาะ migration ที่แก้ของเดิม** (`ALTER TABLE … ADD COLUMN NOT NULL` · rename · drop) เพราะ image เก่าไม่รู้จักสคีมาใหม่แล้วอ่าน/เขียนเพี้ยน · แต่ถ้าเป็น **ตาราง/index ใหม่ล้วน** image เก่าแค่ **ไม่รู้จัก** และ**ไม่สนใจ**มัน ⇒ ทำงานต่อได้ปกติ
+- **Correct Pattern/Solution:** ก่อน deploy ที่มี migration ให้วัดระดับความเสี่ยงจาก diff จริงเสมอ:
+  ```bash
+  git diff <old>..<new> -- backend/core/init_db.py | grep -E '^[-+]' | grep -v '^[-+][-+]'
+  # ดูบรรทัดที่ "ลบ" — ถ้าที่ลบมีแต่คอมเมนต์ = additive ล้วน
+  ```
+  · `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS` = ปลอดภัย · `ALTER`/`DROP` = ต้องคิดหนักและควรมีแผน rollback แยก
+  · **ก่อนแตะ production ต้องมี backup ที่ "กู้คืนได้" พิสูจน์แล้ว** ไม่ใช่แค่ไฟล์มีอยู่ — รอบนี้ทำ `pg_dump` แล้ว `pg_restore --list` ยืนยัน **22 ตารางกู้คืนได้** (2,618,043 bytes) ก่อน deploy
+- **Date Added:** 2026-09-28
+
+### ✋ cache ที่ถูก poison ไว้ **หายเองได้หลัง deploy รอบใหม่** — อย่าด่วนสรุปว่า "ต้อง purge" และอย่าตีความว่าฟีเจอร์พัง
+- **Context/Problem:** หลัง deploy staging รอบก่อน พบ `/sw.js` และ `/icons/icon-192.png` ผ่าน CDN ได้ `200 text/html` (SPA fallback) ทั้งที่ต้นทางถูกต้อง ⇒ บันทึกไว้ว่า *"ต้องให้ผู้ใช้ไปล้างแคชใน CF dashboard หรือรอ ~4 ชม."*
+- **Root Cause:** เมื่อ deploy รอบใหม่ nginx มีไฟล์จริงแล้ว ⇒ Cloudflare revalidate กับ origin เห็น `Last-Modified`/`ETag` ใหม่ ⇒ **เขียนทับของเสียเดิมเอง** โดยไม่ต้อง purge
+- **Correct Pattern/Solution:** หลัง deploy ทุกครั้ง **ตรวจซ้ำก่อนสรุปว่าเสีย** — อย่าเชื่อบันทึกเก่า:
+  ```bash
+  curl -sI https://<host>/sw.js | grep -iE 'content-type|cache-control|cf-cache-status|age'
+  ```
+  รอบนี้ได้ `application/javascript` 14,734b · `cf=REVALIDATED` และไอคอน `image/png` 62,710b · `cf=HIT` ถูกต้องทั้งคู่ **⇒ ไม่ต้อง purge**
+  · 🎯 บทเรียนที่สำคัญกว่าคือ **อย่าให้เกิดซ้ำ**: ใส่ `?v=<version>` ให้ static asset ที่ต้องคุมเวอร์ชันเอง (`sw.js` · ไอคอน)
+    ⇒ cache key เปลี่ยน ⇒ คำตอบเสียเดิมไม่มีทางถูกหยิบมาใช้ และการ bump เวอร์ชันเป็นการบังคับรีเฟรชในตัว
+  · 🚫 **ห้าม probe path ที่ยังไม่ deploy ผ่าน CDN** — นั่นคือวิธี poison cache ของตัวเอง (บทเรียนก่อนหน้า)
+- **Date Added:** 2026-09-28
+
+### 🧪 โค้ดที่ต้อง "อธิบายสาเหตุ" ต้องแยกเป็น **ฟังก์ชันบริสุทธิ์** — ไม่งั้นกิ่งที่สำคัญที่สุดเทสไม่ถึงเลย
+- **Context/Problem:** `installHint` อธิบายว่าทำไมติดตั้งไม่ได้ (5 สาเหตุที่หน้าตาเหมือนกันแต่วิธีแก้คนละทาง) — ถ้าเขียนเป็น `computed` ที่อ่าน state ของโมดูลตรง ๆ จะ **เทสไม่ได้** เพราะ vitest ไม่ลงทะเบียน service worker (`import.meta.env.PROD` เป็น false) ⇒ `registration.value` เป็น `null` ตลอด ⇒ `swRegistered: false` **ทุกครั้ง** ⇒ กิ่งหลังจากนั้นกลายเป็น **โค้ดตายในเทส**
+- **Root Cause:** สถานะที่มาจากสภาพแวดล้อมจริง (SW · `matchMedia` · install event) **ไม่มีทางถูกตั้งค่าได้ใน jsdom** ⇒ `computed` ที่ฝังอยู่จึงผูกติดกับค่าที่เทสควบคุมไม่ได้เลย
+- **Correct Pattern/Solution:** แยก **ตรรกะ** ออกจาก **แหล่งข้อมูล**:
+  ```ts
+  export interface InstallDiagnostics { standalone: boolean; promptReady: boolean; /* … */ }
+  export function installHintFor(d: InstallDiagnostics): string { /* ลำดับ if ล้วน */ }
+  export const installDiagnostics = computed<InstallDiagnostics>(() => ({ /* อ่าน state จริง */ }))
+  export const installHint = computed(() => installHintFor(installDiagnostics.value))
+  ```
+  ⇒ เทสป้อน `{ ...base, over }` ได้ทุกชุด · และมีเทส **"ต่อสายจริง"** แยกอีกตัวที่ยืนยันว่า `computed` ต่อกับ state จริงอยู่
+  · ⚠️ **`import type` ถูกลบตอนคอมไพล์ ⇒ ไม่สร้างโมดูลอินสแตนซ์ที่สอง** — ปลอดภัยที่จะ `import type { InstallDiagnostics } from '@/pwa'` ในไฟล์เทสที่ใช้ `const pwa = await import('@/pwa')` เป็น singleton (ถ้า import แบบมีค่าจะได้คนละอินสแตนซ์ แล้ว state ไม่ตรงกัน)
+  · ⚠️ **ลำดับ `if` คือสเปก** — ต้องมีเทสยืนยัน **ลำดับ** เช่น `promptReady` ต้องชนะ `dismissed` ⇒ assert **ทั้งขาบวกและขาลบ** (`toContain('กดปุ่ม')` และ `not.toContain('เคยกดปิดแบนเนอร์')`) ไม่งั้นสลับลำดับแล้วเทสยังผ่าน
+- **Date Added:** 2026-09-28
+
+### ⚠️ `localStorage` **ไม่ reactive** — หน้าที่ผูกค่าดิบจาก `readFlag()` จะค้างค่าเดิมไว้จนกว่าจะรีเฟรช
+- **Context/Problem:** การ์ดวินิจฉัยใน Profile ต้องโชว์ "เคยกดปิดแบนเนอร์: ใช่" และเปลี่ยน **ทันที** เมื่อผู้ใช้กด ✕ — แต่ `readFlag()` อ่าน `localStorage` ตรง ๆ ⇒ Vue ไม่รู้ว่าค่าเปลี่ยน ⇒ ตัวเลขค้าง
+- **Root Cause:** Vue ตามรอยได้แค่ `ref`/`reactive`/`computed` — ฟังก์ชันที่อ่าน `localStorage` ในเทมเพลตจะถูกเรียกใหม่เฉพาะเมื่อ dependency ที่ reactive เปลี่ยน ซึ่งกรณีนี้ **ไม่มีเลย**
+- **Correct Pattern/Solution:** เก็บ **`ref` คู่ขนาน** กับค่าที่อยู่ใน `localStorage` แล้วให้ **ฟังก์ชันเขียนตัวเดียว** เป็นทางผ่านบังคับ:
+  ```ts
+  const dismissedState = ref(false); /* … */
+  function setFlag(key: string, on: boolean): void {
+    if (on) writeFlag(key); else clearFlag(key)
+    if (key === DISMISS_KEY) dismissedState.value = on
+    else if (key === AUTO_ASKED_KEY) autoAskedState.value = on
+    else if (key === INSTALLED_KEY) installedState.value = on
+  }
+  ```
+  ⇒ **ห้ามเรียก `writeFlag`/`clearFlag` ตรง ๆ อีก** (ไม่งั้นมีทางที่ ref กับ storage ไม่ตรงกัน) · และ `registerPwa()` ต้อง **seed ref ทั้งหมดจาก storage ตอนเริ่ม** ไม่งั้นค่าเริ่มต้นเพี้ยน
+  · 🧪 เทสกันบั๊กนี้: กด ✕ → assert `installDiagnostics.value.dismissed` เปลี่ยน **และ** `localStorage` เปลี่ยน
+  · 🧪 พิสูจน์แล้วว่ามีค่าจริง: ย้อน `dismissInstall()` ให้เรียก `writeFlag` ตรง ๆ (ตัด ref sync ออก) ⇒ เทสล้ม 1 ตัว
+- **Date Added:** 2026-09-28
+
+### 🛠️ เครื่องมือ: `gh pr edit` **พัง** ใน environment นี้ — ใช้ REST API ตรง ๆ แทน
+- **Context/Problem:** `gh pr edit 44 --body-file /tmp/pr44_body.md` → **exit 1** พร้อม `GraphQL: Projects (classic) is being deprecated in favor of the new Projects experience…` ⇒ แก้ body ของ PR ไม่ได้เลยด้วยคำสั่งปกติ
+- **Root Cause:** `gh pr edit` ยิง GraphQL query ที่ยังอ้าง `projectCards`/`projectItems` แบบ Projects classic ซึ่ง GitHub ปิดไปแล้ว ⇒ command ตายก่อนจะได้เขียนอะไร
+- **Correct Pattern/Solution:** ใช้ REST endpoint ตรง ๆ — `gh api` ไม่ผ่าน GraphQL จึงไม่พัง:
+  ```bash
+  gh api repos/<owner>/<repo>/pulls/<n> -X PATCH -F body=@/tmp/pr_body.md --jq '.body | length'
+  ```
+  ⇒ `-F` (ไม่ใช่ `-f`) ทำให้อ่านค่าจาก **ไฟล์** ได้ (`@path`) และไม่ต้อง escape ภาษาไทย/backtick
+  · ใช้ `--jq` ยืนยันความยาวที่เขียนจริง — **อย่าเชื่อว่า "คำสั่งผ่าน = เนื้อหาถูก"**
+  · ⚠️ ฝั่งอ่านก็เลี่ยง `gh pr view --json` ที่อาจดึง field โครงการ — `gh api repos/<o>/<r>/pulls/<n>` ตรง ๆ ปลอดภัยกว่า
+- **Date Added:** 2026-09-28

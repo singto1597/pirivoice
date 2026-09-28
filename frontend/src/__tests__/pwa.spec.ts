@@ -14,6 +14,9 @@
  *    ⇒ ต้อง stub ก่อนเรียก `registerPwa()` ไม่งั้น throw
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// ⚠️ `import type` เท่านั้น — ถูกลบตอนคอมไพล์ จึง **ไม่สร้างโมดูลอินสแตนซ์ที่สอง**
+//    (การ import ของจริงยังเป็น `await import` ข้างล่าง ซึ่งตั้งใจให้เป็นตัวเดียวตลอดไฟล์)
+import type { InstallDiagnostics } from '@/pwa'
 
 const DISMISS_KEY = 'piri_install_dismissed'
 const INSTALLED_KEY = 'piri_installed'
@@ -259,5 +262,79 @@ describe('ติดตั้งเองจากในการ์ด Profile �
 
     expect(pwa.isStandalone.value).toBe(true)
     expect(pwa.canPromptInstall.value).toBe(false)
+  })
+})
+
+/**
+ * 🔎 ตัววินิจฉัย "ทำไมติดตั้งไม่ได้"
+ *
+ * ⚠️ `installHintFor()` ถูกแยกเป็นฟังก์ชันบริสุทธิ์เพื่อให้เทส **ป้อนสถานะใดก็ได้** —
+ *    ถ้าผูกกับ state ของโมดูลจะทดสอบไม่ได้เลย เพราะ vitest ไม่ลงทะเบียน SW
+ *    (`import.meta.env.PROD` เป็น false) ⇒ `swRegistered` เป็น false ตลอด
+ *    ⇒ กิ่งหลังจากนั้นแตะไม่ถึง
+ */
+describe('ตัววินิจฉัยการติดตั้ง', () => {
+  /** สถานะตั้งต้น = "ยังไม่ติดตั้ง · ไม่มีอะไรพิเศษ" — เทสแต่ละตัว override เฉพาะที่สนใจ */
+  const base: InstallDiagnostics = {
+    standalone: false,
+    promptReady: false,
+    iosSafari: false,
+    swRegistered: true,
+    dismissed: false,
+    autoAsked: false,
+    installedBefore: false,
+  }
+  const hint = (over: Partial<InstallDiagnostics> = {}) =>
+    pwa.installHintFor({ ...base, ...over })
+
+  it('★ ได้สัญญาณจากเบราว์เซอร์ → บอกให้กดปุ่มได้เลย', () => {
+    expect(hint({ promptReady: true })).toContain('กดปุ่ม')
+  })
+
+  it('★ ได้สัญญาณ + เคยกดปิด → ยังต้องบอกให้กดปุ่ม (promptReady ต้องชนะ)', () => {
+    // ⚠️ เทสนี้คือหัวใจของลำดับความสำคัญ: ถ้าสลับให้ `dismissed` มาก่อน จะบอกผู้ใช้ว่า
+    //    "เคยกดปิดไว้" ทั้งที่ความจริงติดตั้งได้แล้ว ⇒ ชี้ผิดจุด
+    const text = hint({ promptReady: true, dismissed: true })
+    expect(text).toContain('กดปุ่ม')
+    expect(text).not.toContain('เคยกดปิดแบนเนอร์')
+  })
+
+  it('Service Worker ไม่ทำงาน → ชี้ที่ตัวช่วยแอพ (สาเหตุที่ลึกกว่าธง)', () => {
+    expect(hint({ swRegistered: false, dismissed: true, installedBefore: true })).toContain(
+      'Service Worker',
+    )
+  })
+
+  it('เคยกดปิดแบนเนอร์ → บอกว่าปุ่มด้านบนยังใช้ได้', () => {
+    expect(hint({ dismissed: true })).toContain('เคยกดปิดแบนเนอร์ไว้')
+  })
+
+  it('★ เคยติดตั้งมาก่อน → ชี้ไปที่ chrome://webapks (เคสจริงที่เจอ)', () => {
+    expect(hint({ installedBefore: true })).toContain('chrome://webapks')
+  })
+
+  it('ไม่รู้อะไรเลย → บอก 3 สาเหตุที่พบบ่อย ไม่ฟันธงผิด', () => {
+    const text = hint()
+    expect(text).toContain('LINE/Facebook')
+    expect(text).toContain('ยังติดตั้งค้างอยู่')
+  })
+
+  it('iOS Safari → สอนปุ่มแชร์ ไม่ใช่บอกว่าเบราว์เซอร์ไม่รองรับ', () => {
+    expect(hint({ iosSafari: true })).toContain('แชร์')
+  })
+
+  it('เปิดในโหมดแอพอยู่แล้ว → บอกว่าไม่มีอะไรต้องติดตั้ง', () => {
+    expect(hint({ standalone: true, promptReady: true })).toContain('โหมดแอพแล้ว')
+  })
+
+  it('★ ต่อสายจริง: กด ✕ แล้ว `installDiagnostics` เปลี่ยนตามทันที', async () => {
+    // ⚠️ เทสนี้กันบั๊กที่ `readFlag()` ไม่ reactive — ถ้าหน้าจออ่านค่าดิบจาก localStorage
+    //    ค่าที่แสดงจะค้างอยู่ที่ตอนโหลดหน้า ผู้ใช้กด ✕ แล้วตัวเลขไม่ขยับ
+    expect(pwa.installDiagnostics.value.dismissed).toBe(false)
+
+    pwa.dismissInstall()
+
+    expect(pwa.installDiagnostics.value.dismissed).toBe(true)
+    expect(localStorage.getItem(DISMISS_KEY)).toBe('1')
   })
 })
