@@ -529,6 +529,9 @@ async def init_db(pool: asyncpg.Pool):
                 #    มันอยู่ใน `migrations/018_push_notifications.py` ที่เดียว — ถ้า copy มาสองที่
                 #    sẽ drift กันได้ง่าย (และ init_db ไม่ได้อยู่ใน transaction เดียวกับ migration)
                 #    ⇒ ไฟล์นี้มีแค่ "ตาราง" ส่วน "พฤติกรรม" อยู่ที่ migration
+                #    📌 ร่างล่าสุดของฟังก์ชันอยู่ที่ `migrations/019_push_outbox_requires_device.py`
+                #       (019 ทับ 018 ด้วย `CREATE OR REPLACE` — เพิ่มประตู "ผู้รับต้องมีอุปกรณ์
+                #        ก่อนจึงเข้าคิว") ⇒ **อ่าน 019 เป็นหลัก** ถ้าจะแก้เงื่อนไขการเข้าคิวจริง ๆ
                 await conn.execute("""
                 CREATE TABLE IF NOT EXISTS push_outbox (
                     id BIGSERIAL PRIMARY KEY,
