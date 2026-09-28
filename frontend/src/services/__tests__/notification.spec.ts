@@ -1,20 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // mock axios instance — ทดสอบเฉพาะ service layer ไม่ต้องมี backend จริง
-const { getMock, postMock } = vi.hoisted(() => ({
+const { getMock, postMock, putMock } = vi.hoisted(() => ({
   getMock: vi.fn<(url: string, config?: unknown) => Promise<unknown>>(),
   postMock: vi.fn<(url: string, data?: unknown) => Promise<unknown>>(),
+  putMock: vi.fn<(url: string, data?: unknown) => Promise<unknown>>(),
 }))
 vi.mock('@/services/api', () => ({
-  default: { get: getMock, post: postMock },
+  default: { get: getMock, post: postMock, put: putMock },
 }))
 
-import { listNotifications, getUnreadCounts, markRead } from '@/services/notification'
+import {
+  listNotifications,
+  getUnreadCounts,
+  markRead,
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from '@/services/notification'
 
 describe('notification services (รายการ/นับ/อ่านแล้ว)', () => {
   beforeEach(() => {
     getMock.mockReset()
     postMock.mockReset()
+    putMock.mockReset()
   })
 
   it('listNotifications → GET /api/notifications พร้อม params และ unwrap เป็น envelope', async () => {
@@ -81,5 +89,69 @@ describe('notification services (รายการ/นับ/อ่านแล
 
     expect(postMock).toHaveBeenCalledWith('/api/notifications/read', { read_all: true })
     expect(result).toEqual({ updated: 5 })
+  })
+})
+
+describe('notification preferences (ตั้งค่ารายกลุ่ม)', () => {
+  beforeEach(() => {
+    getMock.mockReset()
+    postMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it('getNotificationPreferences → GET /api/notifications/preferences', async () => {
+    const fakeRes = {
+      preferences: [
+        { group_type: 'issue_mine', enabled: true },
+        { group_type: 'issue_received', enabled: true },
+        { group_type: 'board', enabled: false },
+        { group_type: 'report', enabled: true },
+      ],
+    }
+    getMock.mockResolvedValue(fakeRes)
+
+    const result = await getNotificationPreferences()
+
+    expect(getMock).toHaveBeenCalledTimes(1)
+    expect(getMock).toHaveBeenCalledWith('/api/notifications/preferences')
+    expect(result).toEqual(fakeRes)
+  })
+
+  it('updateNotificationPreferences → PUT พร้อมซอง { preferences }', async () => {
+    const fakeRes = { preferences: [{ group_type: 'board', enabled: false }] }
+    putMock.mockResolvedValue(fakeRes)
+
+    const result = await updateNotificationPreferences([{ group_type: 'board', enabled: false }])
+
+    // ⚠️ ต้องห่อด้วย key `preferences` ให้ตรงกับ UpdateNotificationPreferencesRequest
+    expect(putMock).toHaveBeenCalledWith('/api/notifications/preferences', {
+      preferences: [{ group_type: 'board', enabled: false }],
+    })
+    expect(result).toEqual(fakeRes)
+  })
+
+  it('updateNotificationPreferences ส่งได้หลายกลุ่มในคำขอเดียว', async () => {
+    putMock.mockResolvedValue({ preferences: [] })
+
+    await updateNotificationPreferences([
+      { group_type: 'issue_mine', enabled: false },
+      { group_type: 'report', enabled: false },
+    ])
+
+    expect(putMock).toHaveBeenCalledWith('/api/notifications/preferences', {
+      preferences: [
+        { group_type: 'issue_mine', enabled: false },
+        { group_type: 'report', enabled: false },
+      ],
+    })
+  })
+
+  it('ใช้ PUT ไม่ใช่ PATCH/POST (endpoint idempotent — ส่งซ้ำผลเท่าเดิม)', async () => {
+    putMock.mockResolvedValue({ preferences: [] })
+
+    await updateNotificationPreferences([{ group_type: 'board', enabled: true }])
+
+    expect(putMock).toHaveBeenCalledTimes(1)
+    expect(postMock).not.toHaveBeenCalled()
   })
 })

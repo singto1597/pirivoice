@@ -19,6 +19,37 @@ GROUP_TYPES = ("issue_mine", "issue_received", "board", "report")
 
 
 # ============================================================
+# ⚙️ Preference gate — ผู้ใช้ปิดกลุ่มไหนไว้?
+# ============================================================
+# "ไม่มีแถว" = เปิด (ค่าตั้งต้นของทุกคน — ไม่ต้อง backfill)
+# ⚠️ ทั้ง 3 ฟังก์ชัน notify* ต้องผ่าน gate นี้เสมอ ไม่งั้นคนที่ปิดไว้จะยังโดนแจ้งเตือน
+#    ถ้าเพิ่มคิวรีที่ insert notification เองในอนาคต ต้องเรียก gate เองด้วย
+
+async def _pref_allows(conn, user_id: int, group_type: str) -> bool:
+    """ผู้ใช้รายนี้ยังเปิดรับกลุ่มนี้อยู่ไหม (ใช้กับ notify ที่มีผู้รับคนเดียว)"""
+    val = await conn.fetchval(
+        "SELECT enabled FROM notification_preferences WHERE user_id = $1 AND group_type = $2",
+        user_id, group_type,
+    )
+    return True if val is None else bool(val)
+
+
+async def _filter_allowed(conn, user_ids: List[int], group_type: str) -> List[int]:
+    """กรองผู้ที่ปิดกลุ่มนี้ออก — ยิงคิวรีเดียว ไม่ใช่ N คิวรี"""
+    if not user_ids:
+        return []
+    blocked = await conn.fetch(
+        """
+        SELECT user_id FROM notification_preferences
+        WHERE group_type = $1 AND enabled = FALSE AND user_id = ANY($2::int[])
+        """,
+        group_type, list(user_ids),
+    )
+    blocked_ids = {r["user_id"] for r in blocked}
+    return [u for u in user_ids if u not in blocked_ids]
+
+
+# ============================================================
 # ✍️ Write helpers — เรียกภายใน transaction ของ caller
 # ============================================================
 
@@ -36,8 +67,11 @@ async def notify(
     actor_id: Optional[int] = None,
     actor_name: Optional[str] = None,
 ) -> None:
-    """สร้าง notification 1 แถว (skip ถ้า actor ทำกับตัวเอง — ไม่สแปมตัวเอง)"""
+    """สร้าง notification 1 แถว (skip ถ้า actor ทำกับตัวเอง — ไม่สแปมตัวเอง
+    และ skip ถ้าผู้รับปิดกลุ่มนี้ไว้)"""
     if actor_id is not None and int(actor_id) == int(user_id):
+        return
+    if not await _pref_allows(conn, user_id, group_type):
         return
     await conn.execute(
         """
@@ -65,11 +99,12 @@ async def notify_bulk(
     actor_id: Optional[int] = None,
     actor_name: Optional[str] = None,
 ) -> None:
-    """หลายผู้รับในคราวเดียว (filter actor ออกก่อน insert)"""
+    """หลายผู้รับในคราวเดียว (filter actor ออกก่อน insert แล้วกรองคนที่ปิดกลุ่มนั้น)"""
     ids = [
         u for u in {int(x) for x in user_ids}
         if actor_id is None or int(u) != int(actor_id)
     ]
+    ids = await _filter_allowed(conn, ids, group_type)
     if not ids:
         return
     await conn.executemany(
@@ -101,17 +136,26 @@ async def notify_fanout(
     actor_name: Optional[str] = None,
 ) -> None:
     """Fan-out ไปทุก active user (ตาราง students) — ขนาดโรงเรียนไม่กี่ร้อย/พันคน OK
-    ใน transaction เดียว (ถ้า >10k คนค่อยย้ายไป queue ตามแผน)"""
+    ใน transaction เดียว (ถ้า >10k คนค่อยย้ายไป queue ตามแผน)
+
+    กรองคนที่ปิดกลุ่มนี้ใน SQL เลย (ไม่ดึงออกมา filter ใน Python) — $1 คือ group_type
+    ⚠️ `students.user_id` เขียน qualified เพราะใน WHERE มี subquery ที่มีคอลัมน์ user_id ของตัวเอง"""
     await conn.execute(
         """
         INSERT INTO notifications
             (user_id, group_type, type, title, body, entity_type, entity_id,
              board_id, actor_id, actor_name)
-        SELECT DISTINCT user_id, $1::varchar, $2::varchar, $3::text, $4::text, $5::varchar,
+        SELECT DISTINCT students.user_id, $1::varchar, $2::varchar, $3::text, $4::text, $5::varchar,
                $6::int, $7::int, $8::int, $9::text
         FROM students
         WHERE deleted_at IS NULL AND status = 'active'
-          AND ($8::int IS NULL OR user_id <> $8)
+          AND ($8::int IS NULL OR students.user_id <> $8)
+          AND NOT EXISTS (
+              SELECT 1 FROM notification_preferences p
+              WHERE p.user_id = students.user_id
+                AND p.group_type = $1
+                AND p.enabled = FALSE
+          )
         """,
         group_type, type, title, body, entity_type, entity_id,
         board_id, actor_id, actor_name,
@@ -203,6 +247,52 @@ async def get_unread_counts(pool, user_id: int) -> dict:
     for g in GROUP_TYPES:
         counts.setdefault(g, 0)
     return {"counts": counts, "total": sum(counts.values())}
+
+
+async def get_preferences(pool, user_id: int) -> dict:
+    """ค่าตั้งค่าการแจ้งเตือนของฉัน — **คืนครบทุกกลุ่มเสมอ** (กลุ่มที่ไม่มีแถว = เปิด)
+
+    zero-fill แบบเดียวกับ get_unread_counts: frontend ไม่ต้องรู้จัก GROUP_TYPES เอง
+    ⇒ วันหน้าเพิ่มกลุ่มใหม่ แค่แก้ GROUP_TYPES ที่เดียว UI ก็ได้แถวใหม่อัตโนมัติ"""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT group_type, enabled FROM notification_preferences WHERE user_id = $1",
+            user_id,
+        )
+    saved = {r["group_type"]: r["enabled"] for r in rows}
+    return {
+        "preferences": [
+            {"group_type": g, "enabled": bool(saved.get(g, True))}
+            for g in GROUP_TYPES
+        ]
+    }
+
+
+async def update_preferences(pool, user_id: int, items: List[dict]) -> dict:
+    """อัปเดตเฉพาะกลุ่มที่ส่งมา (upsert) แล้วคืนค่าล่าสุดทั้งชุด
+
+    - เป็น **partial update** — กลุ่มที่ไม่ส่งมาคงค่าเดิม (ไม่ reset เป็นเปิด)
+    - ⚠️ **ไม่เขียน audit log โดยเจตนา** — เป็นค่าส่วนตัว ไม่ใช่ state ที่แชร์
+      และจะทำให้ `audit_logs` เสียงดังโดยไม่จำเป็น
+    - เปิด transaction เอง (ต่างจาก notify* ที่รับ conn จาก caller)"""
+    # dedupe: ถ้าส่ง group_type เดิมมาสองครั้ง ให้ตัวหลังชนะ — กัน
+    # "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    deduped = {it["group_type"]: it["enabled"] for it in items}
+    if not deduped:
+        return await get_preferences(pool, user_id)
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.executemany(
+                """
+                INSERT INTO notification_preferences (user_id, group_type, enabled)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (user_id, group_type)
+                DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()
+                """,
+                [(user_id, g, enabled) for g, enabled in deduped.items()],
+            )
+    return await get_preferences(pool, user_id)
 
 
 def _to_dict(r) -> dict:

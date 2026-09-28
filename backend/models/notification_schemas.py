@@ -43,3 +43,25 @@ class MarkReadRequest(BaseModel):
 
 class MarkReadOut(BaseModel):
     updated: int
+
+
+# ⚠️ pattern นี้ต้องตรงกับ GROUP_TYPES ใน services/notification_service.py
+# และ GROUP_TYPE_PATTERN ใน routers/notification_router.py (ซ้ำ 3 ที่โดยเจตนา — เหมือน
+# ตัว group_type ของ notifications ที่มีมาก่อนแล้ว; เพิ่มกลุ่มใหม่ต้องแก้ทั้ง 3 + frontend)
+GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report)$"
+
+
+class NotificationPreferenceItem(BaseModel):
+    group_type: str = Field(..., pattern=GROUP_TYPE_PATTERN)
+    enabled: bool = Field(..., description="False = ปิดแจ้งเตือนกลุ่มนี้ (เงียบทั้ง in-app และ push)")
+
+
+class NotificationPreferencesOut(BaseModel):
+    """คืนครบทุกกลุ่มเสมอ (กลุ่มที่ไม่มีแถว = enabled True)"""
+    preferences: List[NotificationPreferenceItem]
+
+
+class UpdateNotificationPreferencesRequest(BaseModel):
+    # 1–4 รายการ: ต้องส่งมาอย่างน้อย 1 (ไม่งั้นเป็น no-op ที่ไม่มีความหมาย) และไม่เกิน
+    # จำนวนกลุ่มที่มีจริง — กัน client ส่งขยะยาว ๆ มา
+    preferences: List[NotificationPreferenceItem] = Field(..., min_length=1, max_length=4)
