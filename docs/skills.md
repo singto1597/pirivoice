@@ -858,3 +858,31 @@
   · **แยกคีย์ `piri_installed` ออกจาก `piri_install_dismissed`** — "ติดตั้งแล้ว" กับ "ไม่อยากติดตั้ง" คนละเรื่อง · **ต่อ `?v=<build-id>` ท้าย URL ของ `sw.js`** (`vite.config.ts` ฉีด `__BUILD_ID__` จาก short git SHA) ⇒ CDN ไม่มี URL เก่าให้เสิร์ฟ เป็นวิธีที่ทนที่สุดและไม่ต้องพึ่ง CF (ตรงกับข้อ (3) ของบทเรียน CDN)
 - **⚠️ ข้อจำกัดที่ **บอกผู้ใช้ตรง ๆ** ทุกครั้ง (อย่าสัญญาว่าทำได้):** **เว็บติดตั้งแอพเองโดยไม่ให้ผู้ใช้ยืนยันไม่ได้เลย** — Chrome ต้องเรียก `prompt()` และต้องมี user gesture (ยอมให้เรียกใน handler ของ `beforeinstallprompt` ได้) ส่วน **iOS Safari ไม่มี API ติดตั้งใด ๆ ทั้งสิ้น** และไม่ยิง `beforeinstallprompt` ⇒ ทางเดียวคือสอนให้กด **แชร์ → "เพิ่มไปที่หน้าจอ"** (เฉพาะ Safari — Chrome/Firefox บน iOS ทำไม่ได้เลย) · และ **อย่าเดาจาก user agent ว่า "ติดตั้งได้"** ให้แสดงปุ่มเฉพาะเมื่อได้ event จริง ไม่งั้นจะโชว์ปุ่มที่กดแล้วเงียบ
 - **Date Added:** 2026-09-28
+
+### ✋ "ติดตั้งอัตโนมัติ" ทำได้จริงแค่ไหน: `prompt()` ต้องอยู่ใน **user gesture** — แต่ gesture **ไม่จำเป็นต้องเป็นปุ่มติดตั้ง** ("แตะที่ไหนก็ได้" ก็พอ)
+- **Context/Problem:** ผู้ใช้สั่งว่า "แก้ให้เพิ่มลงหน้าจออัตโนมัติด้วยนะ เป็นไอคอน" — คำขอนี้ทำตามตรง ๆ ไม่ได้ และถ้าทำตามที่ผู้ใช้พูดแบบไม่ตรวจข้อจำกัด จะได้ปุ่มที่กดแล้วเงียบ
+- **Root Cause:** สองข้อจำกัดที่ **แก้ไม่ได้ด้วยโค้ด** และต้องบอกผู้ใช้ตรง ๆ เสมอ:
+  1. **เบราว์เซอร์ห้ามเว็บติดตั้งแอพเอง** — Chrome บังคับว่า `BeforeInstallPromptEvent.prompt()` ต้องเรียก **ระหว่าง user gesture** ("must be called during a user gesture") ⇒ dialog เด้งเองตอนโหลดหน้า ทำไม่ได้เลย
+  2. **iOS Safari ไม่มี API ติดตั้งใด ๆ** และไม่ยิง `beforeinstallprompt` ⇒ ทางเดียวคือ "แชร์ → เพิ่มไปที่หน้าจอ" (และ **Chrome/Firefox บน iOS ก็ทำไม่ได้เลย** ไม่ใช่แค่ Safari)
+- **Correct Pattern/Solution:** ข้อ 1 มีช่องว่างที่ใช้ได้ — **gesture ไม่จำเป็นต้องเป็นการกดปุ่มติดตั้ง** การแตะที่ไหนก็ได้ในหน้าถือเป็น gesture และ Chromium **ไม่ consume** gesture นั้น (แค่ตรวจว่ามี gesture ทำงานอยู่) ⇒ ยิง dialog ตอน **แตะแรกของผู้ใช้** ได้ โดยผู้ใช้ไม่ต้องหาปุ่ม:
+  ```ts
+  function onFirstGesture() {          // ผูกตอนได้ beforeinstallprompt
+    if (!autoPromptArmed) return
+    disarmAutoPrompt()                 // ถอด listener ทันที — ยิงครั้งเดียว
+    if (!deferredPrompt.value) return
+    writeFlag(AUTO_ASKED_KEY)
+    void promptInstall()               // ⚠️ ทุกบรรทัดก่อนนี้ต้อง synchronous
+  }
+  document.addEventListener('click', onFirstGesture, { capture: true })
+  document.addEventListener('keydown', onFirstGesture, { capture: true })  // ผู้ใช้คีย์บอร์ด
+  ```
+  · **ห้ามมี `await` คั่นก่อนเรียก `prompt()`** ไม่งั้น gesture หลุด (บทเรียนเดียวกันกับ `chrome.permissions.request`) — เคสคลาสสิกคือเผลอ `await` อะไรบางอย่างก่อน แล้วปุ่มเงียบโดยไม่มี error
+  · **ยิงเองได้ครั้งเดียวตลอดไป** ⇒ ใช้คีย์แยก `piri_install_auto_asked` ไม่งั้นจะยิงซ้ำทุกเซสชัน = การรบกวน · หลังจากนั้นกลับมาเป็นแบนเนอร์ให้กดเอง
+  · **ซ่อนแบนเนอร์ระหว่างรอแตะแรก** (`autoAskPending`) — ไม่งั้นผู้ใช้เห็นทั้ง dialog ของเบราว์เซอร์และแบนเนอร์ของเราพร้อมกัน ซึ่งดูเหมือนบั๊ก
+  · **`dismissInstall()` ต้องยกเลิกคำขอที่รออยู่ด้วย** — "ไม่เอา" ต้องชนะ "กำลังจะถาม"
+- **⚠️ กับดักตอนเทส (เจอจริงในรอบนี้):** กลไกนี้ผูก listener ระดับโมดูลและไม่เคยถอด ⇒
+  (1) **อย่า `vi.resetModules()` ต่อเทส** — listener ของโมดูลรุ่นเก่ายังค้างบน `document` แล้วแตะครั้งเดียวยิงพร้อมกันทุกรุ่น (mock ถูกเรียกซ้ำ → เทสล้มด้วยเหตุผลของการทดสอบเอง) ให้ import ครั้งเดียวตลอดไฟล์ (ตรงกับความจริงที่โมดูลเป็น singleton) แล้วแยกสถานะด้วย `localStorage.clear()` + `dismissInstall()`
+  (2) **jsdom ไม่มี `window.matchMedia`** (`typeof` = `"undefined"` ⇒ `registerPwa()` throw) ต้อง stub
+  (3) **`beforeinstallprompt` ไม่ใช่ event มาตรฐาน** ต้องสร้าง `new Event(...)` แล้วแปะ `prompt`/`userChoice` เอง (ของจริงต้องมี HTTPS + ไอคอนครบ + engagement heuristic ถึงยิง ⇒ จำลองไม่ได้ในเครื่อง dev)
+  (4) `typeof someUndeclaredVar` **ไม่มีวัน throw** ⇒ ใช้ `typeof` ตรวจว่ามี API ไหมไม่ได้ ให้ใช้ `try/catch` หรือ `in`
+- **Date Added:** 2026-09-28

@@ -34,6 +34,15 @@ const INSTALLED_KEY = 'piri_installed'
 /** ผู้ใช้ iOS เคยกดปิดคำแนะนำ "แชร์ → เพิ่มไปที่หน้าจอ" */
 const IOS_HINT_KEY = 'piri_ios_hint_dismissed'
 
+/**
+ * เคยยิง dialog ติดตั้งอัตโนมัติไปแล้วหนึ่งครั้ง — กันการรบกวนซ้ำทุกเซสชัน
+ *
+ * ผู้ใช้ขอ "ติดตั้งอัตโนมัติ" ⇒ เรายิง dialog ให้เองเมื่อแตะจอครั้งแรก
+ * แต่ถ้าเขาปิด dialog ไปแล้ว การยิงซ้ำทุกครั้งที่เปิดแอพคือการรบกวน
+ * ⇒ ยิงเอง **ครั้งเดียวตลอดไป** หลังจากนั้นเหลือแบนเนอร์ให้กดเอง
+ */
+const AUTO_ASKED_KEY = 'piri_install_auto_asked'
+
 const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null)
 const canInstallState = ref(false)
 const updateAvailableState = ref(false)
@@ -41,6 +50,14 @@ const standaloneState = ref(false)
 const iosSafariState = ref(false)
 const iosHintDismissedState = ref(false)
 const registration = ref<ServiceWorkerRegistration | null>(null)
+
+/**
+ * กำลังรอแตะแรกเพื่อยิง dialog เองอยู่
+ *
+ * ใช้ซ่อนแบนเนอร์ระหว่างนี้ — ไม่ให้มีสองอย่างโผล่พร้อมกัน (dialog ของเบราว์เซอร์
+ * + แบนเนอร์ของเรา) ซึ่งจะดูเหมือนระบบเพี้ยน
+ */
+const autoAskPending = ref(false)
 
 /** โหลดแล้วหรือยัง — กันแบนเนอร์กะพริบขึ้นมาแล้วหาย */
 const ready = ref(false)
@@ -102,19 +119,75 @@ if (typeof window !== 'undefined') {
     event.preventDefault()
     deferredPrompt.value = event as unknown as BeforeInstallPromptEvent
     canInstallState.value = !isDismissed() && !isInstalled()
+    armAutoPrompt()
   })
 
   window.addEventListener('appinstalled', () => {
     deferredPrompt.value = null
     canInstallState.value = false
     standaloneState.value = true
+    disarmAutoPrompt()
     writeFlag(INSTALLED_KEY)
   })
 }
 
-/** ควรแสดงแบนเนอร์ชวนติดตั้งไหม */
+// ── ติดตั้ง "อัตโนมัติ" เท่าที่เบราว์เซอร์ยอมให้ทำ ──────────────────────────────
+//
+// ⚠️ **เบราว์เซอร์ห้ามเว็บติดตั้งแอพเอง และห้ามเรียก `prompt()` ตอนโหลดหน้า**
+//    Chrome บังคับว่า `prompt()` ต้องเรียก **ระหว่าง user gesture**
+//    ("must be called during a user gesture") ⇒ dialog เด้งเองตอนเปิดหน้าจอ
+//    **ทำไม่ได้จริง** ไม่ว่าจะเขียนยังไง — อย่าสัญญากับผู้ใช้ว่าทำได้
+//
+// ✅ แต่ gesture **ไม่จำเป็นต้องเป็นปุ่มติดตั้ง** — "แตะที่ไหนก็ได้" ก็เพียงพอ
+//    ⇒ เราจึงยิง dialog ตอน **แตะแรกของผู้ใช้** ซึ่งผู้ใช้จะรู้สึกว่ามันเด้งเอง
+//      (ไม่มีปุ่มให้ต้องหา) = อัตโนมัติที่สุดเท่าที่ข้อจำกัดของเบราว์เซอร์เปิดให้
+//
+// ⚠️ Chromium ระบุว่า `prompt()` **ไม่ consume** gesture (แค่ตรวจว่ามี gesture
+//    กำลังเกิดอยู่) ⇒ การแตะครั้งนั้นยังทำงานปกติ ไม่ถูกกลืน
+// ⚠️ **ห้ามมี `await` คั่นก่อนเรียก `prompt()`** ไม่งั้น gesture หลุด (บทเรียนจาก
+//    `chrome.permissions.request` ที่พังด้วยสาเหตุเดียวกัน) ⇒ ใน `onFirstGesture`
+//    ทุกอย่างก่อน `promptInstall()` เป็น synchronous ล้วน
+let autoPromptArmed = false
+
+function onFirstGesture(): void {
+  if (!autoPromptArmed) return
+  disarmAutoPrompt()
+
+  if (!deferredPrompt.value) return
+  writeFlag(AUTO_ASKED_KEY)
+  void promptInstall()
+}
+
+function armAutoPrompt(): void {
+  if (autoPromptArmed) return
+  if (typeof document === 'undefined') return
+  if (readFlag(AUTO_ASKED_KEY) || isDismissed() || isInstalled()) return
+
+  autoPromptArmed = true
+  autoAskPending.value = true
+  // `click` เป็น gesture มาตรฐานที่ Chrome รับรอง (ตามตัวอย่างในเอกสาร Chrome เอง)
+  // ส่วน `keydown` ครอบผู้ใช้คีย์บอร์ด — ทั้งคู่ถอดออกทันทีที่ยิงครั้งแรก
+  document.addEventListener('click', onFirstGesture, { capture: true })
+  document.addEventListener('keydown', onFirstGesture, { capture: true })
+}
+
+function disarmAutoPrompt(): void {
+  if (!autoPromptArmed) return
+  autoPromptArmed = false
+  autoAskPending.value = false
+  document.removeEventListener('click', onFirstGesture, { capture: true })
+  document.removeEventListener('keydown', onFirstGesture, { capture: true })
+}
+
+/**
+ * ควรแสดงแบนเนอร์ชวนติดตั้งไหม
+ *
+ * ⚠️ ซ่อนระหว่างรอแตะแรก (`autoAskPending`) — ถ้าโชว์พร้อมกัน ผู้ใช้จะเห็นทั้ง
+ *    dialog ของเบราว์เซอร์และแบนเนอร์ของเราพร้อมกัน ซึ่งดูเหมือนบั๊ก
+ *    และแบนเนอร์จะกลับมาแสดงเองในเซสชันถัดไป (ตอนที่ไม่ได้ยิงอัตโนมัติแล้ว)
+ */
 export const showInstallBanner = computed(
-  () => ready.value && canInstallState.value && !standaloneState.value,
+  () => ready.value && canInstallState.value && !standaloneState.value && !autoAskPending.value,
 )
 
 export const showUpdateBanner = computed(() => ready.value && updateAvailableState.value)
@@ -212,6 +285,10 @@ export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unava
 export function dismissInstall(): void {
   writeFlag(DISMISS_KEY)
   canInstallState.value = false
+  // ⚠️ ต้องยกเลิก "คำขอติดตั้งที่รอแตะแรกอยู่" ด้วย — ไม่งั้นถ้ามีอะไรเรียกฟังก์ชันนี้
+  //    ระหว่างที่ยังรอแตะ (เช่นอนาคตมีปุ่มปิดที่อื่น) dialog จะเด้งขึ้นมาอยู่ดี
+  //    ทั้งที่ผู้ใช้เพิ่งบอกว่าไม่เอา ⇒ "ไม่เอา" ต้องชนะ "กำลังจะถาม"
+  disarmAutoPrompt()
 }
 
 /** ผู้ใช้ iOS กดปิดคำแนะนำ — จำไว้ ไม่รบกวนซ้ำ */
