@@ -844,6 +844,209 @@ async def test_T18b_subscription_health_counts_failures_without_touching_success
 
 
 # ============================================================
+# 2.5) 🚨 sender โยน exception — "แถวค้างถาวร" (29 ก.ย. 2026)
+#
+#       บั๊กจริงที่พบจากการวัดบน staging **หลัง deploy A3** — ไม่ได้มาจากการอ่านโค้ด:
+#         PUSH  - ERROR - ❌ sender โยน exception
+#                binascii.Error: Invalid base64-encoded string: number of data
+#                characters (1) cannot be 1 more than a multiple of 4
+#         PUSH_WORKER - INFO - 📤 push[loop]: claimed=1 sent=0 gone=0 retry=0
+#                                     dropped=0 skipped=0 stale=0
+#       ⇒ ตัวนับเป็น 0 หมดทั้งที่ claim มาแล้ว 1 แถว ⇒ แถวนั้นค้าง `processing_at`
+#         อยู่ 47+ วินาที (ทั้งที่ `_SEND_TIMEOUT_SECONDS = 10`) และไม่มีอะไรมาปลด
+#         จนกว่าจะ redeploy (ซึ่งจะเรียก `recover_stale_outbox()`)
+#
+#       ราก: `one()` ปล่อย exception ให้ `asyncio.gather(return_exceptions=True)`
+#         ⇒ ได้ exception แทน tuple ⇒ **`g` ที่ผูก outbox_id หายไปทั้งก้อน**
+#         ⇒ ฝั่งจับผลเขียน `{"outbox_id": None, "cls": "retry"}` แล้ว **ทิ้งมัน**
+#         ในลูป `per_outbox` ที่มี `if r["outbox_id"] is None: continue`
+#         ⇒ "retry" ที่เพิ่งจดไปไม่ถึงใครเลย — **แถวไม่ถูกจัดประเภท ไม่จบ ไม่ retry**
+#
+#       ⚠️ เทสต์ชุดเดิม 486 ตัว **จับไม่ได้ทั้งหมด** เพราะทุกตัวใช้ sender ที่
+#          "โยนหรือไม่โยนก็คืนค่าเสมอ" ⇒ ไม่มีตัวใดเคยพา exception ออกจาก `one()`
+#          (บทเรียนเดียวกับ H9 ของ SSE: **สาขา error ที่ไม่มีเทสต์เดินเข้า = สาขาที่พังได้ฟรี**)
+#
+#       ⇒ `T20a` คือด่านที่ขาดไป (sender โยน), `T20c` คือของจริงเป๊ะ ๆ (คีย์เสีย)
+# ============================================================
+
+def _raiser(exc: BaseException = None):
+    """sender ปลอมที่ **โยน** ทุกครั้ง — จำลองทั้ง network error ที่หลุด และ crypto พัง"""
+    calls = []
+
+    async def send(client, sub, payload, *, ttl):
+        calls.append(sub["id"])
+        raise exc or RuntimeError("sender ระเบิด")
+
+    send.calls = calls
+    return send
+
+
+@pytest.mark.asyncio
+async def test_T20a_sender_exception_reschedules_row_instead_of_sticking(push_world,
+                                                                        db_pool):
+    """★ sender โยน exception → แถวต้องถูก **เลื่อนส่ง** ไม่ใช่ค้าง `processing_at`
+
+    นี่คือเทสต์ที่บั๊ก 29 ก.ย. 2026 ต้องทำให้แตก — ก่อนแก้จะได้:
+        stats["retry"] == 0  (ทั้งที่ควรเป็น 1)
+        row["processing_at"] is not None  ⇒ **ค้าง ไม่มีใครหยิบได้อีก**
+        row["next_attempt_at"] == created_at (ไม่ถูกเลื่อน)
+
+    mutation ที่ต้องทำให้แตก (แต่ละข้อทำให้เทสต์นี้ FAIL):
+      ① `one()` ปล่อย exception ออกไป (ถอด try/except) → retry=0 + ค้าง
+      ② คืน `{"outbox_id": None, "cls": "retry"}` แบบเดิม → เหมือน ①
+      ③ `except Exception` → `return g, sub, 500` (500 = permanent กว่าที่ควร)
+         ⇒ `dropped`/`done` ผิด · ยังผ่านข้อ retry แต่ผิดเจตนา ⇒ assert `last_error`
+    """
+    uid = push_world["student"]["user_id"]
+    await _subscribe(db_pool, uid)
+    await _notify_one(db_pool, user_id=uid)
+    outbox_id = await _single_outbox_id(db_pool)
+
+    sender = _raiser()
+    stats = await push_service.process_pending(db_pool, sender=sender)
+
+    assert len(sender.calls) == 1, "ต้องลองส่งจริง 1 ครั้ง"
+    assert stats["claimed"] == 1
+    assert stats["retry"] == 1, "exception ต้องถูกนับเป็น retryable ไม่ใช่หายเงียบ"
+    assert stats["dropped"] == 0, "ยังไม่ครบเพดาน attempts — ห้ามทิ้ง"
+
+    row = await _outbox_row(db_pool, outbox_id)
+    assert row["processed_at"] is None, "ปิดแถวทั้งที่ยังไม่ส่งสำเร็จ = push หายถาวร"
+    assert row["processing_at"] is None, (
+        "🚨 processing_at ยังไม่ถูกล้าง = **แถวค้างถาวร** (บั๊ก 29 ก.ย. 2026) "
+        "ไม่มีใครหยิบได้อีกจนกว่า worker จะ restart"
+    )
+    assert row["attempts"] == 1
+    assert row["last_error"] == "send-failed"
+
+    async with db_pool.acquire() as conn:
+        later = await conn.fetchval(
+            "SELECT next_attempt_at > NOW() FROM push_outbox WHERE id = $1", outbox_id
+        )
+    assert later is True, "ต้องเลื่อนไปอนาคต ไม่งั้นรอบถัดไปหยิบทันที (busy loop)"
+
+    # ★ พิสูจน์ว่ากลับเข้าคิวได้จริง — ไม่ใช่แค่ค่าคอลัมน์ถูก
+    again = await push_service._claim(db_pool, 100)
+    assert [c["id"] for c in again] == [], "next_attempt_at ยังไม่ถึง ⇒ รอบนี้ต้องไม่ได้"
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE push_outbox SET next_attempt_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+            outbox_id,
+        )
+    assert [c["id"] for c in await push_service._claim(db_pool, 100)] == [outbox_id], (
+        "แถวที่โยน exception ต้องกลับมาถูกหยิบได้ — ไม่ใช่ค้างอยู่ตลอดกาล"
+    )
+
+
+@pytest.mark.asyncio
+async def test_T20b_every_device_of_one_row_raising_still_retries_exactly_once(
+    push_world, db_pool,
+):
+    """★ แถวเดียว 2 อุปกรณ์ **โยนทั้งคู่** → ต้องได้ `retry == 1` พอดี (ไม่ใช่ 0 ไม่ใช่ 2)
+
+    ⭐ ทำไมต้องมีเทสต์นี้แยกจาก T20a — T20a มีอุปกรณ์เดียว จึงพิสูจน์ได้แค่ว่า
+       "1 exception → 1 retry" · ตัวนี้พิสูจน์ว่า **การจับกลุ่มตาม outbox ยังถูกต้อง
+       เมื่อมี exception หลายตัว** ⇒ กันการแก้ที่ดูเข้าท่าแต่ผิดสองแบบ:
+         ① นับ retry ต่อ *exception* (จะได้ 2) — ผู้ใช้จะถูกเลื่อนส่งซ้ำซ้อน
+         ② สร้างแถว retry แยกต่ออุปกรณ์ — ผิดโมเดล (retry เป็นของ *แถว* ไม่ใช่ของอุปกรณ์)
+
+    ⚠️ **กรณี "เครื่องหนึ่งโยน เครื่องหนึ่งสำเร็จ" ไม่ได้อยู่ในเทสต์นี้โดยเจตนา** —
+       ตรวจแล้วว่ามัน**ผ่านตั้งแต่ก่อนแก้** (ผลของเครื่องที่สำเร็จยังมีเจ้าของ เพราะ
+       `results` มีทั้งใบที่เสียและใบที่สำเร็จปนกัน) ⇒ เอามาเขียนเป็นเทสต์จะได้
+       เทสต์ที่ **ไม่มีฟัน** และ docstring ที่อ้างว่าจับบั๊กไม่ได้ = โกหกคนอ่าน
+       ⇒ เก็บเฉพาะกรณีที่ **พิสูจน์แล้วว่าแตกก่อนแก้** (ยืนยันด้วยการ stash โค้ดที่แก้)
+
+    mutation ที่ต้องทำให้แตก: ถอด try/except ใน `one()` → `retry == 0` + แถวค้าง
+    """
+    uid = push_world["student"]["user_id"]
+    await _subscribe(db_pool, uid)                       # เครื่องที่ 1 — จะโยน
+    await _subscribe(db_pool, uid)                       # เครื่องที่ 2 — จะโยน
+    await _notify_one(db_pool, user_id=uid)
+    outbox_id = await _single_outbox_id(db_pool)
+
+    sender = _raiser()
+    stats = await push_service.process_pending(db_pool, sender=sender)
+
+    assert len(sender.calls) == 2, "ต้องลองทั้งสองเครื่อง — เครื่องหนึ่งพังต้องไม่ตัดรอบทิ้ง"
+    assert stats["claimed"] == 1, "2 อุปกรณ์ของ notification เดียว = outbox **1** แถว"
+    assert stats["retry"] == 1, (
+        "ต้องเป็น 1 (ของแถว) ไม่ใช่ 0 (หายเงียบ) และไม่ใช่ 2 (นับต่ออุปกรณ์)"
+    )
+    assert stats["dropped"] == 0
+
+    row = await _outbox_row(db_pool, outbox_id)
+    assert row["processing_at"] is None, "🚨 ค้าง = ไม่มีใครหยิบได้อีก"
+    assert row["attempts"] == 1, "claim นับ attempt ครั้งเดียวต่อแถว ไม่ใช่ต่ออุปกรณ์"
+
+
+@pytest.mark.asyncio
+async def test_T20c_corrupt_stored_key_is_retried_and_counted_not_stuck(push_world,
+                                                                       db_pool,
+                                                                       monkeypatch):
+    """★★ ของจริงเป๊ะ ๆ — คีย์ใน DB เสียหาย → `_send_one` ตัวจริงโยน **ต้องไม่ค้าง**
+
+    ต่างจาก T20a/T20b ตรงที่ **ไม่ได้ฉีด sender ปลอม** — เรียก `_send_one` ของจริง
+    ผ่าน `process_pending(sender=None)` และคีย์ที่เก็บไว้ถอด base64 ไม่ได้
+    ⇒ ล้มที่ `_decode_key()` **ก่อน** จะยิง HTTP ⇒ ไม่ต้องมี server และไม่ออกเน็ต
+    (ตรงกับ plan §20.14 ข้อ 6)
+
+    ⭐ ทำไมต้องเป็นเทสต์แยกจาก T20a: T20a พิสูจน์ "sender โยน ⇒ จัดการถูก"
+       แต่เทสต์นี้พิสูจน์ว่า **เส้นทาง crypto จริงเดินเข้าไปในสาขานั้นได้**
+       (บั๊กเดิมรอดเพราะ `_send_one` catch แค่ `httpx.HTTPError`
+        ซึ่ง **ไม่ครอบ `binascii.Error`** ที่โผล่มาใน log จริง)
+
+    🔑 ต้องตั้งคีย์ VAPID ให้ **ใช้ได้** ก่อน ไม่งั้น `_vapid().sign()` จะพังก่อน
+       แล้วเทสต์จะผ่านด้วยเหตุผลผิด (และจะไม่ทดสอบ `_decode_key` เลย)
+    """
+    from py_vapid import Vapid02
+    import importlib.util
+    from pathlib import Path
+
+    from core.config import settings
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "generate_vapid_keys.py"
+    spec = importlib.util.spec_from_file_location("gen_vapid_t20c", script)
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+
+    key = Vapid02()
+    key.generate_keys()
+    monkeypatch.setattr(settings, "VAPID_PUBLIC_KEY",
+                        gen._b64url(gen._raw_public(key.public_key)))
+    monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY",
+                        gen._b64url(key.private_key.private_numbers().private_value
+                                    .to_bytes(32, "big")))
+    monkeypatch.setattr(settings, "VAPID_SUBJECT", "mailto:council@piriyalai.ac.th")
+    push_service._reset_vapid_cache()
+
+    uid = push_world["student"]["user_id"]
+    endpoint = f"https://fcm.googleapis.com/fcm/send/{random.randint(10**9, 10**10)}"
+    async with db_pool.acquire() as conn:
+        # ⚠️ คีย์แบบที่ `_decode_key` ถอดไม่ได้ — 1 ตัวอักษร เติม '=' แล้วยังหาร 4 ไม่ลงตัว
+        #    ("x" 1 ตัว = repro เดิมจาก log จริง: "number of data characters (1)")
+        await conn.execute(
+            """INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+               VALUES ($1, $2, 'x', 'y')""",
+            uid, endpoint,
+        )
+    await _notify_one(db_pool, user_id=uid)
+    outbox_id = await _single_outbox_id(db_pool)
+
+    stats = await push_service.process_pending(db_pool)  # ← sender ตัวจริง
+
+    assert stats["claimed"] == 1
+    assert stats["retry"] == 1, (
+        "คีย์เสียต้องถูกนับเป็น retryable — ก่อนแก้จะได้ retry=0 และแถวค้าง"
+    )
+    row = await _outbox_row(db_pool, outbox_id)
+    assert row["processing_at"] is None, "🚨 แถวค้างเพราะ crypto โยน (บั๊ก 29 ก.ย. 2026)"
+    assert row["processed_at"] is None
+    assert row["attempts"] == 1
+
+    push_service._reset_vapid_cache()
+
+
+# ============================================================
 # 3) ฟังก์ชันบริสุทธิ์ — ไม่ต้องมี DB เลย
 # ============================================================
 

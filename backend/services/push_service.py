@@ -618,9 +618,42 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
         send = sender or _send_one
 
         async def one(g: Dict[str, Any], sub: Dict[str, Any], payload: Dict[str, Any]):
-            async with sem:
-                status = await send(client, sub, payload, ttl=ttl)
-            return g, sub, status
+            """ยิง 1 ปลายทาง — **ต้องไม่โยนออกไปไหน** คืน `status=None` แทน
+
+            🚨 **นี่คือด่านที่เคยรั่ว (29 ก.ย. 2026)** — อาการจริงบน staging:
+               `logger.exception("❌ sender โยน exception")` ขึ้นพร้อม
+               `binascii.Error: Invalid base64-encoded string` (คีย์ปลอมใน DB)
+               แล้ว **ตัวนับเป็น 0 หมด** `claimed=1 sent=0 gone=0 retry=0 dropped=0`
+               และแถวนั้น **ค้าง `processing_at` ไม่มีใครหยุด** จนกว่าจะ redeploy
+
+            **ทำไมร้ายแรงกว่าที่เห็น:** exception ที่หลุดจาก `one()` ทำให้
+            `asyncio.gather(return_exceptions=True)` คืน *exception* แทน tuple
+            ⇒ `g` (ซึ่งผูก outbox_id) **หายไปทั้งก้อน** ⇒ ปลายทางที่จับผลต้องเดา
+            ⇒ เขียน `outbox_id: None` ⇒ ถูก `continue` ข้ามในลูป `per_outbox`
+            ⇒ **แถวไม่ถูกจัดประเภทเลย** — ไม่จบ ไม่ retry ไม่มีใครรู้
+
+            ⇒ จับที่ **นี่** ไม่ใช่ที่ `_send_one` เพราะต้องคง `g`/`sub` ไว้จับผลให้ถูกแถว
+               และต้องครอบ **ทุก** exception (crypto ใน `_send_one` ไม่ใช่ `httpx.HTTPError`
+               ⇒ `except httpx.HTTPError` ที่นั่นจับไม่ได้) รวมถึง `sender` ที่เทสต์ฉีดเข้ามา
+            ⇒ `_classify(None) == "retry"` ⇒ เข้าเส้น retry/`PUSH_MAX_ATTEMPTS`/`dropped`
+               ตามปกติ ⇒ ล้มเหลวแบบมีตัวนับ ไม่ใช่แบบเงียบ
+
+            ⚠️ `except Exception` **ไม่จับ `CancelledError`** (เป็น `BaseException`)
+               ⇒ ตอน shutdown การยกเลิกยังทะลุผ่านตามเดิม — ตั้งใจ ไม่ใช่การมองข้าม
+            """
+            try:
+                async with sem:
+                    status = await send(client, sub, payload, ttl=ttl)
+                return g, sub, status
+            except Exception as e:
+                # ⚠️ ห้าม log `sub["endpoint"]` — มันมี token ของอุปกรณ์อยู่ในตัว
+                #    (netloc พอบอกได้ว่าเป็นผู้ให้บริการรายไหน โดยไม่รั่วความลับ)
+                logger.exception(
+                    "❌ sender โยน exception (outbox=%s sub=%s host=%s): %s",
+                    g["meta"]["outbox_id"], sub["id"],
+                    urlparse(sub["endpoint"]).netloc, type(e).__name__,
+                )
+                return g, sub, None
 
         tasks = [
             one(g, sub, build_payload(g["meta"]))
@@ -630,11 +663,15 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
 
     for o in outcomes:
         if isinstance(o, BaseException):
-            # ข้อผิดพลาดที่หลุดจาก _send_one (ไม่ควรเกิด เพราะมัน catch ไว้แล้ว)
-            # — นับเป็น retryable ไม่ให้ทั้งรอบล้ม
-            logger.exception("❌ sender โยน exception", exc_info=o)
-            results.append({"outbox_id": None, "cls": "retry"})
-            continue
+            # ⚠️ มาถึงบรรทัดนี้ไม่ได้ในทางทฤษฎี — `one()` จับ `Exception` ไว้หมดแล้ว
+            #    สิ่งที่เหลือคือ `BaseException` ที่ไม่ใช่ `Exception` = `CancelledError`
+            #    ตอน shutdown ⇒ **ต้องทะลุผ่าน** ไม่ใช่กลืน (กลืนแล้ว lifespan จะรอค้าง)
+            #
+            # 🚨 **ห้ามเปลี่ยนเป็น `results.append({"outbox_id": None, …})` แบบเดิม**
+            #    นั่นคือรูที่ทำให้แถวค้างถาวร (29 ก.ย. 2026) — `outbox_id: None`
+            #    ไม่ผูกกับแถวไหนเลย ⇒ ถูกข้ามตอนจับกลุ่ม ⇒ ไม่มีใครปิดแถวให้
+            #    ⇒ ถ้าจะรับมือ exception ที่ไม่รู้ว่าเป็นของแถวไหน **ให้ล้มเสียงดัง**
+            raise o
         g, sub, status = o
         cls = _classify(status)
         if cls == "ok":
@@ -656,10 +693,11 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
         results.append({"outbox_id": g["meta"]["outbox_id"], "cls": cls, "status": status})
 
     # ==================== จดผล (tx ใหม่) ====================
+    # 📌 **ไม่มี `if r["outbox_id"] is None: continue` ที่นี่โดยเจตนา** — บรรทัดนั้นเคยอยู่
+    #    และมันคือครึ่งหลังของรูข้างบน: รับ "retry" ที่ไม่มีเจ้าของเข้ามา แล้ว **ทิ้งเงียบ ๆ**
+    #    ⇒ ทุกผลลัพธ์ที่มาถึงจุดนี้ต้องมีเจ้าของเสมอ (`one()` รับประกัน) ถ้าไม่มี = โค้ดผิด
     per_outbox: Dict[int, List[str]] = {}
     for r in results:
-        if r["outbox_id"] is None:
-            continue
         per_outbox.setdefault(r["outbox_id"], []).append(r["cls"])
 
     done_ids: List[int] = []
