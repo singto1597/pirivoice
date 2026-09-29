@@ -1367,3 +1367,63 @@
   · `logger.error` ไม่ใช่ `warning` — ระหว่างที่ supervisor ตาย badge จะ **ไม่** ทันที ⇒ "ต้องรู้" ไม่ใช่ "ต้องสงสัย"
   · และ `stop()` ต้องทน supervisor ที่ตายไปก่อนแล้ว: `except asyncio.CancelledError: pass` **แล้วต่อด้วย** `except Exception: logger.debug(...)` ⇒ อย่าให้ขยะของ task ที่ตายไปแล้วไปทำให้ **shutdown ของ lifespan ล้ม** (หลักเดียวกับ `_close_conn()`: ปิดไม่สำเร็จก็ช่างมัน)
 - **Date Added:** 2026-09-28
+
+### 🚨 `asyncio.gather(return_exceptions=True)` **ทำกุญแจของงานหาย** — exception ที่กลืนแล้ว "จดว่า retry" แต่ไม่มีเจ้าของ = แถวค้างถาวร
+- **Context/Problem:** วัดบน staging หลัง deploy A3 แล้วเจออาการที่ **ไม่มีเทสต์ตัวใดจับได้และผู้ใช้ยังไม่ทันเห็น**:
+  ```
+  PUSH        - ERROR - ❌ sender โยน exception
+                        binascii.Error: Invalid base64-encoded string: number of
+                        data characters (1) cannot be 1 more than a multiple of 4
+  PUSH_WORKER - INFO  - 📤 push[loop]: claimed=1 sent=0 gone=0 retry=0 dropped=0 skipped=0 stale=0
+  ```
+  ⇒ `claimed=1` แต่ **ตัวนับทุกตัวเป็น 0** ⇒ แถวนั้นค้าง `processing_at` อยู่ **47+ วินาที** ทั้งที่ `_SEND_TIMEOUT_SECONDS = 10.0` และไม่มีอะไรมาปลดจนกว่าจะ redeploy (ซึ่งจะเรียก `recover_stale_outbox()` บังเอิญกู้ให้)
+- **Root Cause:** สองครึ่งที่ต้องมีพร้อมกันถึงจะพัง
+  ```python
+  async def one(g, sub, payload):              # g = กุญแจที่ผูก outbox_id
+      async with sem:
+          status = await send(client, sub, payload, ttl=ttl)
+      return g, sub, status                    # ← ครึ่งแรก: ถ้า send() โยน บรรทัดนี้ไม่ทำงาน
+  outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+  for o in outcomes:
+      if isinstance(o, BaseException):
+          results.append({"outbox_id": None, "cls": "retry"})   # ← ครึ่งหลัง: เดาเอาว่า None
+          continue
+  ...
+  for r in results:
+      if r["outbox_id"] is None: continue      # ← "retry" ที่เพิ่งจด ถูกทิ้งตรงนี้
+  ```
+  `g` **หายไปทั้งก้อน** เพราะ exception แทนที่ tuple ⇒ ฝั่งจับผลไม่มีทางรู้ว่าเป็นของแถวไหน ⇒ เขียน `None` ⇒ แล้ว **ทิ้งมันเงียบ ๆ** ⇒ แถวไม่ถูกจัดประเภทเลย — ไม่จบ ไม่ retry ไม่มีใครรู้ · และเพราะ `_send_one` catch แค่ `httpx.HTTPError` ซึ่ง **ไม่ครอบ `binascii.Error`** จาก `_decode_key()` ⇒ เส้นทาง crypto พังทะลุออกมาได้จริง (ไม่ใช่ทฤษฎี — นี่คือ stack trace จากของจริง)
+- **Correct Pattern/Solution:** **จับที่ตัวห่อ task ไม่ใช่ที่ตัวส่ง** — ต้องคง `g`/`sub` ไว้จับผลให้ถูกแถว และต้องครอบ **ทุก** exception:
+  ```python
+  async def one(g, sub, payload):
+      try:
+          async with sem:
+              status = await send(client, sub, payload, ttl=ttl)
+          return g, sub, status
+      except Exception as e:                    # ไม่จับ CancelledError (BaseException) — ตั้งใจ
+          logger.exception("❌ sender โยน exception (outbox=%s sub=%s host=%s): %s",
+                           g["meta"]["outbox_id"], sub["id"],
+                           urlparse(sub["endpoint"]).netloc, type(e).__name__)
+          return g, sub, None                   # `_classify(None) == "retry"` ⇒ เข้าเส้น retry/เพดาน/dropped ปกติ
+  ```
+  · **`return g, sub, None` คือหัวใจ** — คืน "สถานะล้มเหลว" ไม่ใช่ "ไม่มีสถานะ" ⇒ ล้มเหลวแบบ**มีตัวนับและมีเจ้าของ** ไม่ใช่แบบเงียบ
+  · **และลบ `if r["outbox_id"] is None: continue` ทิ้ง** — มันคือครึ่งหลังของรูนี้ · เปลี่ยนสาขา `BaseException` ที่เหลือให้ **`raise o`** (สิ่งที่เหลือคือ `CancelledError` ซึ่ง *ต้อง* ทะลุผ่าน ไม่ใช่กลืน — กลืนแล้ว lifespan จะรอค้าง) · ถ้ารับมือ exception ที่ไม่รู้ว่าเป็นของแถวไหน **ให้ล้มเสียงดัง** อย่าเดาเป็น `None`
+  · **ห้าม log `sub["endpoint"]`** — มันมี token ของอุปกรณ์อยู่ในตัว · `urlparse(...).netloc` พอบอกผู้ให้บริการโดยไม่รั่วความลับ
+  · หลักทั่วไป: `return_exceptions=True` **ไม่ใช่การจัดการข้อผิดพลาด** มันแค่ย้ายที่ที่ exception โผล่ — ถ้า task ของคุณมี "กุญแจ" ที่ต้องใช้จับผล (`g` ที่นี่, request id, user id) การปล่อยให้ exception แทน tuple = **ทำกุญแจหาย**
+- **Date Added:** 2026-09-29
+
+### 🧪 เทสต์ที่ **ผ่านทั้งก่อนและหลังแก้** = เทสต์ที่ไม่มีฟัน — ต้อง `git stash` โค้ดที่แก้แล้วยืนยันว่า **FAIL ก่อน**
+- **Context/Problem:** เขียนเทสต์ regression 3 ตัวสำหรับบั๊กข้างบน แล้ว **ตัวกลาง (`T20b`) ผ่านตั้งแต่ก่อนแก้** ⇒ docstring ที่เขียนว่า *"mutation ที่ต้องทำให้แตก: ถอด try/except → `sent == 0`"* **เป็นข้อความเท็จ** — ถ้าปล่อยไว้ คนอ่านครั้งหน้าจะเชื่อว่ามีด่านตรงนั้น ทั้งที่ไม่มี
+- **Root Cause:** เคสที่เขียนไว้คือ *"แถวเดียว 2 อุปกรณ์ — เครื่องหนึ่งโยน เครื่องหนึ่งสำเร็จ"* ซึ่ง **ไม่พังตั้งแต่แรก** เพราะ `results` มีทั้งใบที่เสีย (`outbox_id: None`) และใบที่สำเร็จ (มีเจ้าของ) **ปนกัน** ⇒ การจับกลุ่มตาม outbox ยังได้ผลถูก ⇒ `sent == 1` อยู่แล้ว · เคสที่พังจริงคือ **ทุกอุปกรณ์ของแถวนั้นโยนพร้อมกัน** (ไม่มีใบที่สำเร็จเหลืออยู่เลย ⇒ ไม่มีใครพาเจ้าของกลับมา)
+- **Correct Pattern/Solution:** พิสูจน์ความมีฟันด้วย **การย้อนโค้ดจริง ไม่ใช่การอ่าน**:
+  ```bash
+  git stash push <ไฟล์ที่แก้> -m "mutation: pre-fix"     # ← ไฟล์เทสต์ยังอยู่ในที่เดิม
+  docker compose -f docker-compose.test.yml run --rm test_runner \
+      sh -c "python -m pytest -q /app/tests/<ไฟล์> -k 'T20'"   # ต้องเห็น FAILED
+  git stash pop                                          # คืนโค้ดที่แก้ → ต้อง PASS
+  ```
+  · ถ้าไม่มีตัวไหน FAIL ⇒ **ยังไม่มีเทสต์สำหรับบั๊กนั้น** ให้เขียนเคสใหม่ (หรือยอมรับว่าเคสเดิมไม่ได้ทดสอบอะไร แล้ว **แก้ docstring ให้ตรงความจริง**)
+  · ⚠️ **`git stash` ไฟล์เดียวคือ mutation ที่สมจริงที่สุด** — ได้โค้ดก่อนแก้เป๊ะ ๆ ไม่ต้องเขียน mutant เอง และเก็บไฟล์เทสต์ใหม่ไว้ครบ
+  · เคล็ดลับเขียนเคสให้มีฟัน: ถามว่า *"สถานะไหนที่ **หายไปทั้งก้อน**"* ไม่ใช่ *"สถานะไหนที่ผิด"* — บั๊กตระกูล "กุญแจหาย" จะเห็นผลก็ต่อเมื่อ **ไม่มีใบที่ถูกต้องเหลืออยู่ในกลุ่มเลย**
+  · และ **ระบุใน docstring ว่าเคสไหน *ไม่ได้* ทดสอบอะไร** โดยเจตนา — ดีกว่าเทสต์ 4 ตัวที่ 1 ตัวหลอกตัวเอง
+- **Date Added:** 2026-09-29
