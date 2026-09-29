@@ -477,6 +477,47 @@ async def delete_subscriptions_by_id(pool, ids: List[int]) -> int:
     return int(result.split()[-1])
 
 
+async def _mark_subscription_health(pool, *, ok_ids: List[int],
+                                    failed_ids: List[int]) -> None:
+    """จดสุขภาพของปลายทาง — `last_success_at` / `failure_count`
+
+    ⚠️ **คอลัมน์สองตัวนี้มีมาตั้งแต่ migration 018 แต่ไม่มีโค้ดไหนเขียนเลยทั้งรอบ**
+       ⇒ เปิดตารางดูก็ตอบไม่ได้ว่าอุปกรณ์ไหนยังทำงานอยู่จริง (ต้องไปไล่เดาจาก outbox)
+       ⇒ เป็นหนี้ที่ทำให้ "วัดผลหลัง deploy" ทำไม่ได้ และวินิจฉัยเคส
+       "push ไม่เด้งบนเครื่องนี้" ไม่ได้เลย — ต้องปิด
+
+    ยิง **2 คำสั่งต่องวด ไม่ใช่ต่ออุปกรณ์** (`= ANY(...)`) — fanout 1,000 เครื่อง
+    ก็ยังเป็น 2 คำสั่ง · ข้ามไปเลยถ้าลิสต์ว่าง (ไม่เปิด connection ทิ้งเปล่า)
+
+    ความหมายที่ตกลง:
+      - `ok` → `last_success_at = NOW()` **และรีเซ็ต `failure_count = 0`**
+        (ล้มติดกัน 3 ครั้งแล้วสำเร็จ = ปลายทางยังดี ไม่ควรถูกลงโทษจากอดีต)
+      - ล้มเหลว (`retry`/`permanent`) → `failure_count += 1` · **ไม่แตะ `last_success_at`**
+      - `gone` (404/410) → **ไม่นับ** เพราะแถวถูกลบไปแล้ว (นับไปก็ไม่มีใครดู)
+    """
+    if not ok_ids and not failed_ids:
+        return
+    async with pool.acquire() as conn:
+        if ok_ids:
+            await conn.execute(
+                """
+                UPDATE push_subscriptions
+                   SET last_success_at = NOW(), failure_count = 0, updated_at = NOW()
+                 WHERE id = ANY($1::int[])
+                """,
+                ok_ids,
+            )
+        if failed_ids:
+            await conn.execute(
+                """
+                UPDATE push_subscriptions
+                   SET failure_count = failure_count + 1, updated_at = NOW()
+                 WHERE id = ANY($1::int[])
+                """,
+                failed_ids,
+            )
+
+
 async def process_pending(pool, *, sender=None) -> Dict[str, int]:
     """ประมวลผลคิว 1 รอบ — หัวใจของ worker
 
@@ -551,6 +592,16 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
     if stale:
         await _finish(pool, stale, error="stale")
         stats["stale"] = len(stale)
+        # 🚨 **ต้องเป็น WARNING ไม่ใช่ INFO** — การทิ้ง stale คือ **push ที่หายถาวร**
+        #    ไม่มีใครได้รับแจ้งเตือน และไม่มี error ที่ไหนโผล่ให้เห็น
+        #    (ต้นเหตุจริง 28 ก.ย. 2026: คิวท่วมด้วยงานที่ทำไม่ได้ ⇒ ของจริงไปถึงหัวคิว
+        #     ตอนอายุ ~40 นาที ⇒ ถูกทิ้งเงียบ ๆ ทุกใบ — อาการ "แจ้งเตือนแค่ครั้งแรก")
+        #    ถ้าบรรทัดนี้ไม่เคยขึ้น = ระบบปกติ · ถ้าขึ้น = **มีของหาย** ต้องดูทันที
+        logger.warning(
+            "⏰ ทิ้ง %d แจ้งเตือนที่ค้างเกิน %d นาที (ไม่ส่ง — กัน push storm) — "
+            "ของเหล่านี้ **ไม่มีใครได้รับ** ควรดูว่าคิวตกค้างเพราะอะไร",
+            len(stale), max_age,
+        )
 
     if not to_send:
         return stats
@@ -560,6 +611,8 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
     ttl = settings.PUSH_TTL_SECONDS
     results: List[Dict[str, Any]] = []
     dead_sub_ids: set = set()
+    ok_sub_ids: set = set()
+    failed_sub_ids: set = set()
 
     async with httpx.AsyncClient(timeout=_SEND_TIMEOUT_SECONDS) as client:
         send = sender or _send_one
@@ -584,8 +637,22 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
             continue
         g, sub, status = o
         cls = _classify(status)
-        if cls == "gone":
+        if cls == "ok":
+            ok_sub_ids.add(sub["id"])
+        elif cls == "gone":
+            # ☠️ ปลายทางตายแล้ว ⇒ **ต้องเก็บ id ไว้ลบ** (ไม่ใช่แค่ปล่อยผ่าน)
+            #    🚨 เคยพลาดตรงนี้จริง (28 ก.ย. 2026): เขียนเป็น `elif cls != "gone"` แล้ว
+            #       ลืมสาขา `gone` ⇒ `dead_sub_ids` ว่างตลอดกาล ⇒ `stats["gone"] = 0`
+            #       และ **ไม่มีใครถูกลบเลย** ⇒ ปลายทางที่ตายถูกยิงซ้ำทุกครั้งที่มี
+            #       notification ใหม่ ตลอดไป · อาการภายนอกดูปกติทุกอย่าง (ไม่มี error
+            #       มีแค่ log 410 มากขึ้นเรื่อย ๆ) — T9 จับได้เพราะมัน assert `stats["gone"]`
+            #       ⚠️ บทเรียน: เวลาเติมสาขาให้ `if` ให้ **คงสาขาเดิมไว้ครบ** แล้วค่อยเพิ่ม
+            #          อย่าเขียนเงื่อนไขใหม่ทับ (การรวบเป็น `!=` ทำให้สาขาหายโดยไม่รู้ตัว)
             dead_sub_ids.add(sub["id"])
+        else:
+            # `retry` / `permanent` — ปลายทางยังอยู่ แต่รอบนี้ไม่ผ่าน ⇒ จดไว้ว่ามันล้ม
+            # (ต่างจาก `gone` ที่แถวจะถูกลบทั้งแถว นับไปก็ไม่มีใครดู)
+            failed_sub_ids.add(sub["id"])
         results.append({"outbox_id": g["meta"]["outbox_id"], "cls": cls, "status": status})
 
     # ==================== จดผล (tx ใหม่) ====================
@@ -618,6 +685,13 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
         stats["gone"] = removed
         logger.info("🧹 ลบปลายทางที่ตายแล้ว %d รายการ (HTTP 404/410)", removed)
 
+    # 📊 อัปเดตสุขภาพปลายทาง — ข้ามแถวที่ถูกลบไปแล้ว (dead) ไม่งั้น UPDATE ไปโดนศูนย์แถว
+    await _mark_subscription_health(
+        pool,
+        ok_ids=sorted(ok_sub_ids - dead_sub_ids),
+        failed_ids=sorted(failed_sub_ids - dead_sub_ids),
+    )
+
     await _finish(pool, done_ids)
     if retry_ids:
         rescheduled, exhausted = await _retry_later(pool, retry_ids, error="send-failed")
@@ -634,6 +708,53 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
             )
 
     return stats
+
+
+async def drain(pool, *, sender=None,
+                deadline_seconds: Optional[float] = None) -> Dict[str, int]:
+    """ระบายคิวจนว่าง หรือจนหมดงบเวลา — **อัตราส่งไม่ขึ้นกับความถี่ของคนเรียก**
+
+    ⭐ **ทำไมต้องมีทั้งที่ `process_pending` ทำงานได้อยู่แล้ว**
+       `process_pending` ทำได้แค่ "1 batch ต่อ 1 รอบ" ⇒ throughput =
+       `PUSH_BATCH_SIZE × ความถี่ของ cron` ซึ่งพังทันทีที่ cron ไม่มาตามนัด
+       (วัดจาก staging 28 ก.ย. 2026: cron ที่ออกแบบไว้ทุก 20 วิ ยิงจริงทุก ~150 วิ
+        ⇒ 733 แถวที่ควรระบายใน 3 นาที ใช้เวลา 40 นาที ของจริงจึงหมดอายุและถูกทิ้ง)
+
+       `drain` ตัดความเชื่อมโยงนั้นออก: **คนเรียกถี่แค่ไหน คิวก็ระบายจนเกลี้ยงเท่านั้น**
+       ⇒ cron จะยิง 20 วิ หรือ 150 วิ ก็ไม่เปลี่ยนเวลาที่ push ถึงมือ (เหลือแค่ "เริ่มช้า
+       ได้ไม่เกิน 1 tick" ซึ่งเป็นหน้าที่ของ `PUSH_TICK_SECONDS` ไม่ใช่ของฟังก์ชันนี้)
+
+    ⚠️ **งบเวลาจำเป็น ไม่ใช่ของประดับ** — `job_timeout = 120` ของ ARQ จะตัดงานทิ้ง
+       กลางคันถ้าเกิน และแถวที่ claim ไว้จะค้างจนกว่าจะถึงรอบกู้ (`PUSH_RECOVER_MINUTES`)
+       ⇒ ต้องหยุดเองก่อนเสมอ (ค่าเริ่มต้น 45 วิ เหลือ margin 2.6 เท่า)
+
+    ⚠️ **ไม่ loop เปล่าเมื่อคิวว่าง** — ออกทันทีที่ `claimed == 0` ไม่ต้องรอครบงบ
+       (รอบปกติของระบบที่มีแค่คนมีอุปกรณ์ = 1 คิวรีแล้วจบ ⇒ จ่ายถูกพอจะเรียกทุก 5 วิ)
+
+    `sender` = injectable ส่งต่อให้ `process_pending` (เทสต์ไม่ต้องออกเน็ต)
+    """
+    budget = settings.PUSH_DRAIN_SECONDS if deadline_seconds is None else deadline_seconds
+    deadline = time.monotonic() + budget
+    total = {"claimed": 0, "sent": 0, "gone": 0, "retry": 0,
+             "dropped": 0, "skipped": 0, "stale": 0}
+
+    while True:
+        stats = await process_pending(pool, sender=sender)
+        for k in total:
+            total[k] += stats[k]
+        # คิวว่าง = งานหมดแล้ว ออกทันที (ไม่กินงบที่เหลือ)
+        if stats["claimed"] == 0:
+            break
+        # ยังมีของค้างอยู่แต่หมดเวลา ⇒ ออกรอบถัดไปทำต่อ (ไม่ปล่อยให้ job ถูกตัดกลางคัน)
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "⏳ ระบายคิวไม่ทันใน %.0f วิ — หยุดเพื่อไม่ให้เกิน job_timeout "
+                "(รอบถัดไปทำต่อ · ถ้าเห็นบ่อยแปลว่าคิวโตเกินกำลัง)",
+                budget,
+            )
+            break
+
+    return total
 
 
 async def recover_stale_outbox(pool) -> int:

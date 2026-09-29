@@ -16,6 +16,12 @@
 — in-app notification ยังขึ้นครบ — แต่ **ไม่มี push ออกไปเลยแม้แต่ครั้งเดียว**
 โดยไม่มี error ที่ไหนให้เห็น ⇒ ต้องพิสูจน์ด้วยเทสต์ ไม่ใช่ด้วยการอ่านเอกสาร
 
+⚠️ **ตั้งแต่ migration 019 มีเงื่อนไขนำเพิ่มอีกข้อ** (เพิ่ม 28 ก.ย. 2026):
+    **"ผู้รับต้องมีแถวใน `push_subscriptions` ก่อน notification จึงจะเข้าคิว"**
+    ⇒ เทสต์ที่จะเห็น outbox เกิด **ต้องเรียก `_give_device()` ก่อนเสมอ**
+    ถ้าลืม เทสต์จะได้ 0 แถวและแยกไม่ออกว่า "trigger พัง" หรือ "ยังไม่ได้ให้อุปกรณ์"
+    (กับดักเดียวกับที่ T3 เคยตก — ดู docstring ของ T3 และ T5b)
+
 ตาม docs/rules/testing.md: ทุกเทสต์ยืนยัน DB ตรง ๆ ผ่าน db_pool ไม่เชื่อ response
 """
 import base64
@@ -104,6 +110,24 @@ async def _notify_one(db_pool, *, user_id, group_type="issue_mine", actor_id=Non
             )
 
 
+async def _give_device(db_pool, *user_ids) -> None:
+    """ให้ผู้รับมีอุปกรณ์ก่อน — **จำเป็นตั้งแต่ migration 019**
+
+    ⚠️ trigger `push_outbox_enqueue()` กรองผู้ใช้ที่ไม่มีแถวใน `push_subscriptions`
+       ทิ้ง (ประตูที่ 1 — ดู `migrations/019_push_outbox_requires_device.py`)
+       ⇒ เทสต์ที่จะเห็น "outbox เกิดขึ้น" **ต้องให้ผู้รับมีอุปกรณ์ก่อนเสมอ**
+
+    ถ้าลืม เทสต์จะได้ 0 แถวและ **อ่านไม่ออกว่า "trigger พัง" หรือ "ยังไม่ได้ให้อุปกรณ์"**
+    — ซึ่งเป็นกับดักเดียวกับที่ T3 เคยตก (ดู docstring ของ T3) · เขียนเป็น helper
+    ตัวเดียวเพื่อให้เจตนาปรากฏชัดในทุกเทสต์ ไม่ใช่ซ่อนอยู่ในการเรียก `_subscribe` ตรง ๆ
+
+    (นิยามไว้ก่อน `_subscribe` โดยเจตนา — Python หา name ตอนเรียก ไม่ใช่ตอน parse
+     และการวางไว้ตรงนี้ทำให้เห็นว่ามันเป็น **เงื่อนไขนำ** ของทุกเทสต์ในส่วนที่ 1)
+    """
+    for uid in user_ids:
+        await _subscribe(db_pool, uid)
+
+
 # ============================================================
 # 1) Trigger ยิงจริงในทุกรูปแบบการ insert   ← 🚧 ด่านสำคัญที่สุดของ A3
 # ============================================================
@@ -115,6 +139,7 @@ async def test_T1_trigger_enqueues_on_plain_insert(push_world, db_pool):
     mutation ที่ต้องทำให้แตก: ลบ `CREATE TRIGGER` ใน migration 018 → outbox = 0
     """
     uid = push_world["student"]["user_id"]
+    await _give_device(db_pool, uid)  # ★ ประตู migration 019 — ขาดแล้วเทสต์นี้ได้ 0
     await _notify_one(db_pool, user_id=uid)
 
     rows = await _outbox_rows(db_pool)
@@ -134,6 +159,7 @@ async def test_T2_trigger_is_after_insert_so_id_is_filled(push_world, db_pool):
        ⇒ notification_id = NULL (หรือ FK violation) · เทสต์นี้จับได้ทันที
     """
     uid = push_world["student"]["user_id"]
+    await _give_device(db_pool, uid)  # ★ ประตู migration 019
     await _notify_one(db_pool, user_id=uid)
 
     async with db_pool.acquire() as conn:
@@ -161,8 +187,14 @@ async def test_T3_pref_gate_applies_before_outbox(push_world, db_pool):
 
     mutation ที่ต้องทำให้แตก: ย้าย pref gate ไปทำที่ trigger แทน (จะได้ 0/1 สลับกัน)
         หรือใส่ trigger ที่ bypass gate
+
+    🚨 **`_give_device()` ในเทสต์นี้คือหัวใจ ไม่ใช่ของประดับ** — ถ้าไม่ให้อุปกรณ์
+       เทสต์จะได้ `0 / 0` **เพราะประตู migration 019** ไม่ใช่เพราะ pref gate ทำงาน
+       ⇒ เทสต์จะ "ผ่าน" ทั้งที่ไม่ได้พิสูจน์อะไรเลย และจะกลายเป็นเทสต์หลอกที่
+       ผ่านตลอดไปแม้มีคนลบ pref gate ออก (เป็นความผิดพลาดที่เงียบที่สุดของไฟล์นี้)
     """
     uid = push_world["student"]["user_id"]
+    await _give_device(db_pool, uid)  # ★ ต้องมี — ไม่งั้นเทสต์นี้ผ่านด้วยเหตุผลผิด
     await notification_service.update_preferences(
         db_pool, uid, [{"group_type": "issue_mine", "enabled": False}]
     )
@@ -188,6 +220,8 @@ async def test_T4_trigger_fires_for_executemany_in_notify_bulk(push_world, db_po
     """
     ids = [push_world[k]["user_id"] for k in ("student", "student2", "student3")]
     uid, uid2, uid3 = ids
+    # ★ ทั้งสามคนต้องมีอุปกรณ์ (ประตู migration 019) — ไม่งั้นได้ 3 notifications / 0 outbox
+    await _give_device(db_pool, *ids)
 
     async with db_pool.acquire() as conn:
         async with conn.transaction():
@@ -223,6 +257,9 @@ async def test_T5_trigger_fires_for_insert_select_in_notify_fanout(push_world, d
        ในแผน §20.14 ข้อ 7 — เทสต์นี้ยืนยันว่ามันทำงาน *จริง* ไม่ได้ตัดสินว่าควรทำหรือไม่
     """
     push_world  # สร้าง 3 students (active) — fanout ยิงหาทุกคนในตาราง students
+    # ★ ต้องมีอุปกรณ์ครบทั้งสาม (ประตู migration 019) — fanout กรอง "คนที่ไม่มีอุปกรณ์"
+    #    ทิ้งที่ trigger ⇒ ถ้าไม่ให้ เทสต์นี้จะได้ 3 / 0 และอ่านผิดว่า INSERT…SELECT พัง
+    await _give_device(db_pool, *[push_world[k]["user_id"] for k in ("student", "student2", "student3")])
 
     async with db_pool.acquire() as conn:
         async with conn.transaction():
@@ -250,6 +287,56 @@ async def test_T5_trigger_fires_for_insert_select_in_notify_fanout(push_world, d
             """
         )
     assert mismatched == 0
+
+
+@pytest.mark.asyncio
+async def test_T5b_no_device_user_still_gets_in_app_but_no_outbox(push_world, db_pool):
+    """★ ผู้ใช้ที่ไม่มีอุปกรณ์ → `notifications` 1 แถว แต่ `push_outbox` **0 แถว**
+
+    นี่คือ **ประตูที่ 1** ของ migration 019 — ต้นเหตุจริงของอาการ "แจ้งเตือนช้า/กอง/หยุด"
+    (28 ก.ย. 2026): คิวบน staging มี **3,239 แถว แต่มีปลายทางจริงแค่ 9 แถว (0.28%)**
+    ⇒ worker เอาเวลาไปวนกับ 3,230 งานที่ **ทำไม่ได้** แล้วของจริง 9 ชิ้นไปถึงหัวคิว
+      ตอนอายุเกิน `PUSH_MAX_AGE_MINUTES` ⇒ ถูกทิ้งเป็น `stale` เงียบ ๆ
+
+    ⚠️ **in-app ต้องไม่หาย** — แถวใน `notifications` ถูก insert แล้ว (ผู้ใช้เห็นในแอพ)
+       ประตูนี้ตัดแค่ "การเข้าคิว push" เท่านั้น ⇒ assert ทั้งสองฝั่งพร้อมกัน
+       ถ้าเทสต์นี้เหลือแค่ `outbox == 0` มันจะผ่านแม้มีคนไปปิด `notify()` ทิ้งทั้งฟังก์ชัน
+
+    mutation ที่ต้องทำให้แตก: ถอดประตู `has_device` ออกจาก `push_outbox_enqueue()`
+        (เช่นรัน migration 018 ทับ) → outbox = 1
+    """
+    uid = push_world["student"]["user_id"]
+    # ⚠️ ตั้งใจไม่เรียก _give_device — นั่นคือสาระของเทสต์นี้
+    await _notify_one(db_pool, user_id=uid)
+
+    assert await _count(db_pool, "notifications") == 1, "in-app ต้องยังได้ — ประตูนี้ตัดแค่ push"
+    assert await _count(db_pool, "push_outbox") == 0, "ไม่มีปลายทางแต่ยังเข้าคิว = คิวท่วม"
+
+
+@pytest.mark.asyncio
+async def test_T5c_late_device_does_not_backfill_old_notifications(push_world, db_pool):
+    """อุปกรณ์มาทีหลัง → ของเก่า **ไม่**ถูกตามเก็บย้อนหลัง แต่ของใหม่เข้าคิวปกติ
+
+    ⭐ ทำไมต้องเป็นแบบนี้ (ไม่ใช่บั๊ก): "ตามเก็บย้อนหลัง" = ยิงแจ้งเตือนเก่าทั้งกอง
+       พรวดเดียวตอนนักเรียนเพิ่งกดเปิดการแจ้งเตือน ⇒ **push storm ในวินาทีแรก**
+       ซึ่งเป็นวิธีที่ทำให้คนปิดการแจ้งเตือนถาวร (เหตุผลเดียวกับ `PUSH_MAX_AGE_MINUTES`)
+       · และมันทำไม่ได้ด้วยซ้ำ: trigger ยิงเฉพาะแถวใหม่ ⇒ ไม่มีกลไกให้ตามเก็บ
+
+    ⚠️ เทสต์นี้กัน **การแก้ที่ดูฉลาดแต่ผิด** — ถ้าวันหน้ามีคนเพิ่ม backfill ใน
+       migration (เช่น `INSERT INTO push_outbox SELECT … WHERE NOT EXISTS`) เทสต์นี้จะจับได้
+
+    mutation ที่ต้องทำให้แตก: เพิ่ม backfill เข้า migration → แถวที่สองโผล่ทันที = 2
+    """
+    uid = push_world["student"]["user_id"]
+
+    await _notify_one(db_pool, user_id=uid)  # ① ก่อนมีอุปกรณ์
+    assert await _count(db_pool, "push_outbox") == 0
+
+    await _give_device(db_pool, uid)  # ② เปิดการแจ้งเตือน (สายไปแล้วสำหรับใบแรก)
+    assert await _count(db_pool, "push_outbox") == 0, "ห้ามตามเก็บของเก่า — จะเป็น push storm"
+
+    await _notify_one(db_pool, user_id=uid)  # ③ ของใหม่ต้องเข้าคิวปกติ
+    assert await _count(db_pool, "push_outbox") == 1
 
 
 # ============================================================
@@ -310,6 +397,7 @@ async def test_T7_claim_is_single_flight(push_world, db_pool):
     mutation ที่ต้องทำให้แตก: ลบ `processing_at IS NULL` → รอบสองได้แถวเดิม
     """
     uid = push_world["student"]["user_id"]
+    await _give_device(db_pool, uid)  # ★ ประตู migration 019 — ไม่มีอุปกรณ์ = ไม่มีแถวให้ claim
     await _notify_one(db_pool, user_id=uid)
 
     first = await push_service._claim(db_pool, 100)
@@ -333,6 +421,7 @@ async def test_T7b_concurrent_claims_get_disjoint_rows(push_world, db_pool):
        (สิ่งที่เสียไปคือ *เวลา* ไม่ใช่ *ความถูกต้อง*) — คอมเมนต์ไว้เพื่อไม่ให้เข้าใจผิด
     """
     ids = [push_world[k]["user_id"] for k in ("student", "student2", "student3")]
+    await _give_device(db_pool, *ids)  # ★ ประตู migration 019
     for uid in ids:
         await _notify_one(db_pool, user_id=uid, group_type="issue_mine")
     await _notify_one(db_pool, user_id=ids[0], group_type="issue_received")
@@ -358,9 +447,23 @@ async def test_T8_no_subscription_marks_processed_and_never_sends(push_world, db
        (เทสต์นี้จับด้วยการ assert `processed_at IS NOT NULL`)
 
     mutation ที่ต้องทำให้แตก: เปลี่ยน LEFT JOIN เป็น INNER JOIN → processed_at ยัง NULL
+
+    ⚠️ **ทำไมต้อง subscribe แล้วลบทิ้ง ไม่ใช่ "ไม่ subscribe เลย"** (แก้ 28 ก.ย. 2026):
+       ตั้งแต่ migration 019 trigger กรองคนที่ไม่มีอุปกรณ์ **ออกตั้งแต่ยังไม่เข้าคิว**
+       ⇒ "notify คนที่ไม่มีอุปกรณ์" สร้าง **0 แถว** ไม่ใช่ 1 แถวที่ต้องมาทิ้งทีหลัง
+       การไม่ subscribe เลยจึงเทสต์ไม่ผ่านด้วยเหตุผลที่ผิด และ **ไม่ได้ทดสอบ LEFT JOIN**
+       อีกต่อไป (ไม่มีแถวให้ LEFT JOIN)
+
+       สถานการณ์ที่เทสต์นี้ต้องครอบคือ **"มีอุปกรณ์ตอนเข้าคิว แต่หายไปก่อนถึงรอบส่ง"**
+       — ซึ่งเกิดจริง: ผู้ใช้ปิดการแจ้งเตือนในเบราว์เซอร์, ถอนการติดตั้ง PWA,
+       หรือ (กับดักที่อันตรายกว่า) แถวถูกลบเพราะอุปกรณ์อื่นตอบ 410 ไปก่อนหน้า
+       ⇒ ด่าน LEFT JOIN นี้ยังจำเป็น และเทสต์ต้องสร้างเงื่อนไขนั้นขึ้นมาเอง
     """
     uid = push_world["student"]["user_id"]
-    await _notify_one(db_pool, user_id=uid)  # ⚠️ ไม่มี _subscribe
+    await _subscribe(db_pool, uid)                # ① ตอนเข้าคิว — มีอุปกรณ์
+    await _notify_one(db_pool, user_id=uid)       #    ⇒ outbox ได้ 1 แถว (ผ่านประตู 019)
+    async with db_pool.acquire() as conn:         # ② ก่อนถึงรอบส่ง — อุปกรณ์หายไป
+        await conn.execute("DELETE FROM push_subscriptions WHERE user_id = $1", uid)
 
     sender = _recorder()
     stats = await push_service.process_pending(db_pool, sender=sender)
@@ -612,6 +715,134 @@ async def test_T15_missing_vapid_key_drains_queue(push_world, db_pool, monkeypat
     assert row["last_error"] == "vapid-not-configured"
 
 
+@pytest.mark.asyncio
+async def test_T17a_drain_empties_more_than_one_batch(push_world, db_pool, monkeypatch):
+    """★ `drain()` ต้องระบาย **หลาย batch ในรอบเดียว** ไม่ใช่ batch เดียว
+
+    นี่คือหัวใจของ **F4** (แก้ 28 ก.ย. 2026): ก่อนหน้านี้ throughput =
+       `PUSH_BATCH_SIZE × ความถี่ที่ cron มาจริง` ⇒ เมื่อ cron หลุดนัด (วัดได้ ~150 วิ
+       แทน 20 วิ) คิวก็ระบายช้าลงตามไปด้วย **โดยไม่มีใครสั่งให้ช้า**
+    ⇒ `drain()` ตัดการผูกกันนั้น: คนเรียกถี่แค่ไหน คิวก็เกลี้ยงเท่านั้น
+
+    ⚠️ ตั้ง `PUSH_BATCH_SIZE = 2` **โดยเจตนา** เพื่อบังคับให้ต้องวนหลายรอบจริง
+       (ถ้าใช้ค่า default 100 เทสต์จะผ่านด้วย batch เดียว = ไม่ได้ทดสอบอะไร)
+
+    mutation ที่ต้องทำให้แตก: เปลี่ยน `drain()` ให้เรียก `process_pending()` ครั้งเดียว
+    """
+    uid = push_world["student"]["user_id"]
+    await _subscribe(db_pool, uid)
+    for _ in range(5):
+        await _notify_one(db_pool, user_id=uid)
+
+    monkeypatch.setattr(settings, "PUSH_BATCH_SIZE", 2)
+
+    sender = _recorder()
+    stats = await push_service.drain(db_pool, sender=sender, deadline_seconds=30)
+
+    assert stats["claimed"] == 5, f"ระบายไม่ครบในรอบเดียว — ได้ {stats}"
+    assert stats["sent"] == 5
+    assert await _count(db_pool, "push_outbox", "processed_at IS NULL") == 0, "ยังมีของค้าง"
+
+
+@pytest.mark.asyncio
+async def test_T17b_drain_stops_at_deadline_instead_of_being_killed(push_world, db_pool,
+                                                                     monkeypatch):
+    """★ หมดงบ ⇒ หยุดเอง **ก่อน** ARQ ตัดงานทิ้งกลางคัน
+
+    ⚠️ ทำไมสำคัญ: `job_timeout = 120` ของ ARQ ฆ่างานที่เกินเวลา และแถวที่ claim ไว้
+       จะ **ค้าง** (`processing_at` ไม่เป็น NULL) จนกว่าจะถึงรอบกู้ = push ช้าเพิ่มอีก
+       `PUSH_RECOVER_MINUTES` นาที ⇒ "ช้าเพราะแก้ให้เร็ว" เป็นกับดักที่เคาน์เตอร์อินทูอิทีฟ
+       ⇒ `drain()` ต้องรู้จักหยุดเอง
+
+    ⚠️ งบต้องเป็น 0 (หรือติดลบ) เพื่อให้แน่ใจว่าเข้าทาง `break` ที่สอง — เขียนเป็น
+       `deadline_seconds=0` ตรง ๆ **ห้ามใช้ค่าจริง** ไม่งั้นเทสต์จะกิน 45 วิทุกครั้ง
+
+    mutation ที่ต้องทำให้แตก: ลบ `if time.monotonic() >= deadline: break`
+        → วนจนคิวเกลี้ยง (เทสต์นี้จะได้ claimed = 5 ไม่ใช่ 2)
+    """
+    uid = push_world["student"]["user_id"]
+    await _subscribe(db_pool, uid)
+    for _ in range(5):
+        await _notify_one(db_pool, user_id=uid)
+
+    monkeypatch.setattr(settings, "PUSH_BATCH_SIZE", 2)
+
+    sender = _recorder()
+    stats = await push_service.drain(db_pool, sender=sender, deadline_seconds=0)
+
+    # ทำได้แค่ batch แรก (2 แถว) แล้วต้องหยุด — ที่เหลือยังรออยู่ ไม่หายไปไหน
+    assert stats["claimed"] == 2, f"ไม่หยุดตามงบ — ได้ {stats}"
+    assert await _count(db_pool, "push_outbox", "processed_at IS NULL") == 3, (
+        "ของที่ยังไม่ทำต้องยังอยู่ในคิว (ไม่ใช่ถูกทิ้ง)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_T18a_subscription_health_records_success_and_resets_failures(push_world,
+                                                                           db_pool):
+    """สำเร็จ → `last_success_at` ถูกจด **และรีเซ็ต `failure_count` เป็น 0**
+
+    ⚠️ คอลัมน์สองตัวนี้มีมาตั้งแต่ migration 018 แต่ **ไม่มีโค้ดไหนเขียนเลยทั้งรอบ**
+       ⇒ เปิดตารางก็ตอบไม่ได้ว่าอุปกรณ์ไหนยังใช้ได้จริง (ต้องไล่เดาจาก outbox)
+       ⇒ "วัดผลหลัง deploy" ทำไม่ได้ และเคส "push ไม่เด้งบนเครื่องนี้" วินิจฉัยไม่ได้
+       (F5 — แก้ 28 ก.ย. 2026)
+
+    ⭐ `failure_count` ต้อง **รีเซ็ต** ไม่ใช่แค่ไม่เพิ่ม — อุปกรณ์ที่ล้ม 3 ครั้งเพราะ
+       เน็ตหลุดแล้วกลับมาปกติ ต้องไม่ถูกลงโทษจากอดีต (ไม่งั้นจะดู "พัง" ตลอดไป)
+
+    mutation ที่ต้องทำให้แตก: เอา `_mark_subscription_health` ออก →
+        `last_success_at` ยังเป็น NULL
+    """
+    uid = push_world["student"]["user_id"]
+    await _subscribe(db_pool, uid)
+    await _notify_one(db_pool, user_id=uid)
+
+    async with db_pool.acquire() as conn:
+        await conn.execute("UPDATE push_subscriptions SET failure_count = 3")
+
+    sender = _recorder(status=201)
+    stats = await push_service.process_pending(db_pool, sender=sender)
+    assert stats["sent"] == 1
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT last_success_at, failure_count FROM push_subscriptions LIMIT 1"
+        )
+    assert row["last_success_at"] is not None, "สำเร็จแล้วไม่จด ⇒ วัดผลหลัง deploy ไม่ได้"
+    assert row["failure_count"] == 0, "สำเร็จแล้วต้องล้างประวัติล้ม ไม่ใช่ค้างไว้"
+
+
+@pytest.mark.asyncio
+async def test_T18b_subscription_health_counts_failures_without_touching_success(
+    push_world, db_pool
+):
+    """ล้มเหลว (5xx) → `failure_count` +1 · **`last_success_at` ต้องไม่ถูกแตะ**
+
+    ⚠️ ถ้าเผลอเขียน `last_success_at = NOW()` ในฝั่งล้มเหลว โมดูลัส "เครื่องนี้ยังดีอยู่ไหม"
+       จะตอบผิดตลอดกาล — และจะไม่มีอะไรจับได้เลยเพราะคอลัมน์ไม่เป็น NULL
+       ⇒ assert ทั้งสองด้าน ไม่ใช่แค่ด้านที่เพิ่มขึ้น
+
+    ⚠️ `gone` (404/410) **ต้องไม่นับ** — แถวถูกลบไปแล้ว การ UPDATE จะไปโดน 0 แถว
+       (ไม่ error แต่เสียคำสั่งเปล่า) · และไม่มีความหมายทางธุรกิจ
+
+    mutation ที่ต้องทำให้แตก: ใช้ชุด id เดียวกันทั้ง ok และ failed (จะทับกัน)
+    """
+    uid = push_world["student"]["user_id"]
+    await _subscribe(db_pool, uid)
+    await _notify_one(db_pool, user_id=uid)
+
+    sender = _recorder(status=503)
+    stats = await push_service.process_pending(db_pool, sender=sender)
+    assert stats["retry"] == 1
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT last_success_at, failure_count FROM push_subscriptions LIMIT 1"
+        )
+    assert row["failure_count"] == 1, "5xx ต้องถูกนับเป็นความล้มเหลว"
+    assert row["last_success_at"] is None, "ยังไม่เคยสำเร็จ ห้ามจดว่าสำเร็จ"
+
+
 # ============================================================
 # 3) ฟังก์ชันบริสุทธิ์ — ไม่ต้องมี DB เลย
 # ============================================================
@@ -700,7 +931,8 @@ def test_T16d_classify_status(status, expected):
 
 
 # ============================================================
-# 4) migration 018 — ⚠️ ต้องอยู่ท้ายไฟล์ (มัน DROP ตารางจริง)
+# 4) migration 018 + 019 — ⚠️ สองเทสต์นี้ต้องอยู่ท้ายไฟล์ (มัน DROP ตารางจริง)
+#    และ **ต้องคืนสภาพสคีมาให้เป็นรุ่นล่าสุด (019) ก่อนจบ** — ดูคอมเมนต์ใน T6
 # ============================================================
 
 @pytest.mark.asyncio
@@ -716,9 +948,17 @@ async def test_T6_migration_018_is_idempotent_and_recreates_everything(push_worl
     mutation ที่ต้องทำให้แตก: ลบ `DROP TRIGGER IF EXISTS` → รอบสองโยน
        "trigger already exists" · ลบ `ON CONFLICT DO NOTHING` → รอบสองไม่มีอะไรพัง
        แต่ trigger จะ insert ซ้ำได้ (กันด้วย unique index อยู่ดี)
+
+    🚨 **กับดักที่เทสต์นี้ก่อเอง (แก้ 28 ก.ย. 2026):** `DROP TABLE push_subscriptions CASCADE`
+       แล้วรัน **018** `upgrade()` จะติดตั้ง `push_outbox_enqueue()` **รุ่นที่ยังไม่มีประตู**
+       กลับคืนมา (`CREATE OR REPLACE FUNCTION`) ⇒ ถ้าจบเทสต์ตรงนั้น สคีมาจะถอยกลับไปเป็น
+       **018 ทั้งที่ migration ล่าสุดคือ 019** และ **ร่องรอยจะไปโผล่ในไฟล์เทสต์ถัดไป**
+       (pytest เรียงตามชื่อไฟล์: `test_push_send` · `test_push_subscriptions` รันต่อจากไฟล์นี้)
+       ⇒ **ต้องปิดท้ายด้วย `019.upgrade()` เสมอ** เพื่อคืนสภาพจริง — ตัวเทสต์ประตูอยู่ที่ T19
     """
     push_world
     mig = importlib.import_module("migrations.018_push_notifications")
+    mig19 = importlib.import_module("migrations.019_push_outbox_requires_device")
 
     async with db_pool.acquire() as conn:
         # ⚠️ `notifications` ไม่ถูก drop — เก็บไว้ให้เทสต์ไฟล์ถัดไปใช้ต่อ
@@ -755,9 +995,71 @@ async def test_T6_migration_018_is_idempotent_and_recreates_everything(push_worl
             "SELECT COUNT(*) FROM pg_trigger WHERE tgname = 'trg_notifications_push_outbox'"
         ) == 1
 
-        # ✅ พิสูจน์ว่า trigger ที่สร้างคืน **ทำงานจริง** ไม่ใช่แค่มองเห็นใน catalog
-        #    (เป็นด่านสุดท้ายของไฟล์นี้ — ถ้า migration สร้าง trigger พลาด เทสต์ T1-T5
-        #     ที่รันไปก่อนหน้าจะจับไม่ได้เลย เพราะตอนนั้น trigger ตัวเดิมยังอยู่)
+        # ⬆️ ถึงตรงนี้ trigger เป็น **รุ่น 018 (ยังไม่มีประตู)** — คืนสภาพล่าสุดก่อนไปต่อ
+        await mig19.upgrade(conn)
+
+        # ✅ พิสูจน์ว่า trigger ที่สร้างคืน **ทำงานจริง** ไม่ใช่แค่เห็นใน catalog
+        #    (ด่านสุดท้าย — ถ้า migration สร้าง trigger พลาด เทสต์ T1-T5 ที่รันไปก่อนหน้า
+        #     จะจับไม่ได้เลย เพราะตอนนั้น trigger ตัวเดิมยังอยู่)
         uid = push_world["student"]["user_id"]
+        await _give_device(db_pool, uid)
         await _notify_one(db_pool, user_id=uid)
         assert await conn.fetchval("SELECT COUNT(*) FROM push_outbox") == 1
+
+
+@pytest.mark.asyncio
+async def test_T19_migration_019_adds_device_gate_and_is_idempotent(push_world, db_pool):
+    """★ migration 019 — **พิสูจน์ด้วยการถอดออกแล้วใส่กลับ** (ไม่ใช่แค่ "มีประตูอยู่")
+
+    วิธี: ยิง input เดียวกันเป๊ะ (notify คนที่ไม่มีอุปกรณ์) สองครั้ง
+      · ครั้งแรกตอนสคีมาเป็น **018** ⇒ ต้องได้ outbox **1 แถว** (พฤติกรรมเก่า)
+      · ครั้งที่สองตอนสคีมาเป็น **019** ⇒ ต้องยังเป็น 1 แถว (ประตูกันไว้)
+
+    ⭐ **ทำไมต้องเทสต์แบบ mutation แทนการ assert เฉย ๆ:** ถ้าเขียนแค่ "notify คนไม่มี
+       อุปกรณ์ → outbox 0" เทสต์นั้นจะผ่าน **แม้ลบ migration 019 ทิ้งทั้งไฟล์**
+       ถ้าสคีมาบังเอิญถูก drop ไปก่อนหน้า (T6) หรือถ้า trigger ไม่ถูกสร้างเลย
+       ⇒ "0 แถว" ไม่ใช่หลักฐานว่ามีประตู — ต้องเห็น **ความต่าง** ระหว่างสองรุ่นจึงเป็นหลักฐาน
+
+    ⚠️ **ต้องอยู่ท้ายไฟล์เป็นตัวสุดท้าย** — มันรัน 018 ทับ (ถอยสคีมา) แล้วคืน 019
+       ถ้ารันก่อน T6/T5b จะทำให้เทสต์เหล่านั้นเห็นสคีมาผิดรุ่น
+    """
+    mig18 = importlib.import_module("migrations.018_push_notifications")
+    mig19 = importlib.import_module("migrations.019_push_outbox_requires_device")
+
+    no_device = push_world["student"]["user_id"]
+    has_device = push_world["student2"]["user_id"]
+    await _give_device(db_pool, has_device)
+
+    # ---------- ① สคีมาเป็น 018: ยังไม่มีประตู → ของที่ทำไม่ได้ก็ยังเข้าคิว ----------
+    async with db_pool.acquire() as conn:
+        await mig18.upgrade(conn)
+    await _notify_one(db_pool, user_id=no_device)
+    assert await _count(db_pool, "push_outbox") == 1, (
+        "018 ต้องยอมให้เข้าคิว — ถ้าไม่ แปลว่าเทสต์กำลังพิสูจน์ผิดเรื่อง"
+    )
+
+    # ---------- ② คืน 019 (สองครั้ง = idempotent) ----------
+    async with db_pool.acquire() as conn:
+        await mig19.upgrade(conn)
+        await mig19.upgrade(conn)  # CREATE OR REPLACE + DROP TRIGGER IF EXISTS ⇒ รันซ้ำได้
+
+        # trigger ต้องยัง **เปิด** อยู่ (DROP+CREATE อาจจบด้วย tgenabled ≠ 'O')
+        # ⚠️ `tgenabled` เป็นชนิด `"char"` ของ pg_catalog ⇒ asyncpg คืน **bytes**
+        #    (ไม่ใช่ str) · cast เป็น text ใน SQL เพื่อให้เทียบกับ 'O' ได้ตรง ๆ
+        #    (ถ้าเทียบ `== "O"` จะล้มด้วย `assert b'O' == 'O'` ซึ่งอ่านแล้วงงมาก)
+        assert await conn.fetchval(
+            "SELECT tgenabled::text FROM pg_trigger "
+            "WHERE tgname = 'trg_notifications_push_outbox'"
+        ) == "O", "trigger ถูกสร้างคืนแต่ปิดอยู่ = push เงียบทั้งระบบ"
+
+    # ---------- ③ ประตูทำงาน: คนไม่มีอุปกรณ์ **ไม่เพิ่ม** ----------
+    await _notify_one(db_pool, user_id=no_device)
+    assert await _count(db_pool, "push_outbox") == 1, (
+        "019 ต้องกันคนไม่มีอุปกรณ์ — ถ้าเพิ่มเป็น 2 แปลว่าประตูไม่ได้ผล"
+    )
+    # และ in-app ต้องยังได้ (ประตูตัดแค่ push)
+    assert await _count(db_pool, "notifications") == 2
+
+    # ---------- ④ คนที่มีอุปกรณ์ยังเข้าคิวได้ปกติ (ประตูไม่ได้ปิดทางทั้งหมด) ----------
+    await _notify_one(db_pool, user_id=has_device)
+    assert await _count(db_pool, "push_outbox") == 2
