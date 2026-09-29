@@ -29,6 +29,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { STATUS_BADGE } from '@/constants/status'
 import ApproveBoardModal from '@/components/boards/ApproveBoardModal.vue'
+import BookmarkButton from '@/components/BookmarkButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -546,12 +547,16 @@ function countdownLabel(deadline: string): string {
             {{ issue.reporter_room ? `(${issue.reporter_room})` : '' }}
           </p>
         </div>
-        <span
-          class="px-3 py-1 text-sm font-medium rounded-full whitespace-nowrap shrink-0"
-          :class="STATUS_BADGE[issue.status] || 'bg-stone-100 text-stone-500'"
-        >
-          {{ STATUS_LABELS[issue.status] }}
-        </span>
+        <div class="flex shrink-0 items-center gap-2">
+          <span
+            class="px-3 py-1 text-sm font-medium rounded-full whitespace-nowrap"
+            :class="STATUS_BADGE[issue.status] || 'bg-stone-100 text-stone-500'"
+          >
+            {{ STATUS_LABELS[issue.status] }}
+          </span>
+          <!-- 🔖 บันทึกไว้อ่านทีหลัง (C2) — อยู่ในการ์ดหัวเรื่อง ไม่ใช่แถบปุ่มด้านล่าง -->
+          <BookmarkButton entity-type="issue" :entity-id="issue.id" />
+        </div>
       </div>
       <p class="text-stone-700 mt-4 whitespace-pre-wrap">{{ issue.description }}</p>
       <p class="text-xs text-stone-400 mt-3">

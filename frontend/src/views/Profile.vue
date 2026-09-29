@@ -193,6 +193,7 @@ async function toggleGroup(group: NotificationGroup) {
   }
 }
 
+const goActivity = () => { menuOpen.value = false; router.push({ name: 'my-activity' }); };
 const goEdit = () => { menuOpen.value = false; router.push({ name: 'profile-edit' }); };
 const goPassword = () => { menuOpen.value = false; router.push({ name: 'profile-password' }); };
 
@@ -542,6 +543,26 @@ onMounted(loadStats);
         :error="statsError"
         @retry="loadStats"
       />
+
+      <!-- ===== 🧭 กิจกรรมของฉัน + บันทึกไว้ (C1/C2) ===== -->
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-6 text-left transition-colors hover:bg-stone-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 sm:p-8"
+        @click="goActivity"
+      >
+        <div class="flex min-w-0 items-center gap-3">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
+            <i class="bi bi-clock-history"></i>
+          </div>
+          <div class="min-w-0">
+            <h2 class="text-lg font-bold text-stone-900">กิจกรรมของฉัน</h2>
+            <p class="mt-1 text-sm text-stone-500">
+              ทุกอย่างที่คุณเคยแจ้ง โหวต และแสดงความคิดเห็น · พร้อมเรื่องที่บันทึกไว้
+            </p>
+          </div>
+        </div>
+        <i class="bi bi-chevron-right shrink-0 text-stone-400"></i>
+      </button>
 
       <p class="text-center text-[11px] text-stone-400 pb-4">
         แก้ไขโปรไฟล์หรือเปลี่ยนรหัสผ่านได้จากเมนู <i class="bi bi-three-dots-vertical"></i> มุมขวาบน

@@ -22,7 +22,7 @@ from routers import boards
 from routers import notification_router
 from routers import announcement_router
 from routers import settings_router
-from routers import me_router
+from routers import bookmark_router, me_router
 from routers import home_router
 from routers import public_router
 
@@ -162,6 +162,7 @@ app.include_router(notification_router.router, prefix="/api")
 app.include_router(announcement_router.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 app.include_router(me_router.router, prefix="/api")
+app.include_router(bookmark_router.router, prefix="/api")
 app.include_router(home_router.router, prefix="/api")
 app.include_router(public_router.router, prefix="/api/v1")
 

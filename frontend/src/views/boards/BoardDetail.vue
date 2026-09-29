@@ -7,6 +7,7 @@ import { BOARD_TYPE_LABELS, boardTypeIcon, type BoardDetail } from '@/types/boar
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import CommentThread from '@/components/boards/CommentThread.vue'
+import BookmarkButton from '@/components/BookmarkButton.vue'
 
 const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
@@ -180,6 +181,8 @@ const rootComments = computed(() => board.value?.comments ?? [])
         </span>
         <div class="flex items-center gap-2">
           <span class="text-xs text-stone-400">{{ fmtDate(board.created_at) }}</span>
+          <!-- 🔖 บันทึกไว้อ่านทีหลัง (C2) -->
+          <BookmarkButton entity-type="board" :entity-id="board.id" size="sm" />
           <button
             v-if="authStore.isCouncilAuthority"
             type="button"
