@@ -74,6 +74,9 @@ ACTION_LABELS = {
     "SET_CURRENT_TERM": "ตั้งภาคปัจจุบัน",
     # E1 — ข้อเสนอจากผู้ใช้ (บอร์ดชนิด 'suggestion')
     "CREATE_SUGGESTION": "สร้างข้อเสนอแนะ",
+    # A8 — ค่าตั้งระดับโรงเรียน (app_settings): ต้องมีป้ายที่นี่ **และ** ที่
+    # frontend/src/views/audit/AuditLogs.vue (ACTION_LABELS) — กฎ "audit action ใหม่ = 2 ที่"
+    "UPDATE_QUIET_HOURS": "ตั้งช่วงเวลาไม่ส่งแจ้งเตือน",
 }
 
 

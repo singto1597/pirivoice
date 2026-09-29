@@ -17,6 +17,7 @@ import { getMyStats } from '@/services/me';
 import type { PersonalStats } from '@/types/me';
 import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
 import PushSettingsCard from '@/components/PushSettingsCard.vue';
+import QuietHoursCard from '@/components/QuietHoursCard.vue';
 import { useAuthStore } from '@/stores/auth';
 import {
   canPromptInstall,
@@ -469,6 +470,13 @@ onMounted(loadStats);
       <!-- วางต่อจากการ์ดตั้งค่ากลุ่มโดยเจตนา — สองการ์ดนี้เป็นเรื่องเดียวกันคนละชั้น:
            การ์ดบน = "รับเรื่องอะไร" (ทั้ง in-app และ push) · การ์ดนี้ = "เครื่องนี้รับไหม" -->
       <PushSettingsCard />
+
+      <!-- ===== 🔇 ช่วงเวลาไม่ส่งแจ้งเตือน (A8) ===== -->
+      <!-- ต่อจาก A3 โดยเจตนา — สองการ์ดนี้เป็นเรื่องของ push ทั้งคู่:
+           A3 = "เครื่องนี้รับ push ไหม" (รายคน) · การ์ดนี้ = "โรงเรียนพัก push ช่วงไหน" (ทั้งโรงเรียน)
+           ⚠️ แสดงให้ทุกคนเห็น แต่แก้ได้เฉพาะผู้มี MANAGE_SETTINGS — ห้ามซ่อนจากนักเรียน
+              (นักเรียนต้องรู้ว่าทำไมมือถือเงียบ ดูคอมเมนต์หัวไฟล์ QuietHoursCard.vue) -->
+      <QuietHoursCard />
 
       <!-- ===== 📱 ติดตั้งแอป ===== -->
       <!-- ซ่อนเมื่อเปิดในโหมดแอพที่ติดตั้งแล้ว — ไม่มีอะไรให้ติดตั้งอีก -->

@@ -74,6 +74,7 @@ function countsOf(over: Partial<Record<NotificationGroup, number>> = {}): Unread
     issue_received: 0,
     board: 0,
     report: 0,
+    announcement: 0,
     ...over,
   }
   return { counts, total: Object.values(counts).reduce((a, b) => a + b, 0) }

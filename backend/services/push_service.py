@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -42,6 +43,11 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid02
 
 from core.config import settings
+from services.app_settings_service import (
+    get_quiet_hours,
+    quiet_hours_active,
+    quiet_hours_resumes_at,
+)
 
 logger = logging.getLogger("PUSH")
 
@@ -56,6 +62,16 @@ DEFAULT_PUSH_URL = "/app/notifications"
 #    ซึ่งเป็นความไม่สม่ำเสมอที่หาสาเหตุยาก เพราะทั้งสองทาง "ดูเหมือนถูก" แยกกัน
 #    ⇒ เทสต์ `test_T16d_*` ตรึงลำดับการตัดสินไว้ — **อย่าสลับลำดับ**
 BOARD_REPORTS_URL = "/app/boards/reports"
+
+# ── E2 (ประกาศฉุกเฉิน) — ปลายทางคือ **หน้า Home** ไม่ใช่หน้ารวมแจ้งเตือน ────────
+# ประกาศโรงเรียนถูกแสดงบน Home (บล็อกประกาศ ไม่มี LIMIT) ⇒ กด push แล้วควรไปเห็น
+# ตัวประกาศเลย ไม่ใช่ไปดูรายการแจ้งเตือนที่ต้องกดต่ออีกที
+# ✅ **สองทางตรงกันแล้ว** — ฝั่งแอปมีกฎเดียวกันที่ `router/deepLink.ts` (`{ name: 'home' }`)
+#    ซึ่ง `NotificationCenter.go()` เรียกใช้ ⇒ push กับปุ่มในแอปพาไปที่เดียวกัน
+#    · ตรึงด้วยเทสต์ **สองภาษา**: `test_T21i` + `_DEEP_LINK_CASES` (ที่นี่) กับ
+#      `deepLink.spec.ts` D10/D11 (ฝั่ง FE) · ส่วน `test_T21h`/`D3` เป็นด่านกัน
+#      "เพิ่มกลุ่มใหม่แล้วลืมนิยามปลายทาง" ทั้งสองฝั่ง
+ANNOUNCEMENT_URL = "/app/home"
 
 # เวลารอสูงสุดต่อ 1 คำขอ — FCM/APNs ปกติตอบใน <1 วิ, 10 วิคือ "ปลายทางตายแล้ว"
 _SEND_TIMEOUT_SECONDS = 10.0
@@ -168,21 +184,26 @@ def _field(row: Any, key: str) -> Any:
 def _deep_link_url(row: Any) -> str:
     """ปลายทางเมื่อผู้ใช้กด notification — **ฟังก์ชันบริสุทธิ์**
 
-    ลำดับการตัดสินลอกจาก `NotificationCenter.go()` ตรง ๆ (4 ขั้น) — **ลำดับมีความหมาย**:
+    ลำดับการตัดสินลอกจาก `NotificationCenter.go()` ตรง ๆ (5 ขั้น) — **ลำดับมีความหมาย**:
 
       1. กลุ่ม `report` + ชนิด `report_new` → **คิวรายงาน** (`/app/boards/reports`)
          ★ ต้องมาก่อนข้อ 3 เพราะ notification นี้พก `board_id` มาด้วย — ถ้าตกไปข้อ 3
          จะพาสภาฯ ไปที่ตัวบอร์ด แทนที่จะพาไป "คิวที่ต้องลงมือ" ซึ่งเป็นเหตุผลที่แจ้ง
       2. กลุ่ม `report` ชนิดอื่น ที่มี `board_id` → **บอร์ดนั้น** (`report_actioned`
          ส่งถึง *ผู้แจ้ง* ซึ่งอาจเป็นนักเรียน — ต้องไปดูบอร์ด ไม่ใช่คิวของสภา)
-      3. `entity_type == 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
-      4. มี `board_id` → **หน้าบอร์ด**
+      3. กลุ่ม `announcement` (E2) → **Home** (`/app/home`) ซึ่งเป็นที่แสดงตัวประกาศ
+      4. `entity_type == 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
+      5. มี `board_id` → **หน้าบอร์ด**
 
     ไม่เข้าเงื่อนไขใด → `/app/notifications` (ปลอดภัยเสมอ: ไม่พาไปที่ที่ไม่มีอยู่)
 
     ⚠️ **ห้ามใส่ `report_new` ไว้หลังข้อ 3** — ทั้งสองชนิดมี `board_id` เหมือนกัน
        การสลับลำดับจะเปลี่ยนปลายทางของ `report_new` โดยที่เทสต์ที่ assert แค่
        "มี url" จะไม่จับได้
+
+    ⚠️ **ข้อ 3 ต้องไม่ผูกกับ `entity_id`** — ประกาศแสดงทั้งก้อนบน Home ไม่ได้เจาะจงใบ
+       ⇒ แม้ `entity_id` เป็น NULL ก็ต้องได้ `/app/home` (ตรึงด้วย `test_T21i` เคสที่ 2)
+       ต่างจากข้อ 4 ที่ *ต้อง* มี `entity_id` ไม่งั้นจะได้ `/app/issues/None`
     """
     group_type = _field(row, "group_type")
     notif_type = _field(row, "type")
@@ -196,6 +217,12 @@ def _deep_link_url(row: Any) -> str:
         if board_id is not None:
             return f"/app/boards/{board_id}"
         return DEFAULT_PUSH_URL
+
+    # 5. ประกาศฉุกเฉิน (E2) → Home ซึ่งเป็นที่แสดงตัวประกาศ
+    #    ★ มาก่อนข้อ 3/4 โดยไม่จำเป็นต้องมี เพราะ announcement ไม่มี entity_type='issue'
+    #      และไม่มี board_id — แต่วางไว้ให้ชัดว่าเป็นกฎ *เจตนา* ไม่ใช่การตกหล่นไป fallback
+    if group_type == "announcement":
+        return ANNOUNCEMENT_URL
 
     if entity_type == "issue" and entity_id is not None:
         return f"/app/issues/{entity_id}"
@@ -456,6 +483,11 @@ async def _load_payloads(pool, outbox_ids: List[int]) -> List[Dict[str, Any]]:
                    --    (report_new ต้องไปคิวรายงาน ไม่ใช่ไปบอร์ด) — ดู `_deep_link_url()`
                    n.group_type,
                    n.entity_type, n.entity_id, n.board_id,
+                   -- ⭐ E2 (migration 024): ธงยกเว้น quiet hours รายแถว — ประกาศฉุกเฉินตั้ง TRUE
+                   --    ⚠️ ต้อง SELECT มาที่นี่เพราะด่าน quiet hours อยู่ใน `process_pending`
+                   --       ซึ่งทำงาน *หลัง* คิวรีนี้ และต้องรู้รายแถวว่าใครได้ยกเว้น
+                   --    ⚠️ เป็น LEFT JOIN อยู่แล้ว ⇒ ไม่เพิ่ม JOIN ใหม่ ไม่เพิ่มต้นทุน
+                   n.bypass_quiet_hours,
                    n.created_at    AS notification_created_at,
                    s.id            AS subscription_id,
                    s.endpoint, s.p256dh, s.auth
@@ -605,7 +637,7 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
       - ไม่ทำ per-subscription retry — ต้องมีตาราง state ต่ออุปกรณ์ เกินความจำเป็นของ A3
     """
     stats = {"claimed": 0, "sent": 0, "gone": 0, "retry": 0,
-             "dropped": 0, "skipped": 0, "stale": 0}
+             "dropped": 0, "skipped": 0, "stale": 0, "quiet": 0}
 
     claimed = await _claim(pool, settings.PUSH_BATCH_SIZE)
     stats["claimed"] = len(claimed)
@@ -672,6 +704,58 @@ async def process_pending(pool, *, sender=None) -> Dict[str, int]:
             "ของเหล่านี้ **ไม่มีใครได้รับ** ควรดูว่าคิวตกค้างเพราะอะไร",
             len(stale), max_age,
         )
+
+    # ==================== ⭐ A8: ด่าน quiet hours ====================
+    # **ทำไมด่านอยู่ที่นี่ (หลัง no_device/stale) และไม่ใช่ที่อื่น:**
+    #   1. **ไม่ใช่ตอนเข้าคิว** (ต่างจาก migration 019) — เพราะช่วงเวลาสิ้นสุดได้
+    #      ถ้าตัดทิ้งตอน insert แถวนั้นจะ **ไม่มีวันถูกส่งเลย** แม้จะพ้นช่วงไปแล้ว
+    #      ⇒ ที่นี่ตัดสิน "ตอนนี้ส่งได้ไหม" ซึ่งเป็นคำถามที่มีคำตอบต่างกันในแต่ละวินาที
+    #   2. **ไม่ใช่การค้างแถวไว้ในคิว** (`next_attempt_at` เลื่อนออกไป) — จะไปชนด่าน
+    #      `PUSH_MAX_AGE_MINUTES` ที่ตัดของเก่าทิ้ง ⇒ **ทุกแถวที่ค้างจะถูกทิ้ง**
+    #      ตอนพ้นช่วงพอดี ⇒ ได้ 0 push · **แถวใน `notifications` คือบันทึกถาวรอยู่แล้ว**
+    #      ⇒ การปิดแถวในคิวไม่ได้ทำให้ใคร "พลาด" อะไร (in-app + badge ยังครบ)
+    #   3. **หลัง `stale`** เพื่อให้ `stats["quiet"]` มีความหมายว่า
+    #      "จำนวนที่ **ถ้าถึงคิวก็จะได้ส่งจริง** แต่ถูกความเงียบกลืน" — ถ้านับรวม
+    #      แถวที่ไม่มีอุปกรณ์/เก่าเกิน ตัวเลขนี้จะพองจนอ่านไม่ออกว่ากระทบใครจริง
+    quiet: List[int] = []
+    if to_send:
+        # คิวรีเดียวต่อ batch และ **เฉพาะเมื่อมีของจะส่ง** ⇒ คิวว่าง = ไม่แตะ DB เพิ่มเลย
+        quiet_config = await get_quiet_hours(pool)
+        # ใช้ `now` **ค่าเดียวกัน** กับที่ตัดสิน stale — หนึ่ง batch = หนึ่งเวลาอ้างอิง
+        # (ถ้าเรียก `time.time()` ใหม่ ของสองแถวใน batch เดียวกันอาจถูกตัดสินคนละวินาที)
+        if quiet_hours_active(quiet_config, now=datetime.fromtimestamp(now, timezone.utc)):
+            # ⭐ E2: ประกาศฉุกเฉิน (`bypass_quiet_hours = TRUE`) **ทะลุได้ทุกแถว**
+            #    ⇒ เป็นข้อยกเว้น **รายแถว** ไม่ใช่รายกลุ่ม/รายผู้ใช้ ⇒ ต้องอ่านจาก meta
+            #      ของแต่ละ outbox (ได้มาจาก JOIN ใน `_load_payloads`)
+            quiet = [
+                g["meta"]["outbox_id"] for g in to_send
+                if not g["meta"].get("bypass_quiet_hours")
+            ]
+            to_send = [g for g in to_send if g["meta"].get("bypass_quiet_hours")]
+
+            if quiet:
+                await _finish(pool, quiet, error="quiet-hours")
+                stats["quiet"] = len(quiet)
+                resumes = quiet_hours_resumes_at(
+                    quiet_config, now=datetime.fromtimestamp(now, timezone.utc)
+                )
+                # ℹ️ **INFO ไม่ใช่ WARNING** — ต่างจาก `stale` ข้างบน: นี่คือพฤติกรรม
+                #    ที่ถูกออกแบบไว้ ไม่มีอะไรหาย (in-app ยังครบ) ⇒ ไม่ควรทำให้ log
+                #    ดูเหมือนเหตุฉุกเฉิน ไม่งั้นของจริงจะจมอยู่ในความเท็จ
+                #    ⚠️ ขึ้นเฉพาะเมื่อ **มีของถูกกลืนจริง** ไม่ใช่ทุก tick
+                logger.info(
+                    "🔇 quiet hours (%s–%s) — ระงับ %d แจ้งเตือน · จะกลับมาส่ง %s",
+                    quiet_config["start"], quiet_config["end"],
+                    len(quiet),
+                    resumes.strftime("%d/%m %H:%M") if resumes else "—",
+                )
+                if to_send:
+                    # E2: มีประกาศฉุกเฉินทะลุออกไปในรอบเดียวกัน — บันทึกแยกบรรทัด
+                    # เพราะเป็นเหตุการณ์ที่ต้องตอบได้ว่า "ฉุกเฉินถึงมือใคร เมื่อไร"
+                    logger.info(
+                        "🚨 ประกาศฉุกเฉินทะลุ quiet hours %d รายการ (ธง bypass_quiet_hours)",
+                        len(to_send),
+                    )
 
     if not to_send:
         return stats
@@ -844,12 +928,18 @@ async def drain(pool, *, sender=None,
     budget = settings.PUSH_DRAIN_SECONDS if deadline_seconds is None else deadline_seconds
     deadline = time.monotonic() + budget
     total = {"claimed": 0, "sent": 0, "gone": 0, "retry": 0,
-             "dropped": 0, "skipped": 0, "stale": 0}
+             "dropped": 0, "skipped": 0, "stale": 0, "quiet": 0}
 
     while True:
         stats = await process_pending(pool, sender=sender)
-        for k in total:
-            total[k] += stats[k]
+        # ⚠️ **วนจาก `stats` ไม่ใช่จาก `total`** — ตัวนับที่ `process_pending` เพิ่มใหม่
+        #    จะไหลมารวมเองโดยไม่ต้องแก้ที่นี่ และไม่เกิด `KeyError` เงียบ ๆ
+        #    (ถ้าวนจาก `total` ตัวนับใหม่จะถูกทิ้งทุก batch = หายจาก log ทั้งที่ทำงานจริง)
+        #    · แต่ `_log_stats` ฝั่ง worker ยัง **ลิสต์ชื่อคีย์ตรง ๆ โดยเจตนา** ⇒ ตัวนับใหม่
+        #    ที่ไม่มีในบรรทัด log จะพังเสียงดังตอน `claimed > 0` ไม่ใช่หายเงียบ
+        #    (บทเรียน §20.18 สาเหตุ #4: ตัวนับที่ไม่มีใครเห็น = ปัญหาที่มองไม่เห็นเป็นวัน)
+        for k, v in stats.items():
+            total[k] = total.get(k, 0) + v
         # คิวว่าง = งานหมดแล้ว ออกทันที (ไม่กินงบที่เหลือ)
         if stats["claimed"] == 0:
             break

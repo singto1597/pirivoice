@@ -65,14 +65,20 @@ def _log_stats(stats: dict, *, source: str) -> None:
     """log เฉพาะรอบที่มีของจริง — ไม่งั้น log จะท่วมด้วย "claimed 0"
 
     ⚠️ `stale` และ `dropped` ในบรรทัดนี้คือ **ของที่หายถาวร** ไม่ใช่สถิติเฉย ๆ
-       ⇒ ห้ามตัดออกรอบหน้า (ดู `_log_stats` ที่ต้องมีครบทั้ง 7 ตัวนับ)
+       ⇒ ห้ามตัดออกรอบหน้า (ดู `_log_stats` ที่ต้องมีครบทั้ง 8 ตัวนับ)
+
+    ⚠️ **บรรทัดนี้ลิสต์คีย์ทีละตัวโดยเจตนา** — ไม่วน `stats.items()` เพราะลำดับคอลัมน์
+       คงที่ทำให้กวาดตาหา `stale`/`dropped` ได้ทันที · แต่ผลที่ตามมาคือ **ตัวนับใหม่ที่
+       `push_service` เพิ่มจะไม่โผล่ที่นี่จนกว่าจะมาเติม** ⇒ ถ้าเพิ่มคีย์ใน `stats`
+       ที่ `process_pending` **ต้องมาเติมบรรทัดนี้เสมอ** (บทเรียน §20.18 สาเหตุ #4:
+       `logger.info` ที่ไม่เคยขึ้น ทำให้ "push กอง/หยุดกลางทาง" มองไม่เห็นอยู่วันกว่า)
     """
     if not stats["claimed"]:
         return
     logger.info(
-        "📤 push[%s]: claimed=%d sent=%d gone=%d retry=%d dropped=%d skipped=%d stale=%d",
+        "📤 push[%s]: claimed=%d sent=%d gone=%d retry=%d dropped=%d skipped=%d stale=%d quiet=%d",
         source, stats["claimed"], stats["sent"], stats["gone"], stats["retry"],
-        stats["dropped"], stats["skipped"], stats["stale"],
+        stats["dropped"], stats["skipped"], stats["stale"], stats["quiet"],
     )
 
 

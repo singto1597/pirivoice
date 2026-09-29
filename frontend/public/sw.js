@@ -276,6 +276,27 @@ self.addEventListener('push', (event) => {
     return;
   }
 
+  // ── 🏷️ App Badge (A5) ───────────────────────────────────────────────────
+  // ⚠️ ที่นี่ตั้งได้แค่ **จุด** ไม่ใช่ตัวเลข — SW ไม่รู้ยอดที่ยังไม่อ่านจริง (ต้องถาม DB
+  //    ซึ่ง SW ทำไม่ได้: ไม่มี token และไม่ควรยิง API จากเบื้องหลัง)
+  //    ⇒ ตั้ง "มีของใหม่" แล้วให้ **แอพเขียนทับด้วยตัวเลขจริง** ตอนถูกเปิด
+  //      (`src/badge.ts` + `stores/notifications.ts` — ทุกทางที่ยอดเปลี่ยนผ่านจุดเดียว)
+  // ⚠️ ต้องมี `?.` + try/catch: `setAppBadge` ไม่มีใน Safari/iOS เลย และ **reject**
+  //    บน Chrome ที่ยังไม่ได้ติดตั้งแอพ ⇒ ถ้าไม่ดักจะได้ uncaught rejection
+  //    ทุกครั้งที่ push มา ซึ่งอ่านดูเหมือน "แอพพัง" (บทเรียนเดียวกับ `showNotification`)
+  // ⚠️ `self.registration` ไม่ใช่ `navigator` — Badging API ถูกเปิดบน
+  //    `ServiceWorkerRegistration` ด้วยโดยเจตนา (ตัว `navigator` ของ SW คือ
+  //    `WorkerNavigator` ซึ่งบางเบราว์เซอร์ไม่เปิดให้)
+  try {
+    const reg = self.registration;
+    if (reg && typeof reg.setAppBadge === 'function') {
+      // ไม่ส่ง argument = "จุด" (สเปก: `setAppBadge()` → flag, `setAppBadge(n)` → ตัวเลข)
+      reg.setAppBadge().catch(() => {});
+    }
+  } catch {
+    // ไม่มี badge ไม่ใช่เรื่องที่ต้องรายงานใคร — ตัว notification ยังขึ้นตามปกติ
+  }
+
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body || '',

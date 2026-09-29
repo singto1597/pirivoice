@@ -1,9 +1,9 @@
 <!-- eslint-disable vue/multi-word-component-names -- ชื่อตาม spec A3 -->
 <script setup lang="ts">
 /**
- * 🔔 การ์ด "แจ้งเตือนถึงมือถือ" (A3)
+ * 🔔 การ์ด "แจ้งเตือนถึงมือถือ" (A3 + #44)
  *
- * แยกเป็นคอมโพเนนต์เพราะ `Profile.vue` ยาวอยู่แล้ว และการ์ดนี้มี **5 สถานะ**
+ * แยกเป็นคอมโพเนนต์เพราะ `Profile.vue` ยาวอยู่แล้ว และการ์ดนี้มี **7 สถานะ**
  * ที่ต้องแยกให้ผู้ใช้อ่านออก (ต่างจากการ์ดตั้งค่ากลุ่มใน A2 ที่มีสถานะเดียว)
  *
  * ⚠️ การ์ดนี้เป็น **per-เครื่อง** ไม่ใช่ per-บัญชี — เครื่องเดียวถูกใช้หลายคนได้
@@ -22,24 +22,37 @@ import {
   pushPermission,
   pushReady,
   pushSubscribed,
+  pushSubscriptionStale,
   pushSupported,
   refreshPushStatus,
+  repairPush,
+  type PushEnableResult,
 } from '@/push'
 
 /**
- * 6 สถานะที่แสดงผล — เรียงตามลำดับความสำคัญ (ตัวที่มาก่อนชนะ)
+ * 7 สถานะที่แสดงผล — เรียงตามลำดับความสำคัญ (ตัวที่มาก่อนชนะ)
  *
  * ⚠️ `ios-needs-install` ต้องมาก่อน `blocked` — บน iOS ที่ยังไม่ติดตั้ง
  *    `Notification.permission` อาจเป็น `denied` ค้างจากตอนที่ยังใช้ในแท็บปกติ
  *    ⇒ ถ้าเอา `blocked` มาก่อน จะบอกผู้ใช้ผิด ๆ ว่า "ถูกบล็อก" ทั้งที่แค่ยังไม่ติดตั้ง
+ * ⚠️ `blocked` ต้องมาก่อน `stale` — ถ้าเบราว์เซอร์ยังไม่อนุญาต การ "เปิดใหม่" ก็ไม่ช่วยอะไร
+ *    ⇒ ต้องให้ผู้ใช้ไปปลดบล็อกก่อน แล้วค่อยกลับมาเจอคำเตือนคีย์ (ถ้ายังค้างอยู่)
  */
-type CardState = 'loading' | 'unsupported' | 'ios-needs-install' | 'blocked' | 'on' | 'off'
+type CardState =
+  | 'loading'
+  | 'unsupported'
+  | 'ios-needs-install'
+  | 'blocked'
+  | 'stale'
+  | 'on'
+  | 'off'
 
 const state = computed<CardState>(() => {
   if (!pushReady.value) return 'loading'
   if (!pushSupported.value) return 'unsupported'
   if (isIosSafari.value && !isStandalone.value) return 'ios-needs-install'
   if (pushPermission.value === 'denied') return 'blocked'
+  if (pushSubscriptionStale.value) return 'stale'
   return pushSubscribed.value ? 'on' : 'off'
 })
 
@@ -51,6 +64,40 @@ onMounted(() => {
   //    `enablePush()` ห้ามมี `await` ก่อนขอสิทธิ์ (iOS ตัด gesture chain) ⇒ คีย์ต้องพร้อมก่อน
   void refreshPushStatus()
 })
+
+/**
+ * แจ้งผลการกด "เปิด" — ใช้ร่วมกันทั้งปุ่มเปิดปกติ (④/⑤) และปุ่มซ่อม (③)
+ *
+ * ⚠️ แยกออกมาโดยเจตนา — ข้อความ success/denied ที่เขียนซ้ำสองที่จะค่อย ๆ เพี้ยนจากกัน
+ *    แล้วผู้ใช้จะได้รับคำอธิบายไม่ตรงกันทั้งที่ระบบทำสิ่งเดียวกัน
+ * `dismissed` = ผู้ใช้ปิด dialog เอง — ไม่ต้องเด้งอะไรตามไป ซ้ำซาก
+ */
+async function reportEnableResult(result: PushEnableResult): Promise<void> {
+  if (result === 'enabled') {
+    await Swal.fire({
+      icon: 'success',
+      title: 'เปิดการแจ้งเตือนแล้ว',
+      text: 'มีเรื่องใหม่หรือกระทู้ใหม่ เดี๋ยวแจ้งให้ทราบแม้ปิดแอปอยู่',
+      timer: 2400,
+      showConfirmButton: false,
+    })
+  } else if (result === 'denied') {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'เบราว์เซอร์บล็อกการแจ้งเตือนไว้',
+      text: 'เปิดได้ที่ ตั้งค่าเบราว์เซอร์ → การแจ้งเตือน → อนุญาตสำหรับเว็บนี้',
+    })
+  }
+}
+
+/** แจ้ง error แบบเดียวกันทั้งสองปุ่ม — ต่างแค่หัวข้อ */
+async function reportError(title: string, e: unknown): Promise<void> {
+  await Swal.fire({
+    icon: 'error',
+    title,
+    text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่',
+  })
+}
 
 async function onToggle() {
   if (toggling.value || busy.value) return
@@ -68,29 +115,27 @@ async function onToggle() {
       return
     }
 
-    const result = await enablePush()
-    if (result === 'enabled') {
-      await Swal.fire({
-        icon: 'success',
-        title: 'เปิดการแจ้งเตือนแล้ว',
-        text: 'มีเรื่องใหม่หรือกระทู้ใหม่ เดี๋ยวแจ้งให้ทราบแม้ปิดแอปอยู่',
-        timer: 2400,
-        showConfirmButton: false,
-      })
-    } else if (result === 'denied') {
-      await Swal.fire({
-        icon: 'warning',
-        title: 'เบราว์เซอร์บล็อกการแจ้งเตือนไว้',
-        text: 'เปิดได้ที่ ตั้งค่าเบราว์เซอร์ → การแจ้งเตือน → อนุญาตสำหรับเว็บนี้',
-      })
-    }
-    // `dismissed` = ผู้ใช้ปิด dialog เอง — ไม่ต้องเด้งอะไรตามไป ซ้ำซาก
+    await reportEnableResult(await enablePush())
   } catch (e: unknown) {
-    await Swal.fire({
-      icon: 'error',
-      title: 'เปิดการแจ้งเตือนไม่สำเร็จ',
-      text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่',
-    })
+    await reportError('เปิดการแจ้งเตือนไม่สำเร็จ', e)
+  } finally {
+    toggling.value = false
+  }
+}
+
+/**
+ * ปุ่ม "เปิดใหม่บนเครื่องนี้" ในสถานะ `stale`
+ *
+ * ⚠️ **ต้องมาจากการกดของผู้ใช้เท่านั้น** (`repairPush()` เรียก `subscribe()` ซึ่ง iOS
+ *    ต้องการ gesture) ⇒ **ห้ามย้ายไปเรียกอัตโนมัติตอน `onMounted`** เด็ดขาด
+ */
+async function onRepair() {
+  if (toggling.value || busy.value) return
+  toggling.value = true
+  try {
+    await reportEnableResult(await repairPush())
+  } catch (e: unknown) {
+    await reportError('ซ่อมการแจ้งเตือนไม่สำเร็จ', e)
   } finally {
     toggling.value = false
   }
@@ -142,7 +187,40 @@ async function onToggle() {
       — เปิดได้ที่ ตั้งค่าเบราว์เซอร์ → การแจ้งเตือน → อนุญาตสำหรับเว็บนี้ แล้วกลับมาเปิดอีกครั้ง
     </p>
 
-    <!-- ④/⑤ ปกติ — สวิตช์ของ "เครื่องนี้" + จำนวนอุปกรณ์ทั้งบัญชี -->
+    <!--
+      ④ เครื่องนี้ผูกกับคีย์เก่า (เซิร์ฟเวอร์ rotate คีย์ไปแล้ว) — **ดูเหมือนเปิดอยู่แต่ไม่มีอะไรมาถึง**
+      เป็นสถานะที่ต้องอธิบายยาวกว่าปกติเพราะผู้ใช้จะไม่เชื่อว่ามันพัง (ทุกอย่างขึ้นว่าเปิดอยู่)
+    -->
+    <div v-else-if="state === 'stale'" class="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
+      <p class="flex items-center gap-2 text-sm font-semibold text-amber-900">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        การแจ้งเตือนของเครื่องนี้หยุดทำงาน
+      </p>
+      <p class="mt-1.5 text-xs leading-relaxed text-amber-800">
+        ระบบเปลี่ยนรหัสความปลอดภัยของการแจ้งเตือนไปแล้ว การตั้งค่าเดิมบนเครื่องนี้จึงใช้ไม่ได้อีก
+        — แม้จะยังขึ้นว่าเปิดอยู่ ก็จะไม่มีอะไรเด้งขึ้นมา · กด “เปิดใหม่บนเครื่องนี้” เพื่อแก้
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          :disabled="toggling || busy"
+          class="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#991B1B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 disabled:opacity-50"
+          @click="onRepair"
+        >
+          เปิดใหม่บนเครื่องนี้
+        </button>
+        <button
+          type="button"
+          :disabled="toggling || busy"
+          class="rounded-lg border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2 disabled:opacity-50"
+          @click="onToggle"
+        >
+          ปิดบนเครื่องนี้
+        </button>
+      </div>
+    </div>
+
+    <!-- ⑤/⑥ ปกติ — สวิตช์ของ "เครื่องนี้" + จำนวนอุปกรณ์ทั้งบัญชี -->
     <div v-else class="flex items-start gap-4">
       <div class="min-w-0 flex-1">
         <p class="text-sm font-semibold text-stone-800">
