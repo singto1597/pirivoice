@@ -1427,3 +1427,31 @@
   · เคล็ดลับเขียนเคสให้มีฟัน: ถามว่า *"สถานะไหนที่ **หายไปทั้งก้อน**"* ไม่ใช่ *"สถานะไหนที่ผิด"* — บั๊กตระกูล "กุญแจหาย" จะเห็นผลก็ต่อเมื่อ **ไม่มีใบที่ถูกต้องเหลืออยู่ในกลุ่มเลย**
   · และ **ระบุใน docstring ว่าเคสไหน *ไม่ได้* ทดสอบอะไร** โดยเจตนา — ดีกว่าเทสต์ 4 ตัวที่ 1 ตัวหลอกตัวเอง
 - **Date Added:** 2026-09-29
+
+### 🔀 เปลี่ยนชื่อ repo บน GitHub — "ไม่ต้องแก้โค้ด" จริง แต่ต้องแยกให้ออกว่า **อะไรผูกกับชื่อ repo** กับ **อะไรแค่บังเอิญชื่อเหมือน**
+- **Context/Problem:** repo ชื่อ `prsc_portal` แต่ระบบชื่อ PIRIvoice ⇒ อยากเปลี่ยนชื่อ repo ให้ตรง · คำถามแรกคือ "ต้องแก้โค้ดมั้ย" ซึ่งตอบได้ด้วยการ**วัด** ไม่ใช่การเดา
+- **Root Cause / วิธีตรวจ (3 คำสั่ง ตอบได้ทันที):**
+  ```bash
+  ls .github/workflows 2>/dev/null            # ① มี CI ที่อ้าง slug ไหม
+  grep -rn 'github.com/<owner>/<old-name>' .  # ② มี slug ฝังในโค้ดไหม
+  gh api repos/<owner>/<new-name>             # ③ ชื่อใหม่ว่างไหม (404 = ว่าง)
+  ```
+  ผลจริงรอบนี้: **ไม่มี CI** · **ไม่มี slug ฝัง** (ที่เจอเป็น URL ของบุคคลที่สามใน `eslint.config.ts`/`playwright.config.ts`/`package-lock.json`) · ⇒ **0 บรรทัดที่ต้องแก้**
+  · และชั้นแบรนด์เป็น PIRIvoice ครบอยู่แล้ว (`package.json` name · image `pirivoice-${ENV_NAME}-*` · `index.html` · `manifest.json`) ⇒ ชื่อ repo เป็น**ชื่อภายนอก**ที่ไม่ผูกกับโค้ดเลย
+- **Correct Pattern/Solution:**
+  ```bash
+  gh api repos/<owner>/<old> -X PATCH -f name=<new>       # เปลี่ยนชื่อ (ต้องมี scope repo)
+  git remote set-url origin git@github.com:<owner>/<new>.git   # แก้ทีละ clone
+  ```
+  · ★ **GitHub redirect git operation ของ repo ที่เปลี่ยนชื่อให้อัตโนมัติ** (ขึ้นแค่ `remote: This repository moved. Please use the new location` แล้วทำงานต่อสำเร็จ) ⇒ **`pull_all.sh` บน VPS ยัง deploy ได้แม้ remote ยังชี้ชื่อเก่า** — ไม่ใช่เหตุฉุกเฉิน แต่ควรแก้ให้สะอาด
+  · ⚠️ **"ชื่อที่โชว์" ต้องแก้ แต่ "identifier ที่ผูกข้อมูล/infra" ห้ามแตะ** (หลักเดียวกับบทเรียน rebrand ก่อนหน้า) — รอบนี้เจอของที่ **ดูเหมือนควรแก้แต่ห้ามแก้ 2 อย่าง**:
+    - `backend/main.py` CORS `prsc-test.singto1597.xyz` — **มีคอมเมนต์กำกับไว้เองว่า "โดเมนเก่าช่วงเปลี่ยนผ่าน อย่าลบจนกว่าจะย้าย DNS เสร็จ"** ⇒ การกวาดหา "ชื่อเก่าที่ต้องลบ" แบบไม่อ่านคอมเมนต์ข้าง ๆ = ทำ CORS พัง
+    - `scripts/generate_vapid_keys.py` คอมเมนต์ path `~/prsc_portal/...` — **ยังถูกต้อง** เพราะ **ไม่ได้เปลี่ยนชื่อโฟลเดอร์บน VPS** ⇒ ถ้าแก้ให้ "ตรงชื่อระบบ" จะกลายเป็น path ที่ไม่มีอยู่จริง
+  · ⛔ **3 อย่างที่ห้ามเปลี่ยนชื่อตาม แม้จะชื่อซ้ำกับ repo** เพราะถูกอ้างจาก**ข้างนอก** ไม่ใช่จากชื่อ repo:
+    | ของ | ใครอ้าง |
+    |---|---|
+    | `~/program_projects/prsc_portal/` (deploy root) | `docker stack deploy` + **cwd ของ tmux session** ที่ agent ทำงานอยู่ |
+    | `/home/prscportal/prsc_portal/` + user `prscportal` (VPS) | SSH config + path ที่ `pull_all.sh` รัน (และมี **2 clone วางข้างกัน** ⇒ พลาดแล้วโดน production) |
+    | ชื่อ **swarm stack** `prsc_staging` | `docker service ls` + คำสั่ง deploy ทั้งหมด ⇒ เปลี่ยน = สร้าง stack ใหม่แล้วลบเก่า = **มี downtime** |
+  · ⇒ **เปลี่ยนชื่อ repo ได้โดยระบบไม่สะดุด** เพราะสามอย่างข้างบนคนละชั้นกับชื่อ repo
+- **Date Added:** 2026-09-29
