@@ -1,12 +1,16 @@
-"""Settings Router — ตั้งค่าระบบ (`/api/settings/*`) ต้องมีสิทธิ์ MANAGE_SETTINGS
+"""Settings Router — ตั้งค่าระบบ (`/api/settings/*`)
 
 ชั้นนี้ทำแค่ HTTP: ดึง user จาก header → เรียก service → แปลง domain exception เป็น
 HTTPException (ตัวเช็คสิทธิ์อยู่ใน service แล้ว ตามแบบ audit_service / announcement_service)
 
-ปัจจุบัน: **ภาคเรียน** (academic_terms) — เพิ่มเรื่องอื่นในอนาคตให้แยก tag/ไฟล์ย่อย
-ถ้ามันโตจนไม่เกี่ยวกับ "การตั้งค่า" อีกต่อไป
+ปัจจุบัน 2 เรื่อง — **สิทธิ์ไม่เหมือนกัน อย่าเหมารวม**:
+- **ภาคเรียน** (`/terms`) — ทุก endpoint (รวม GET) ต้องมีสิทธิ์ `MANAGE_SETTINGS`
+  เพราะรายการภาคเรียนไม่ใช่ข้อมูลสาธารณะ
+- **quiet hours** (`/quiet-hours`) — `GET` **เปิดให้ผู้ใช้ที่ล็อกอินทุกคน** · `PUT` ต้องมีสิทธิ์
+  ⭐ โดยเจตนา: ค่านี้มีไว้ *อธิบาย* ให้นักเรียนเข้าใจว่าทำไมมือถือเงียบ ⇒ ปิดการอ่าน
+  เท่ากับซ่อนคำอธิบายจากคนที่ได้รับผลกระทบ · และมันไม่มีข้อมูลอ่อนไหว (แค่ช่วงเวลา)
 
-⚠️ ทุก endpoint (รวม GET) ต้องมีสิทธิ์ — รายการภาคเรียนไม่ใช่ข้อมูลสาธารณะ
+เพิ่มเรื่องอื่นในอนาคตให้แยก tag/ไฟล์ย่อยถ้ามันโตจนไม่เกี่ยวกับ "การตั้งค่า" อีกต่อไป
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 import asyncpg
@@ -18,8 +22,10 @@ from models.settings_schemas import (
     AcademicTermUpdateRequest,
     AcademicTermOut,
     AcademicTermListOut,
+    QuietHoursOut,
+    QuietHoursUpdateRequest,
 )
-from services import term_service
+from services import app_settings_service, term_service
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -166,3 +172,49 @@ async def restore_term(
         raise _err(e)
 
     return AcademicTermOut(**row)
+
+
+# ============================================================
+# 🔇 Quiet Hours (A8) — ช่วงเวลาที่โรงเรียนไม่ส่ง push
+# ============================================================
+
+@router.get("/quiet-hours", response_model=QuietHoursOut)
+async def get_quiet_hours(
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ช่วงเวลา "โรงเรียนไม่ส่ง push" — **ผู้ใช้ที่ล็อกอินแล้วทุกคนอ่านได้**
+
+    ⭐ **ทำไม GET ไม่ต้องมี `MANAGE_SETTINGS`** (ต่างจาก `/terms` ข้างบนโดยเจตนา):
+       ค่านี้ตอบคำถามที่นักเรียนทุกคนสงสัยตอนมือถือเงียบ — *"ทำไมไม่มีเสียง"*
+       ⇒ ถ้าปิดการอ่าน เราจะซ่อนคำอธิบายจาก **คนที่ได้รับผลกระทบ** ซึ่งเป็นกลุ่มเดียว
+       ที่ต้องการมัน · และเนื้อหามีแค่ช่วงเวลา ไม่มีข้อมูลส่วนบุคคลใด ๆ
+
+    ⚠️ ยังต้องล็อกอิน (`_ensure_user`) — ไม่ใช่ endpoint สาธารณะ และการเรียกด้วย
+       `X-API-Key` (ที่ `user_id` เป็น None) ต้องได้ **401 ไม่ใช่ 500**
+    """
+    _ensure_user(user_ctx)
+    return QuietHoursOut(**await app_settings_service.get_quiet_hours(pool))
+
+
+@router.put("/quiet-hours", response_model=QuietHoursOut)
+async def put_quiet_hours(
+    req: QuietHoursUpdateRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ตั้งค่า quiet hours ทั้งโรงเรียน (upsert) — ต้องมี `MANAGE_SETTINGS`
+
+    `PUT` = full replace ⇒ ส่งครบ 3 ฟิลด์เสมอ (idempotent — ส่งค่าเดิมซ้ำได้ไม่มีผลข้างเคียง)
+    · เขียน audit log `UPDATE_QUIET_HOURS` **ใน transaction เดียวกัน** (ต่างจาก A2 ที่เป็น
+      ค่าส่วนตัวจึงไม่บันทึก — อันนี้เป็น **state ที่แชร์ทั้งโรงเรียน** ⇒ ต้องตอบได้ว่าใครเปลี่ยน)
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        result = await app_settings_service.set_quiet_hours(
+            pool, uid, enabled=req.enabled, start=req.start, end=req.end
+        )
+    except (ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return QuietHoursOut(**result)

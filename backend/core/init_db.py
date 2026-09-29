@@ -416,6 +416,11 @@ async def init_db(pool: asyncpg.Pool):
                     actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
                     actor_name TEXT,
                     read_at TIMESTAMP WITH TIME ZONE,
+                    -- ⭐ E2 (migration 024): ธงยกเว้น quiet hours **รายแถว**
+                    --    ประกาศฉุกเฉิน (priority='urgent') ตั้ง TRUE ⇒ push worker ส่งทะลุทุกด่านเวลา
+                    --    ⚠️ DEFAULT FALSE = แถวเดิม/แถวปกติไม่ได้รับยกเว้น (PG 11+ ADD COLUMN
+                    --       แบบ constant default ไม่ rewrite ตาราง ⇒ production ได้ค่าโดยไม่ล็อกนาน)
+                    bypass_quiet_hours BOOLEAN NOT NULL DEFAULT FALSE,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
                 """)
@@ -611,6 +616,24 @@ async def init_db(pool: asyncpg.Pool):
                         entity_type VARCHAR(20) NOT NULL,
                         entity_id INTEGER NOT NULL,
                         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+
+                # --- 9.6 app_settings: ค่าตั้งระดับโรงเรียน (A8 / migration 023) ---
+                #   - key/value เป็น **jsonb** ⇒ เพิ่มค่าตั้งใหม่ไม่ต้องออก migration
+                #     (เหตุผลเดียวกับที่ notification_preferences/bookmarks ไม่มี CHECK)
+                #   - key ปัจจุบันมีตัวเดียว: `quiet_hours` = {"enabled","start","end"}
+                #     ⚠️ **ไม่มีแถว = ไม่ปิดกั้นอะไร** (ไม่ต้อง seed — ดู migrations/023_*.py)
+                #   - validation อยู่ที่ Pydantic + app_settings_service ไม่ใช่ที่ DB
+                #   - updated_by เป็น ON DELETE SET NULL ⇒ ลบผู้ดูแลไม่ทำให้ค่าตั้งโรงเรียนหาย
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS app_settings (
+                        key VARCHAR(60) PRIMARY KEY,
+                        value JSONB NOT NULL,
+                        description TEXT,
+                        updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
 

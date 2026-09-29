@@ -35,6 +35,7 @@ import asyncpg
 from core.exceptions import NotFoundError, ValidationError
 from core.logger import AuditLogger
 from core.rbac import require_permission_anywhere
+from services import notification_service
 
 # คอลัมน์ที่ยอมให้แก้ผ่าน PATCH — allowlist เพราะชื่อคอลัมน์ถูก interpolate ลง SQL
 _EDITABLE_COLUMNS = ("message", "priority", "link")
@@ -138,6 +139,46 @@ async def list_announcements(
     }
 
 
+async def _fanout_if_urgent(
+    conn,
+    *,
+    announcement_id: int,
+    message: str,
+    priority: str,
+    actor_id: int,
+) -> None:
+    """E2: ประกาศ `urgent` → แจ้งเตือน **ทุก active student** ทันที (in-app + push)
+
+    ⚠️ **เฉพาะ `urgent` เท่านั้น** — `normal`/`high` ไม่แจ้งใคร (ประกาศทั่วไปขึ้นบน Home
+       อยู่แล้ว ไม่ต้องรบกวนมือถือทั้งโรงเรียน) · `notify_fanout` ยิง ~800–1,000 แถวต่อครั้ง
+       ⇒ **ห้ามเรียกโดยไม่ตั้งใจ** — การพิมพ์ผิดเป็น `urgent` คือ push ทั้งโรงเรียนที่เรียกคืนไม่ได้
+
+    ⚠️ **`group_type='announcement'` ไม่อยู่ใน `PREFERENCE_GROUPS`** ⇒ ผู้ใช้ปิดกลุ่มนี้ไม่ได้
+       และไม่มีทางมีแถว preference ของกลุ่มนี้ → `NOT EXISTS` ใน `notify_fanout` เป็น no-op เอง
+       (ตั้งใจ: ประกาศฉุกเฉินที่ปิดได้ = ล้มเหลวในหน้าที่ของมัน)
+    ⚠️ **`bypass_quiet_hours=True`** — ทะลุ A8 · ด่านจริงอ่านธงนี้ตอน *ส่ง* ใน
+       `push_service.process_pending` ⇒ ค่าในแถวคือสัญญาระหว่างสองงานนี้
+
+    ⚠️ `actor_name` ไม่ได้ส่ง (None) — ประกาศฉุกเฉินเนื้อความสำคัญกว่าชื่อผู้ส่ง และการดึงชื่อ
+       ต้องใช้ `_user_display_name` (private ของ notification_service) หรือคิวรีซ้ำที่ไม่คุ้มกัน
+    ⚠️ `body=message` เต็มความยาว (สูงสุด 1,000 ตัวอักษรตาม schema) — คิดขนาด payload แล้ว
+       อยู่ใต้เพดาน 4,096 byte ของ Web Push (ไทย 3 byte/ตัว ⇒ ~3.3 KB) จึงไม่ตัดทิ้ง
+    """
+    if priority != "urgent":
+        return
+    await notification_service.notify_fanout(
+        conn,
+        group_type="announcement",
+        type="announcement_urgent",
+        title="📢 ประกาศฉุกเฉิน",
+        body=message,
+        entity_type="announcement",
+        entity_id=announcement_id,
+        actor_id=actor_id,
+        bypass_quiet_hours=True,
+    )
+
+
 async def create_announcement(
     pool: asyncpg.Pool,
     user_id: int,
@@ -146,7 +187,19 @@ async def create_announcement(
     priority: str,
     link: Optional[str],
 ) -> dict:
-    """สร้างประกาศใหม่ + บันทึก audit (ใน transaction เดียวกัน)"""
+    """สร้างประกาศใหม่ + บันทึก audit + **ยิง push ถ้าเป็นประกาศฉุกเฉิน** (transaction เดียวกัน)
+
+    ⭐ E2 — `priority='urgent'` จะ `notify_fanout` ไปทุก active student **ทันที** ไม่ใช่แค่
+       insert แถวรอ badge · `bypass_quiet_hours=True` เพราะนี่เป็นเคสเดียวที่ควรทะลุ A8
+       (น้ำท่วม/ไฟดับ/งดเรียนกะทันหัน — ประกาศที่ถูก quiet hours กลั้น = ประกาศที่ล้มเหลว)
+
+    ⚠️ **hook อยู่ *ใน* transaction เดียวกัน ไม่ใช่หลัง commit** — ถ้า insert notification ล้ม
+       ประกาศก็ต้องไม่ถูกสร้างด้วย (atomicity) · และ `notify_fanout` รับ `conn` จาก caller
+       ตามสัญญาของ `notification_service` (มันไม่เปิด transaction เอง)
+
+    ⚠️ `actor_id=user_id` ⇒ ผู้ประกาศไม่ได้รับ push ของตัวเอง (`notify_fanout` กรองออกให้)
+       แต่ **แถว in-app ของตัวเองก็ไม่เกิดด้วย** — ยอมรับได้: เขารู้อยู่แล้วว่าเพิ่งประกาศอะไร
+    """
     async with pool.acquire() as conn:
         async with conn.transaction():
             await require_permission_anywhere(conn, user_id, "MANAGE_ANNOUNCEMENTS")
@@ -169,6 +222,11 @@ async def create_announcement(
                 entity_type="announcement",
                 entity_id=new_id,
                 new_values={"message": message, "priority": priority, "link": link},
+            )
+
+            await _fanout_if_urgent(
+                conn, announcement_id=new_id, message=message,
+                priority=priority, actor_id=user_id,
             )
 
         # อ่านหลัง commit เพื่อให้ได้ชื่อผู้ประกาศจาก JOIN ครบ

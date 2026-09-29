@@ -34,6 +34,7 @@ const GROUP_COVERAGE: Record<NotificationGroup, true> = {
   issue_received: true,
   board: true,
   report: true,
+  announcement: true,
 }
 const ALL_GROUPS = Object.keys(GROUP_COVERAGE) as NotificationGroup[]
 
@@ -42,12 +43,13 @@ function targetToPath(t: DeepLinkTarget): string {
   if (!t) return '/app/notifications'
   if (t.name === 'board-reports') return '/app/boards/reports'
   if (t.name === 'board-detail') return `/app/boards/${t.params.id}`
+  if (t.name === 'home') return '/app/home'
   return `/app/issues/${t.params.id}`
 }
 
 /**
- * ⭐ ตารางเดียวกับ `_DEEP_LINK_CASES` ฝั่ง backend — **ชนิดจริงทั้ง 9 แบบ**
- * ที่ระบบผลิตได้ (วัดจาก call site ทั้ง 13 จุดใน `backend/services/`)
+ * ⭐ ตารางเดียวกับ `_DEEP_LINK_CASES` ฝั่ง backend — **ชนิดจริงทั้ง 10 แบบ**
+ * ที่ระบบผลิตได้ (วัดจาก call site ทั้ง 13 จุดใน `backend/services/` + E2)
  *
  * ⚠️ `null` ในคอลัมน์ `board_id` คือ `NULL` ของ SQL จริง ไม่ใช่ "ไม่มีคีย์"
  */
@@ -63,6 +65,8 @@ const DEEP_LINK_CASES: ReadonlyArray<
   ['board_hidden', 'board', 'piri_board', 3, 3, '/app/boards/3'],
   ['report_new', 'report', 'piri_board_report', 9, 3, '/app/boards/reports'],
   ['report_actioned', 'report', 'piri_board_report', 9, 3, '/app/boards/3'],
+  // E2 — ประกาศฉุกเฉิน: `entity_type='announcement'` และ `board_id` เป็น NULL
+  ['announcement_urgent', 'announcement', 'announcement', 7, null, '/app/home'],
 ]
 
 function source(
@@ -149,5 +153,29 @@ describe('deepLinkTarget — กับดักที่ทำให้ "ดู�
     expect(targetToPath(deepLinkTarget(source('board_new', 'board', 'piri_board', 0, 0)))).toBe(
       '/app/boards/0',
     )
+  })
+
+  it('D10: 🚨 ประกาศฉุกเฉิน (E2) ต้องไป Home — ห้ามตกไป fallback ของ entity', () => {
+    // ประกาศพก `entity_type='announcement'` + `entity_id` มาด้วย ซึ่ง **ไม่ใช่ 'issue'**
+    // และ `board_id` เป็น NULL ⇒ ถ้าไม่มีกฎของกลุ่มนี้โดยตรง มันจะไหลไปถึงบรรทัดสุดท้าย
+    // แล้วได้ `null` = ผู้ใช้กดแล้ว **ไม่มีอะไรเกิดขึ้นเลย** (อยู่หน้ารายการต่อ)
+    // ทั้งที่ประกาศคือสิ่งที่ต้องเห็นให้เร็วที่สุด
+    expect(
+      targetToPath(deepLinkTarget(source('announcement_urgent', 'announcement', 'announcement', 7, null))),
+    ).toBe('/app/home')
+
+    // ⚠️ ต้องไม่ใช่หน้ารวมแจ้งเตือน (ซึ่งคือ `null`) — assert แยกเพื่อให้ข้อความ fail ชี้ตรง
+    //    ว่า "กฎ announcement หายไป" ไม่ใช่ "path ผิด"
+    expect(deepLinkTarget(source('announcement_urgent', 'announcement', 'announcement', 7, null))).not.toBe(
+      null,
+    )
+  })
+
+  it('D11: ประกาศที่มี entity_id เป็น NULL ก็ยังไป Home (ไม่ผูกกับ id ของใบ)', () => {
+    // Home แสดงประกาศ **ทั้งก้อน** (ไม่มี LIMIT) ไม่ได้เจาะจงใบ ⇒ กฎนี้ต้องไม่พึ่ง entity_id
+    // ต่างจากข้อ 4 ที่ต้องมี entity_id ไม่งั้นจะสร้าง `/app/issues/null`
+    expect(
+      targetToPath(deepLinkTarget(source('announcement_urgent', 'announcement', 'announcement', null, null))),
+    ).toBe('/app/home')
   })
 })

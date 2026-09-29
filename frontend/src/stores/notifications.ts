@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { getUnreadCounts, markRead } from '@/services/notification';
 import { openNotificationStream } from '@/services/notificationStream';
+import { clearBadge, syncBadge } from '@/badge';
 import type { StreamState } from '@/services/notificationStream';
 import type { MarkReadPayload, UnreadCounts } from '@/types/notification';
 
@@ -30,15 +31,23 @@ export const useNotificationsStore = defineStore('notifications', () => {
   // 📡 สถานะสตรีม — ใช้เพื่อวินิจฉัย ("ทำไม badge ไม่ขยับ") ไม่มีตรรกะตัดสินใจจากค่านี้
   const streamState = ref<StreamState>('stopped');
 
+  // ⭐ **ทางเดียวที่ยอดจะเปลี่ยน** — ทั้ง `fetchCounts()` (ถามเอง) และ `applySnapshot()`
+  //    (สตรีมส่งมา) ต้องผ่านที่นี่ ⇒ badge บนไอคอนแอพ (A5) ไม่มีทางหลุด sync
+  //    ⚠️ ถ้ามีคนเพิ่มทางที่สามแล้วเขียน `total.value = …` ตรง ๆ badge จะค้าง
+  //    โดยไม่มีอะไรฟ้อง (ไม่ใช่ type error ไม่ใช่เทสต์พัง) — ที่นี่คือจุดเดียวที่ถูก
+  function applyCounts(next: UnreadCounts) {
+    counts.value = next.counts;
+    total.value = next.total;
+    syncBadge(next.total);
+  }
+
   // ⚠️ **ปล่อย error ออกไปโดยเจตนา — ห้ามกลืนในนี้**
   //    `startPolling()` นับ `failStreak` จาก catch ของ call นี้ ⇒ ถ้ากลืนซะเอง
   //    catch นั้นจะไม่มีวันทำงาน แล้ว `POLL_FAIL_LIMIT` (หยุดหลัง fail 3 ครั้งติด)
   //    ก็เป็นโค้ดตาย ⇒ ยิง `/api/notifications/unread-count` ทุก 30 วิ ตลอดกาล
   //    แม้ backend ล่ม — ผู้ที่ต้องกลืนคือ call site (ดู `read()` กับ `startPolling()`)
   async function fetchCounts() {
-    const res = await getUnreadCounts();
-    counts.value = res.counts;
-    total.value = res.total;
+    applyCounts(await getUnreadCounts());
   }
 
   // mark อ่าน แล้ว refetch ทันที (badge ลดทันทีไม่ต้องรอ poll รอบหน้า)
@@ -96,8 +105,21 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   /** ใช้ยอดที่ server ส่งมาตรง ๆ — ไม่ต้องยิงถามซ้ำ (payload คือ `{counts,total}` เป๊ะ) */
   function applySnapshot(snapshot: UnreadCounts) {
-    counts.value = snapshot.counts;
-    total.value = snapshot.total;
+    applyCounts(snapshot);
+  }
+
+  /**
+   * 🏷️ ล้างยอดและ **ลบเลขบนไอคอนแอพ** — เรียกตอนออกจากระบบเท่านั้น
+   *
+   * **ทำไมต้องลบ:** badge เกาะกับ **ไอคอน** ซึ่งเป็นของ *เครื่อง* ไม่ใช่ของ *บัญชี* —
+   * เครื่องเดียวกันมีหลายคนใช้ (ห้องคอม / มือถือโรงเรียน) ⇒ ถ้าไม่ลบ คนถัดไปที่มอง
+   * หน้าจอจะเห็น "มี 7 เรื่องค้าง" ของคนก่อนหน้า ทั้งที่ยังไม่ทันล็อกอินด้วยซ้ำ
+   * (หลักเดียวกับที่ `sw.js` ห้าม cache `/api/*` และที่ `api.ts` ล้าง token ตอน 401)
+   */
+  function resetBadge() {
+    counts.value = {};
+    total.value = 0;
+    clearBadge();
   }
 
   let pokeTimer: number | null = null;
@@ -141,7 +163,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   return {
     counts, total, streamState,
-    fetchCounts, read,
+    fetchCounts, read, resetBadge,
     startPolling, stopPolling,
     startStream, stopStream,
   };

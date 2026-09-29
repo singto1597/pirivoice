@@ -58,6 +58,8 @@ const ACTION_LABELS: Record<string, string> = {
   SET_CURRENT_TERM: 'ตั้งภาคปัจจุบัน',
   // E1 — ข้อเสนอจากผู้ใช้ (บอร์ดชนิด 'suggestion')
   CREATE_SUGGESTION: 'สร้างข้อเสนอแนะ',
+  // A8 — ค่าตั้งระดับโรงเรียน (app_settings)
+  UPDATE_QUIET_HOURS: 'ตั้งช่วงเวลาไม่ส่งแจ้งเตือน',
   // ⚠️ หนี้ที่มีอยู่ก่อนรอบนี้: action ของ PIRI Boards ตัวอื่น (SUBMIT_VOTE · ADD_COMMENT ·
   //    APPROVE_TO_PUBLIC · HIDE_BOARD · …) ยังไม่มีป้ายทั้งสอง map ⇒ หน้าจอจะโชว์ชื่อดิบ
   //    ไม่ใช่บั๊กที่รอบนี้ก่อ และไม่แก้ในรอบนี้ (นอกขอบเขต E1 — บันทึกไว้ใน PR)

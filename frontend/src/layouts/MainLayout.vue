@@ -42,6 +42,11 @@ onBeforeUnmount(() => {
   //    (และถ้าไม่ปิด ตอน logout/login ใหม่จะมีสตรีมซ้อนกันหลายเส้น)
   notificationsStore.stopStream()
   notificationsStore.stopPolling()
+  // 🏷️ ล้างเลขบนไอคอนแอพ — badge เกาะกับ *ไอคอน* (ของเครื่อง) ไม่ใช่ *บัญชี*
+  //    ⇒ ออกจากระบบแล้วต้องไม่เหลือยอดค้างของคนก่อนให้คนถัดไปเห็น (A5)
+  //    ⚠️ ต้องอยู่ที่นี่ ไม่ใช่ใน `stopPolling()` — เพราะ `stopPolling()` ถูกเรียกจาก
+  //    เส้นทาง "poll ล้มติดกัน 3 ครั้ง" ด้วย ซึ่งไม่ใช่การออกจากระบบ
+  notificationsStore.resetBadge()
 })
 
 const displayName = computed(() => authStore.displayName)

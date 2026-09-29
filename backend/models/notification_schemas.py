@@ -27,14 +27,24 @@ class NotificationListOut(BaseModel):
 
 
 class UnreadCountsOut(BaseModel):
-    counts: dict[str, int]  # {"issue_mine": 1, "issue_received": 0, "board": 3, "report": 0}
+    # ⚠️ 5 กลุ่ม (announcement มาจาก E2) — ไม่ fix ตายตัวเพราะ GROUP_TYPES โตได้
+    counts: dict[str, int]  # {"issue_mine": 1, …, "board": 3, "report": 0, "announcement": 0}
     total: int
+
+
+# ⚠️ **สอง pattern นี้ต้องไม่เหมือนกัน — อย่ารวมเป็นตัวเดียว**
+#   · READ_GROUP_TYPE_PATTERN     = 5 กลุ่ม: ใช้ *กรอง/อ่าน* (list, mark_read) ⇒ ต้องมี announcement
+#   · GROUP_TYPE_PATTERN (ของ preference) = 4 กลุ่ม: ใช้ *ปิด/เปิด* ⇒ **ห้ามมี announcement**
+#   ซ้ำโดยเจตนากับ `GROUP_TYPES`/`PREFERENCE_GROUPS` ใน services/notification_service.py
+#   และ `GROUP_TYPE_PATTERN` (read) ใน routers/notification_router.py — เพิ่มกลุ่มใหม่ต้องแก้ทั้งชุด
+#   เชิงอ่าน + frontend
+READ_GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report|announcement)$"
 
 
 class MarkReadRequest(BaseModel):
     # อย่างน้อยต้องระบุหนึ่งอย่าง หรือ read_all=True (กันเผลอเคลียร์ทุกอย่าง)
     ids: Optional[List[int]] = None
-    group_type: Optional[str] = Field(None, pattern="^(issue_mine|issue_received|board|report)$")
+    group_type: Optional[str] = Field(None, pattern=READ_GROUP_TYPE_PATTERN)
     entity_type: Optional[str] = None
     entity_id: Optional[int] = None
     board_id: Optional[int] = None
@@ -45,9 +55,8 @@ class MarkReadOut(BaseModel):
     updated: int
 
 
-# ⚠️ pattern นี้ต้องตรงกับ GROUP_TYPES ใน services/notification_service.py
-# และ GROUP_TYPE_PATTERN ใน routers/notification_router.py (ซ้ำ 3 ที่โดยเจตนา — เหมือน
-# ตัว group_type ของ notifications ที่มีมาก่อนแล้ว; เพิ่มกลุ่มใหม่ต้องแก้ทั้ง 3 + frontend)
+# pattern ของกลุ่มที่ **ผู้ใช้ปิดได้** — ต้องตรงกับ PREFERENCE_GROUPS ใน
+# services/notification_service.py ⇒ `announcement` ไม่มีทางเข้ามาที่นี่ได้ (ปิดประกาศฉุกเฉินไม่ได้)
 GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report)$"
 
 

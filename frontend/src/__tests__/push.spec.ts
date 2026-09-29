@@ -1,5 +1,5 @@
 /**
- * 🧪 `push.ts` (A3) — 3 กับดักที่ **พังเงียบ** ถ้าไม่มีเทสนี้
+ * 🧪 `push.ts` (A3 + #44) — 4 กับดักที่ **พังเงียบ** ถ้าไม่มีเทสนี้
  *
  * 1. `Notification.requestPermission()` ต้องเป็น `await` ตัวแรก — iOS ตัด gesture chain
  *    ทิ้งถ้ามี await อื่นคั่น แล้ว **ปฏิเสธโดยไม่มี error** (ผู้ใช้เห็นแค่ "ไม่มีอะไรเกิดขึ้น")
@@ -7,6 +7,10 @@
  *    แต่ **Safari เงียบ**
  * 3. ตัวช่วยแอพเวอร์ชันใหม่ค้างใน `waiting` ⇒ handler `push` ที่ทำงานจริงเป็นของรุ่นเก่า
  *    (ว่างเปล่า) ⇒ เปิดสำเร็จทุกอย่างแต่ไม่มีการแจ้งเตือนขึ้นเลยตลอดไป
+ * 4. **หลัง rotate คีย์ VAPID** เบราว์เซอร์ยังคืน subscription เก่าที่ผูกกับ **คีย์เก่า** ⇒
+ *    ปลายทางปฏิเสธทุก push ด้วย 403 ⇒ **การ์ดขึ้น "เปิดอยู่" ตลอดไปโดยไม่มีอะไรมาถึงเลย**
+ *    (เงียบที่สุดในสี่ข้อ — ไม่มี error ไม่มี log ฝั่งแอพ) ⇒ `obtainSubscription()` +
+ *    `piri_push_key` ใน `localStorage` คือสิ่งที่เทสกลุ่ม K พิสูจน์
  *
  * ⚠️ **import โมดูลครั้งเดียวตลอดไฟล์** — `push.ts` เก็บสถานะเป็น ref ระดับโมดูล
  *    (แบบเดียวกับ `pwa.ts`) การ `vi.resetModules()` จะได้อินสแตนซ์ใหม่ที่เทสยึดไม่ตรงกัน
@@ -40,11 +44,26 @@ import {
   pushPermission,
   pushReady,
   pushSubscribed,
+  pushSubscriptionStale,
   pushSupported,
   refreshPushStatus,
+  repairPush,
   resetPushStatus,
   urlBase64ToUint8Array,
 } from '@/push'
+
+/**
+ * ที่เก็บคีย์ที่ผูกไว้ — **เขียนชื่อซ้ำโดยเจตนา** ไม่ import จาก `push.ts`
+ * เพราะมันคือสัญญากับ **เครื่องที่ติดตั้งไปแล้ว**: เปลี่ยนชื่อคีย์นี้ = ทุกเครื่อง
+ * จะกลายเป็น "ไม่รู้ว่าผูกกับอะไร" แล้วถูกขอให้เปิดใหม่หนึ่งครั้งโดยไม่จำเป็น
+ * ⇒ เทสนี้มีไว้ล็อกชื่อนั้น (ดูคอมเมนต์ `BOUND_KEY_STORAGE` ใน `push.ts`)
+ */
+const BOUND_KEY_STORAGE = 'piri_push_key'
+
+/** คีย์ที่เครื่องนี้บันทึกไว้ว่า subscription ผูกด้วย (ไม่ตั้งค่า = ยังไม่เคยบันทึก) */
+function boundKey(): string | null {
+  return localStorage.getItem(BOUND_KEY_STORAGE)
+}
 
 // ── ของปลอมที่มีรูปร่างเหมือนเบราว์เซอร์จริง ────────────────────────────────────
 
@@ -85,6 +104,15 @@ function makeSubscription(endpoint = 'https://fcm.googleapis.com/fcm/send/abc'):
 interface EnvOptions {
   /** อุปกรณ์นี้มี subscription อยู่แล้วหรือยัง */
   subscription?: FakeSub | null
+  /** endpoint ที่จะได้เมื่อ subscribe ใหม่ (ต้องต่างจากของเดิม ไม่งั้นชนด่าน endpoint ซ้ำ) */
+  freshEndpoint?: string
+  /**
+   * เบราว์เซอร์ **ไม่ยอมทิ้ง** ของเดิม — `unsubscribe()` คืน `false` แล้ว subscription ยังอยู่
+   * (เคสจริงของ Chrome ⇒ `subscribe()` คืน **ตัวเดิม** กลับมา ⇒ #44 ต้องจับได้ ไม่ใช่เขียนคีย์ทับ)
+   */
+  stubborn?: boolean
+  /** เบราว์เซอร์ **โยน** ตอน `unsubscribe()` — ความล้มเหลวอีกโหมดหนึ่ง (ต่างจาก `stubborn`) */
+  unsubscribeError?: boolean
   /** ตัวช่วยแอพเวอร์ชันใหม่ค้างรออยู่ (กับดัก #3) */
   waiting?: boolean
   /** controllerchange จะยิงกลับมาหรือไม่ (จำลองเบราว์เซอร์ที่ไม่ยอมสลับ) */
@@ -97,7 +125,29 @@ interface EnvOptions {
 }
 
 function installEnv(opt: EnvOptions = {}) {
-  const { subscription = null, waiting = false, swapFires = true } = opt
+  const { waiting = false, swapFires = true, stubborn = false, unsubscribeError = false } = opt
+  const freshEndpoint = opt.freshEndpoint ?? 'https://fcm.googleapis.com/fcm/send/fresh'
+
+  /**
+   * ⚠️ "เบราว์เซอร์นี้มี subscription อะไรอยู่" ต้อง **เปลี่ยนได้ระหว่างเทส**
+   *    ของเดิมเป็น closure ทับค่าคงที่ `opt.subscription` ⇒ จำลอง "เปิดใหม่แล้วได้ตัวใหม่"
+   *    ไม่ได้เลย ซึ่งเป็นพฤติกรรมที่ #44 ทั้งงานต้องพึ่ง (ปิดแล้วเปิดใหม่ = endpoint ใหม่จริง)
+   */
+  let current: FakeSub | null = null
+
+  /** ห่อ `unsubscribe()` ให้สะท้อนกลับมาที่สถานะจำลอง — ของจริงทำแบบนี้เป๊ะ */
+  function bindSub(sub: FakeSub): FakeSub {
+    sub.unsubscribe = vi.fn<() => Promise<boolean>>(async () => {
+      calls.push('browser.unsubscribe')
+      if (stubborn) return false // ไม่ยอมทิ้ง — `current` ยังชี้ตัวเดิม
+      if (unsubscribeError) throw new Error('nope')
+      current = null
+      return true
+    })
+    return sub
+  }
+
+  current = opt.subscription ? bindSub(opt.subscription) : null
 
   const listener: { type: string; fn: () => void }[] = []
   const waitingWorker = {
@@ -112,12 +162,15 @@ function installEnv(opt: EnvOptions = {}) {
     pushManager: {
       getSubscription: vi.fn<() => Promise<FakeSub | null>>(async () => {
         calls.push('pushManager.getSubscription')
-        return subscription
+        return current
       }),
       subscribe: vi.fn<(init: PushSubscriptionOptionsInit) => Promise<FakeSub>>(async (init) => {
         calls.push('pushManager.subscribe')
         subscribeInit = init
-        return subscription ?? makeSubscription()
+        // ⚠️ เบราว์เซอร์จริงคืน subscription **ตัวเดิม** ถ้ายังไม่ถูก unsubscribe สำเร็จ
+        //    ⇒ `stubborn` จะได้ endpoint เดิมกลับไปชนด่านใน `obtainSubscription()` (นั่นคือ K5)
+        if (!current) current = bindSub(makeSubscription(freshEndpoint))
+        return current
       }),
     },
   }
@@ -154,7 +207,7 @@ function installEnv(opt: EnvOptions = {}) {
   }
   vi.stubGlobal('Notification', notificationStub)
 
-  return { reg, waitingWorker, notificationStub }
+  return { reg, waitingWorker, notificationStub, getCurrent: () => current }
 }
 
 /** เปิด push ให้สำเร็จก่อน แล้วค่อยทดสอบสิ่งที่สนใจ */
@@ -173,6 +226,10 @@ async function readyEnv(opt: EnvOptions = {}) {
 beforeEach(() => {
   calls = []
   subscribeInit = null
+  // ⚠️ **ต้องล้าง `localStorage` เอง** — `resetPushStatus()` จงใจ **ไม่** ล้างคีย์ที่ผูกไว้
+  //    (มันเป็นข้อเท็จจริงของ *อุปกรณ์* ไม่ใช่ของบัญชี — ดูคอมเมนต์ใน `push.ts`)
+  //    ⇒ ถ้าไม่ล้างตรงนี้ เทสกลุ่ม K จะรั่วคีย์ข้ามกันแล้วผ่าน/ล้มด้วยเหตุผลผิด
+  localStorage.clear()
   // ⚠️ ล้างสถานะโมดูลก่อนทุกเทส — `push.ts` เป็น singleton และเทสที่ล้มกลางทาง
   //    อาจทิ้ง `busyState`/`subscribedState` ค้างไว้ให้เทสถัดไปเห็น
   resetPushStatus()
@@ -402,21 +459,31 @@ describe('enablePush — 3 กับดัก', () => {
 
     await expect(enablePush()).resolves.toBe('enabled')
 
+    // ⚠️ เป็น endpoint ของ subscription **ที่สร้างใหม่** (`freshEndpoint`) ไม่ใช่ค่าคงที่ —
+    //    เทสนี้เริ่มจากเครื่องที่ยังไม่มี subscription ⇒ `obtainSubscription()` subscribe ให้
     expect(subscribeMock).toHaveBeenCalledWith({
-      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/fresh',
       keys: { p256dh: 'AAAA', auth: 'BBBB' },
     })
     expect(pushSubscribed.value).toBe(true)
     expect(pushDeviceCount.value).toBe(2)
   })
 
-  it('เครื่องที่เคยเปิดไว้แล้ว → ใช้ subscription เดิม ไม่ subscribe ซ้ำ', async () => {
+  /**
+   * ⚠️ #44 เปลี่ยนความหมายของเทสนี้ — ของเดิม (ก่อน #44) ผ่านเพราะ `enablePush()` ใช้
+   *    `existing ?? subscribe()` คือ **เชื่อ subscription เดิมเสมอโดยไม่ดูคีย์**
+   *    ซึ่งคือตัวบั๊กเอง ⇒ ตอนนี้ "ใช้ของเดิม" เกิดได้เฉพาะเมื่อ **คีย์ตรงกัน** เท่านั้น
+   *    ⇒ ต้องตั้งคีย์ที่ผูกไว้ก่อน ไม่งั้นเทสจะผ่านเพราะเส้นทาง "คีย์เก่า ⇒ เปิดใหม่" แทน
+   */
+  it('เครื่องที่เคยเปิดไว้แล้ว และ **คีย์ยังตรง** → ใช้ subscription เดิม ไม่ subscribe ซ้ำ', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, FAKE_PUBLIC_KEY)
     const { reg } = await readyEnv({ subscription: makeSubscription() })
 
     await enablePush()
 
     expect(reg.pushManager.getSubscription).toHaveBeenCalled()
     expect(reg.pushManager.subscribe).not.toHaveBeenCalled()
+    expect(unsubscribeMock).not.toHaveBeenCalled()
     expect(subscribeMock).toHaveBeenCalledTimes(1) // แต่ยังต้องยืนยันกับเซิร์ฟเวอร์
   })
 })
@@ -439,12 +506,8 @@ describe('disablePush', () => {
     expect(pushDeviceCount.value).toBe(0)
   })
 
-  it('เบราว์เซอร์ไม่ยอมเลิก → ยังถือว่าปิดสำเร็จ (เซิร์ฟเวอร์เลิกส่งแล้ว)', async () => {
-    const sub = makeSubscription()
-    sub.unsubscribe = vi.fn<() => Promise<boolean>>(async () => {
-      throw new Error('nope')
-    })
-    await readyEnv({ subscription: sub })
+  it('เบราว์เซอร์ไม่ยอมเลิก (โยน) → ยังถือว่าปิดสำเร็จ (เซิร์ฟเวอร์เลิกส่งแล้ว)', async () => {
+    await readyEnv({ subscription: makeSubscription(), unsubscribeError: true })
 
     await expect(disablePush()).resolves.toBeUndefined()
     expect(pushSubscribed.value).toBe(false)
@@ -457,5 +520,179 @@ describe('disablePush', () => {
 
     expect(unsubscribeMock).not.toHaveBeenCalled()
     expect(pushSubscribed.value).toBe(false)
+  })
+})
+
+/**
+ * #44 — กับดักที่ 4: หลัง rotate คีย์ VAPID แล้ว **การ์ดขึ้น "เปิดอยู่" ตลอดไปโดยไม่มีอะไรมาถึง**
+ *
+ * ลำดับเหตุ: เบราว์เซอร์ยังคืน subscription เก่า (ผูกคีย์เก่า) → `enablePush()` เดิมเชื่อมัน
+ * → POST endpoint เก่าขึ้นเซิร์ฟเวอร์ → FCM ปฏิเสธทุก push ที่เซ็นด้วยคีย์ใหม่ (403)
+ * → `_classify` = `permanent` → ทิ้งเงียบ **โดยไม่ลบแถว** (มีแต่ 404/410 ที่ลบ)
+ * ⇒ ไม่มี error ไม่มี log ไม่มีอะไรให้เห็นเลยนอกจาก "ไม่มีอะไรเด้ง"
+ *
+ * กลไกที่ปิดรูนี้: `piri_push_key` ใน `localStorage` = คีย์ที่ subscription ของ **เครื่องนี้**
+ * ผูกไว้ ⇒ `obtainSubscription()` เทียบกับคีย์ปัจจุบันก่อนใช้ของเดิมเสมอ
+ */
+describe('#44 — เครื่องที่ผูกคีย์เก่า (หลัง rotate VAPID)', () => {
+  it('★ K1: เครื่องใหม่ (ยังไม่มี subscription) → subscribe แล้ว **บันทึกคีย์ที่ผูกไว้**', async () => {
+    const { reg } = await readyEnv()
+    expect(boundKey()).toBeNull() // ยังไม่เคยผูก
+
+    await expect(enablePush()).resolves.toBe('enabled')
+
+    expect(reg.pushManager.subscribe).toHaveBeenCalled()
+    expect(boundKey()).toBe(FAKE_PUBLIC_KEY)
+  })
+
+  it('★ K3: คีย์ไม่ตรง → ทิ้งของเดิม (แจ้งเซิร์ฟเวอร์ก่อน) แล้ว subscribe ใหม่', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่าที่ถูก rotate ไปแล้ว')
+    const { reg } = await readyEnv({
+      subscription: makeSubscription('https://fcm.googleapis.com/fcm/send/old'),
+    })
+    calls = []
+
+    await expect(enablePush()).resolves.toBe('enabled')
+
+    expect(reg.pushManager.subscribe).toHaveBeenCalled()
+    // ⚠️ ลำดับ 4 ขั้น: แจ้งเซิร์ฟเวอร์ลบแถวเก่า → เลิกที่เบราว์เซอร์ → subscribe ใหม่ → แจ้งแถวใหม่
+    //    ถ้าสลับ "เลิกที่เบราว์เซอร์" มาก่อน API จะเหลือปลายทางตายที่ไม่มีใครลบ (แบบเดียวกับ P6)
+    expect(calls.indexOf('api.unsubscribe')).toBeLessThan(calls.indexOf('browser.unsubscribe'))
+    expect(calls.indexOf('browser.unsubscribe')).toBeLessThan(calls.indexOf('pushManager.subscribe'))
+    expect(calls.indexOf('pushManager.subscribe')).toBeLessThan(calls.indexOf('api.subscribe'))
+    // คนละ endpoint จริง — แถวเก่าถูกลบ แถวใหม่ถูกสร้าง
+    expect(unsubscribeMock).toHaveBeenCalledWith({
+      endpoint: 'https://fcm.googleapis.com/fcm/send/old',
+    })
+    expect(subscribeMock).toHaveBeenCalledWith({
+      endpoint: 'https://fcm.googleapis.com/fcm/send/fresh',
+      keys: { p256dh: 'AAAA', auth: 'BBBB' },
+    })
+    expect(boundKey()).toBe(FAKE_PUBLIC_KEY)
+  })
+
+  /**
+   * ⚠️ K4 คือเครื่องที่ **เปิด push ไว้ก่อนมีฟีเจอร์นี้** — กลุ่มที่การ rotate ทำพังพอดี
+   *    ⇒ `null` ต้องนับเป็น "ไม่รู้ว่าผูกกับอะไร" = เปิดใหม่หนึ่งครั้ง ไม่ใช่ "น่าจะโอเค"
+   */
+  it('★ K4: มี subscription แต่ **ไม่เคยบันทึกคีย์** → ถือว่าอาจเก่า ⇒ เปิดใหม่หนึ่งครั้ง', async () => {
+    const { reg } = await readyEnv({
+      subscription: makeSubscription('https://fcm.googleapis.com/fcm/send/legacy'),
+    })
+
+    await enablePush()
+
+    expect(reg.pushManager.subscribe).toHaveBeenCalled()
+    expect(boundKey()).toBe(FAKE_PUBLIC_KEY)
+  })
+
+  /**
+   * ⚠️ K5 ป้องกันความล้มเหลวที่แย่กว่าเดิม: ถ้าเขียนคีย์ทับทั้งที่ **ยังใช้ของเก่าอยู่**
+   *    คำเตือนจะไม่กลับมาอีกเลย ⇒ ผู้ใช้จะไม่เหลือทางแก้อีกตลอดไป
+   */
+  it('★ K5: เบราว์เซอร์ไม่ยอมทิ้งของเดิม → โยน error และ **ห้าม** เขียนคีย์ทับ', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    await readyEnv({ subscription: makeSubscription(), stubborn: true })
+
+    await expect(enablePush()).rejects.toThrow(/ไม่ยอมทิ้ง/)
+
+    expect(boundKey()).toBe('คีย์เก่า')
+    expect(subscribeMock).not.toHaveBeenCalled()
+  })
+
+  it('★ K6: คีย์ที่บันทึกไว้ไม่ตรงกับที่เซิร์ฟเวอร์ใช้ → `pushSubscriptionStale` = true', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+
+    await readyEnv({ subscription: makeSubscription() })
+
+    expect(pushSubscribed.value).toBe(true) // ← ยังขึ้นว่า "เปิดอยู่" (นั่นคือสิ่งที่ทำให้หลอกตา)
+    expect(pushSubscriptionStale.value).toBe(true)
+  })
+
+  it('K7: คีย์ตรงกัน → ไม่เตือน', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, FAKE_PUBLIC_KEY)
+
+    await readyEnv({ subscription: makeSubscription() })
+
+    expect(pushSubscriptionStale.value).toBe(false)
+  })
+
+  it('K7b: ไม่มี subscription → ไม่เตือน (ไม่มีอะไรให้ค้าง)', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์อะไรก็ช่าง')
+
+    await readyEnv({ subscription: null })
+
+    expect(pushSubscriptionStale.value).toBe(false)
+  })
+
+  /**
+   * ⚠️ K8 — ด่านกัน **การเตือนจากความไม่รู้**: ถ้าโหลดสถานะไม่สำเร็จ (ออฟไลน์) เราไม่รู้ว่า
+   *    เซิร์ฟเวอร์ใช้คีย์อะไรอยู่ ⇒ คีย์ที่บันทึกไว้จะ "ดูไม่ตรง" เสมอถ้าเทียบกับค่าว่าง
+   *    ⇒ เตือนผิดทุกครั้งที่เน็ตสะดุด = ผู้ใช้เรียนรู้ที่จะมองข้ามคำเตือนนี้ไปตลอด
+   */
+  it('★ K8: โหลดสถานะไม่สำเร็จ (ไม่รู้คีย์ปัจจุบัน) → **ห้ามเตือน** แม้คีย์จะดูไม่ตรง', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    getStatusMock.mockRejectedValue(new Error('offline'))
+    installEnv({ subscription: makeSubscription() })
+    resetPushStatus()
+
+    await refreshPushStatus()
+
+    expect(pushSubscribed.value).toBe(true) // ยังรู้จากฝั่งเบราว์เซอร์
+    expect(pushSubscriptionStale.value).toBe(false)
+  })
+
+  it('★ K9: `resetPushStatus()` (login/logout) ล้างคำเตือน แต่ **ไม่ล้างคีย์** — มันเป็นของเครื่อง', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    await readyEnv({ subscription: makeSubscription() })
+    expect(pushSubscriptionStale.value).toBe(true)
+
+    resetPushStatus()
+
+    expect(pushSubscriptionStale.value).toBe(false)
+    // ⚠️ หัวใจ: เครื่องนี้ยังผูกกับคีย์เดิม ⇒ คนถัดไปที่ล็อกอินไม่ต้องเปิดใหม่โดยไม่จำเป็น
+    expect(boundKey()).toBe('คีย์เก่า')
+  })
+
+  it('★ K10: ซ่อมแล้ว → refresh รอบถัดไปต้องไม่เตือนอีก (ไม่ใช่เตือนค้าง)', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    await readyEnv({ subscription: makeSubscription('https://fcm.googleapis.com/fcm/send/old') })
+    expect(pushSubscriptionStale.value).toBe(true)
+
+    await expect(repairPush()).resolves.toBe('enabled')
+    await refreshPushStatus()
+
+    expect(pushSubscriptionStale.value).toBe(false)
+    expect(pushSubscribed.value).toBe(true)
+  })
+
+  it('★ K11: `repairPush()` — ยิงแถวเก่าให้ลบ แล้วสร้างแถวใหม่ที่ endpoint ใหม่จริง', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    const { getCurrent } = await readyEnv({
+      subscription: makeSubscription('https://fcm.googleapis.com/fcm/send/old'),
+    })
+
+    await expect(repairPush()).resolves.toBe('enabled')
+
+    expect(unsubscribeMock).toHaveBeenCalledWith({
+      endpoint: 'https://fcm.googleapis.com/fcm/send/old',
+    })
+    expect(subscribeMock).toHaveBeenCalledWith({
+      endpoint: 'https://fcm.googleapis.com/fcm/send/fresh',
+      keys: { p256dh: 'AAAA', auth: 'BBBB' },
+    })
+    // ⚠️ ต้องเป็น **คนละ endpoint** — ถ้าเท่ากันแปลว่าเปิดใหม่ไม่ได้จริง (Chrome คืนตัวเดิม)
+    expect(getCurrent()?.endpoint).toBe('https://fcm.googleapis.com/fcm/send/fresh')
+    expect(boundKey()).toBe(FAKE_PUBLIC_KEY)
+  })
+
+  it('K12: หลัง `disablePush()` → คำเตือนหมดเหตุ (ไม่มี subscription แล้ว)', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    await readyEnv({ subscription: makeSubscription() })
+    expect(pushSubscriptionStale.value).toBe(true)
+
+    await disablePush()
+
+    expect(pushSubscriptionStale.value).toBe(false)
   })
 })

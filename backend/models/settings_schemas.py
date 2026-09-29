@@ -1,6 +1,10 @@
-"""Schemas สำหรับ "ตั้งค่าระบบ" (`/api/settings/*`) — ต้องมีสิทธิ์ MANAGE_SETTINGS
+"""Schemas สำหรับ "ตั้งค่าระบบ" (`/api/settings/*`)
 
-ปัจจุบันมีอย่างเดียว: **ภาคเรียน** (academic_terms) — ดู services/term_service.py
+สองเรื่อง:
+- **ภาคเรียน** (`academic_terms`) — ต้องมีสิทธิ์ `MANAGE_SETTINGS` ทุก endpoint
+- **quiet hours** (A8) — `GET` **เปิดให้ผู้ใช้ที่ล็อกอินทุกคน** · `PUT` ต้องมีสิทธิ์
+  (เหตุผลอยู่ใน `services/app_settings_service.py` — ค่านี้มีไว้ *อธิบาย* ให้นักเรียน
+  เข้าใจว่าทำไมมือถือเงียบ ⇒ ถ้าปิดการอ่าน เท่ากับซ่อนคำอธิบายจากคนที่ได้รับผลกระทบ)
 
 ⚠️ `start_date`/`end_date` เป็นชนิด `date` ไม่ใช่ `str` โดยเจตนา (กฎ backend.md:
 "Date params ต้อง typed date/datetime เสมอ เพื่อกันบั๊ก toordinal()") — Pydantic จะ
@@ -74,3 +78,43 @@ class AcademicTermListOut(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+# ============================================================
+# 🔇 Quiet Hours (A8) — ช่วงเวลาที่โรงเรียนไม่ส่ง push
+# ============================================================
+
+class QuietHoursOut(BaseModel):
+    """ค่าตั้ง quiet hours ปัจจุบัน
+
+    ⚠️ ค่าที่คืน **ผ่าน `normalize_quiet_hours()` มาแล้วเสมอ** ⇒ `start`/`end` เป็น
+       `"HH:MM"` แน่นอน และ `enabled=False` ถ้าค่าใน DB ใช้ไม่ได้ (แถวเสีย/parse ไม่ได้)
+       ⇒ client ไม่ต้องป้องกันอะไรเพิ่ม และ **ห้ามเชื่อค่าดิบจาก DB เอง**
+
+    `updated_at` เป็น `None` = **โรงเรียนยังไม่เคยตั้ง** — แยกจาก "ตั้งไว้แล้วแต่ปิดสวิตช์"
+       ได้ ⇒ UI ใช้เขียนกำกับว่า "ค่าเริ่มต้น (ยังไม่ได้ตั้ง)" ต่างจาก "ปิดอยู่"
+    """
+    enabled: bool
+    start: str = Field(..., description='เวลาเริ่ม "HH:MM" (เขต Asia/Bangkok)')
+    end: str = Field(..., description='เวลาสิ้นสุด "HH:MM" — อาจน้อยกว่า start ได้ (= ข้ามเที่ยงคืน)')
+    updated_at: Optional[datetime] = Field(
+        None, description="None = โรงเรียนยังไม่เคยตั้งค่านี้ (ยังไม่มีแถวใน app_settings)"
+    )
+
+
+class QuietHoursUpdateRequest(BaseModel):
+    """PUT = **full replace** ⇒ ส่งมาครบทั้ง 3 ฟิลด์เสมอ (ไม่ใช่ PATCH)
+
+    ⚠️ **ไม่มี `pattern`/`max_length` ที่ชั้นนี้โดยเจตนา** — `app_settings_service._parse_hhmm()`
+       เป็น **นิยามเดียว** ของ "เวลาที่ใช้ได้" และมันตัดช่องว่างหัวท้ายก่อน แล้วรับ `"7:00"`
+       คืนเป็น `"07:00"` ด้วย · ถ้าใส่ pattern ที่นี่จะกลายเป็นสองนิยามที่ไม่ตรงกัน
+       (`"7:00"` โดน 422 ที่นี่ แต่ service ทำได้) ⇒ ผู้ใช้เจอ error ทั้งที่ระบบรองรับ
+       ⇒ **รูปแบบเวลาผิด = 400 เสมอ จากที่เดียว** (แบบเดียวกับเหตุผลของ `end_date >= start_date`
+       ที่เขียนกำกับไว้ข้างบน — และที่นั่นก็เลือกตรวจที่ service ที่เดียวเหมือนกัน)
+
+    ⚠️ `start == end` **ไม่ถูกปฏิเสธที่นี่** เพราะความหมายขึ้นกับ `enabled` (`enabled=False`
+    คู่กับ `start == end` เป็นคำขอที่ถูกต้อง) ⇒ ตรวจที่ service
+    """
+    enabled: bool
+    start: str = Field(..., description='เวลาเริ่ม "HH:MM" เช่น "22:00"')
+    end: str = Field(..., description='เวลาสิ้นสุด "HH:MM" เช่น "06:00" (ข้ามเที่ยงคืนได้)')

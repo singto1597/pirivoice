@@ -40,29 +40,34 @@ export type DeepLinkTarget =
   | { name: 'board-reports' }
   | { name: 'board-detail'; params: { id: number } }
   | { name: 'issue-detail'; params: { id: number } }
+  | { name: 'home' }
   | null
 
 /**
  * แปลง notification → ปลายทาง — **ฟังก์ชันบริสุทธิ์** (เทสง่าย ไม่ต้องมี router/DB)
  *
- * ลำดับ 4 ขั้น — **ลำดับมีความหมาย ห้ามสลับ** (ตรงกับ `_deep_link_url()` ฝั่ง backend):
+ * ลำดับ 5 ขั้น — **ลำดับมีความหมาย ห้ามสลับ** (ตรงกับ `_deep_link_url()` ฝั่ง backend):
  *
  *   1. กลุ่ม `report` + ชนิด `report_new` → **คิวรายงาน** (`/app/boards/reports`)
- *      ★ ต้องมาก่อนข้อ 3 เพราะ notification นี้พก `board_id` มาด้วย — ถ้าตกไปข้อ 3
+ *      ★ ต้องมาก่อนข้อ 4 เพราะ notification นี้พก `board_id` มาด้วย — ถ้าตกไปข้อ 4
  *      จะพาสภาฯ ไปที่ตัวบอร์ด แทนที่จะพาไป "คิวที่ต้องลงมือ" ซึ่งเป็นเหตุผลที่แจ้ง
  *      และเหตุผลเดียวกันนี้ทำให้ `report_new` **ไม่ควร**มีปุ่มให้ผู้แจ้งทั่วไปกด
  *      (notification ชนิดนี้ส่งถึงสภาฯ เท่านั้น)
  *   2. กลุ่ม `report` ชนิดอื่น ที่มี `board_id` → **บอร์ดนั้น**
  *      (`report_actioned` ส่งถึง *ผู้แจ้ง* ซึ่งอาจเป็นนักเรียน — ต้องไปดูบอร์ด
  *       ไม่ใช่คิวของสภา)
- *   3. `entity_type === 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
- *   4. มี `board_id` → **หน้าบอร์ด**
+ *   3. กลุ่ม `announcement` (E2 ประกาศฉุกเฉิน) → **หน้า Home** (`/app/home`)
+ *      ★ Home คือที่ที่ประกาศถูกแสดง (บล็อกประกาศ ไม่มี LIMIT) ⇒ กดแล้วต้องเห็น
+ *      ตัวประกาศเลย ไม่ใช่ไปดูรายการแจ้งเตือนที่ต้องกดต่ออีกที
+ *      · ไม่ต้องมี guard `entity_id` — ประกาศแสดงทั้งก้อนบน Home ไม่ได้เจาะจงใบ
+ *   4. `entity_type === 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
+ *   5. มี `board_id` → **หน้าบอร์ด**
  *
  * ไม่เข้าเงื่อนไขใด → `null` (อยู่ที่รายการแจ้งเตือน ซึ่งเป็นที่ที่ผู้ใช้กดมา
  * และเป็นที่เดียวที่ยัง "ต่อได้" — ปลอดภัยเสมอ)
  *
  * ⚠️ **ห้ามปล่อย `entity_id` เป็น `null` ลงใน path** — `entity_type === 'issue'`
- *   ที่ `entity_id` เป็น NULL ต้องตกไปข้อ 4 ไม่ใช่สร้าง `/app/issues/null`
+ *   ที่ `entity_id` เป็น NULL ต้องตกไปข้อ 5 ไม่ใช่สร้าง `/app/issues/null`
  *   (ฝั่ง backend กันด้วยเทสต์ `test_T21d` — ที่นี่กันด้วย `entity_id != null`)
  */
 export function deepLinkTarget(n: DeepLinkSource): DeepLinkTarget {
@@ -70,6 +75,10 @@ export function deepLinkTarget(n: DeepLinkSource): DeepLinkTarget {
     if (n.type === 'report_new') return { name: 'board-reports' }
     if (n.board_id != null) return { name: 'board-detail', params: { id: n.board_id } }
     return null
+  }
+
+  if (n.group_type === 'announcement') {
+    return { name: 'home' }
   }
 
   if (n.entity_type === 'issue' && n.entity_id != null) {

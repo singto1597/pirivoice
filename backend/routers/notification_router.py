@@ -21,7 +21,10 @@ logger = logging.getLogger("NOTIF_STREAM")
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
-GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report)$"
+# pattern ของ **การอ่าน/กรอง** — ต้องมี `announcement` (E2) ด้วย ไม่งั้น `/notifications?group_type=
+# announcement` ตอบ 422 ทั้งที่แถวชนิดนั้นมีจริงใน DB · ต่างจาก pattern ของ preference ที่มี 4 กลุ่ม
+# ⚠️ ซ้ำโดยเจตนากับ `READ_GROUP_TYPE_PATTERN` ใน models/notification_schemas.py (ดูคอมเมนต์ที่นั่น)
+GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report|announcement)$"
 
 
 def _ensure_user(user_ctx: dict) -> int:

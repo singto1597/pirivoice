@@ -1,12 +1,13 @@
 // 🔔 ระบบแจ้งเตือน (Notifications) — badge ตามเมนู + หน้าแจ้งเตือนกลาง
 // group_type ตรงกับ backend: badge "เรื่องของฉัน" / "เรื่องที่รับ" / PIRI Boards / จัดการรายงาน
+// + "ประกาศฉุกเฉิน" (E2) ซึ่ง **ปิดไม่ได้** — ดูเหตุผลที่ PREFERENCE_GROUPS ข้างล่าง
 
-export type NotificationGroup = 'issue_mine' | 'issue_received' | 'board' | 'report'
+export type NotificationGroup = 'issue_mine' | 'issue_received' | 'board' | 'report' | 'announcement'
 
 export interface NotificationItem {
   id: number
   group_type: NotificationGroup
-  type: string // issue_new | issue_update | issue_comment | board_new | board_reply | board_hidden | report_new | report_actioned
+  type: string // issue_new | issue_update | issue_comment | board_new | board_reply | board_hidden | report_new | report_actioned | announcement_urgent
   title: string
   body: string
   entity_type: string | null // issue | piri_board | piri_board_comment | piri_board_report
@@ -41,12 +42,14 @@ export interface MarkReadPayload {
 }
 
 // Tab ของหน้าแจ้งเตือน — '' = ทั้งหมด
+// ⚠️ ลำดับต้องตรงกับ `GROUP_TYPES` ใน backend/services/notification_service.py
 export const GROUP_TABS: Array<{ value: '' | NotificationGroup; label: string; icon: string }> = [
   { value: '', label: 'ทั้งหมด', icon: 'bi bi-list-ul' },
   { value: 'issue_mine', label: 'เรื่องของฉัน', icon: 'bi bi-file-earmark-text' },
   { value: 'issue_received', label: 'เรื่องที่รับ', icon: 'bi bi-inbox' },
   { value: 'board', label: 'PIRI Boards', icon: 'bi bi-columns-gap' },
   { value: 'report', label: 'จัดการรายงาน', icon: 'bi bi-flag-fill' },
+  { value: 'announcement', label: 'ประกาศฉุกเฉิน', icon: 'bi bi-megaphone-fill' },
 ]
 
 // ⚙️ ตั้งค่าการแจ้งเตือนรายกลุ่ม
@@ -59,19 +62,35 @@ export interface NotificationPreferencesResponse {
   preferences: NotificationPreference[]
 }
 
-// กลุ่มที่ผู้ใช้ตั้งค่าได้ = GROUP_TABS ตัด '' (แท็บ "ทั้งหมด" ซึ่งไม่ใช่กลุ่มจริง) ออก
+// กลุ่มที่ผู้ใช้ **ปิดได้** — ตรงกับ `PREFERENCE_GROUPS` ใน backend/services/notification_service.py
+//
+// 🚨 **`announcement` ไม่อยู่ในลิสต์นี้โดยเจตนา — ห้ามเพิ่ม**
+//    ประกาศฉุกเฉิน (น้ำท่วม/ไฟดับ/งดเรียนกะทันหัน) ที่ปิดได้ = ประกาศที่ล้มเหลวในหน้าที่ของมัน
+//    ⇒ ฝั่ง backend ไม่มีทางสร้างแถว preference ของกลุ่มนี้ได้ (pattern ของ PUT มี 4 กลุ่ม)
+//      การเพิ่มที่นี่จะทำให้ UI โชว์สวิตช์ที่ **กดแล้วได้ 422** — แย่กว่าไม่มีสวิตช์
+//
+// ⚠️ **เดิมทีค่านี้มาจาก `GROUP_TABS.filter(t => t.value !== '')`** ซึ่งพอเพิ่มแท็บที่ 5
+//    จะลาก `announcement` เข้ามาเป็นสวิตช์ที่ปิดได้ทันทีแบบเงียบ ๆ ⇒ เปลี่ยนมาใช้ลิสต์ที่
+//    **ระบุชื่อกลุ่มตรง ๆ** (allowlist) แล้วให้ GROUP_TABS เป็นตัวให้ label/icon
+//    ⇒ เพิ่มกลุ่มใหม่ = ต้องแก้ **2 ที่เสมอ** (`GROUP_TABS` สำหรับแท็บ + ลิสต์นี้ถ้าปิดได้)
+export const PREFERENCE_GROUP_VALUES = ['issue_mine', 'issue_received', 'board', 'report'] as const
+
 // ⚠️ ห้ามประกาศชื่อ/ไอคอนกลุ่มซ้ำที่ใหม่ — ยืมจาก GROUP_TABS ข้างบนเสมอ
-//    เพิ่มกลุ่มใหม่ที่ backend แล้ว UI จะได้แถวใหม่เองโดยไม่ต้องแก้ไฟล์นี้
 export const PREFERENCE_GROUPS = GROUP_TABS.filter(
-  (t): t is { value: NotificationGroup; label: string; icon: string } => t.value !== '',
+  (t): t is { value: NotificationGroup; label: string; icon: string } =>
+    (PREFERENCE_GROUP_VALUES as readonly string[]).includes(t.value),
 )
 
 // คำอธิบายว่าแต่ละกลุ่มคืออะไร — จำเป็น เพราะชื่อกลุ่มสั้น ๆ ทำให้ผู้ใช้ไม่กล้ากดปิด
+// ⚠️ `Record<NotificationGroup, …>` แบบ exhaustive ⇒ เพิ่มกลุ่มใหม่แล้ว **type-check ฟ้องทันที**
+//    จนกว่าจะเขียนคำอธิบาย (เจตนา: คำอธิบายที่หายไปจะกลายเป็นช่องว่างใน UI โดยไม่มีใครรู้)
 export const GROUP_DESCRIPTIONS: Record<NotificationGroup, string> = {
   issue_mine: 'เมื่อเรื่องที่คุณแจ้งไว้ถูกตอบกลับ หรือสถานะเปลี่ยน',
   issue_received: 'เมื่อมีเรื่องส่งมาถึงคุณในฐานะผู้รับผิดชอบ',
   board: 'เมื่อมีกระทู้ใหม่ ความคิดเห็นใหม่ หรือผลโหว้ใน PIRI Boards',
   report: 'เมื่อมีคนรายงานเนื้อหา และเมื่อผลการตรวจสอบออก',
+  announcement:
+    'ประกาศฉุกเฉินจากโรงเรียน — ปิดไม่ได้ เพื่อให้แน่ใจว่าข่าวสำคัญถึงทุกคนทันเวลา',
 }
 
 // ไอคอน per type (ใช้หน้าแจ้งเตือน)
@@ -84,6 +103,7 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   board_hidden: 'bi bi-eye-slash',
   report_new: 'bi bi-flag-fill',
   report_actioned: 'bi bi-check2-circle',
+  announcement_urgent: 'bi bi-megaphone-fill',
 }
 
 // ============================================================

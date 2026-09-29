@@ -5,9 +5,14 @@ import type {
   AcademicTermCreatePayload,
   AcademicTermUpdatePayload,
 } from '@/types/academicTerm'
+import type { QuietHours, QuietHoursPayload } from '@/types/quietHours'
 
 // 📅 Settings API — api interceptor unwrap response.data แล้ว (ดู services/api.ts)
-// ทุก endpoint ต้องมีสิทธิ์ MANAGE_SETTINGS (รวม GET) — ไม่มีสิทธิ์ = 403
+//
+// ⚠️ **สิทธิ์ไม่เหมือนกันทั้งไฟล์ — อย่าเหมารวม:**
+//    · `/terms` (ทั้งไฟล์นี้ส่วนล่าง) — ทุก endpoint **รวม GET** ต้องมี MANAGE_SETTINGS → ไม่มีสิทธิ์ = 403
+//    · `/quiet-hours` — **GET เปิดให้ผู้ใช้ที่ล็อกอินทุกคน** (ไว้ให้นักเรียนดูว่าทำไมมือถือเงียบ)
+//      เฉพาะ PUT ที่ต้องมี MANAGE_SETTINGS ⇒ เรียก getQuietHours() ได้จากทุกหน้าจอ
 
 // status: 'current' | 'active' | 'deleted' | 'all'
 export async function listTerms(params: {
@@ -49,4 +54,20 @@ export async function deleteTerm(termId: number): Promise<AcademicTerm> {
 // กู้คืน — กลับมาเป็นภาคธรรมดา (ต้องกดตั้งเป็นปัจจุบันเองอีกครั้ง)
 export async function restoreTerm(termId: number): Promise<AcademicTerm> {
   return (await api.post(`/api/settings/terms/${termId}/restore`)) as AcademicTerm
+}
+
+// ============================================================
+// 🔇 Quiet Hours (A8)
+// ============================================================
+
+// อ่านค่าปัจจุบัน — **ไม่ต้องมี MANAGE_SETTINGS** (ผู้ใช้ที่ล็อกอินทุกคนเรียกได้)
+export async function getQuietHours(): Promise<QuietHours> {
+  return (await api.get('/api/settings/quiet-hours')) as QuietHours
+}
+
+// ตั้งค่า — ต้องมี MANAGE_SETTINGS · PUT = full replace ⇒ ส่งครบ 3 ฟิลด์เสมอ
+// ⚠️ รูปแบบเวลาผิด หรือ `enabled: true` พร้อม `start === end` ⇒ backend ตอบ **400**
+//    (ไม่ใช่ 422) พร้อมข้อความไทย ⇒ api.ts ส่ง `detail` มาเป็น string ให้โชว์ได้ตรง ๆ
+export async function updateQuietHours(payload: QuietHoursPayload): Promise<QuietHours> {
+  return (await api.put('/api/settings/quiet-hours', payload)) as QuietHours
 }

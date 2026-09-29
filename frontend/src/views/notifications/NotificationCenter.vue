@@ -16,7 +16,7 @@ import PaginationBar from '@/components/PaginationBar.vue'
 
 /**
  * 🔔 หน้าแจ้งเตือนกลาง (เข้าได้ทุกคน) — badge messenger style
- * - แท็บ: ทั้งหมด / เรื่องของฉัน / เรื่องที่รับ / PIRI Boards / จัดการรายงาน
+ * - แท็บ: ทั้งหมด / เรื่องของฉัน / เรื่องที่รับ / PIRI Boards / จัดการรายงาน / ประกาศฉุกเฉิน
  * - แถวยังไม่อ่านไฮไลต์แดงอ่อน + ปุ่ม mark-read รายการ
  * - "อ่านทั้งหมด" เคลียร์ทุกกลุ่ม
  * - คลิกแถว → ไปที่เรื่อง/บอร์ด/รายงานที่เกี่ยวข้อง (แล้ว mark อ่าน)
@@ -164,6 +164,12 @@ function go(n: NotificationItem) {
   // 1) mark อ่าน — ขอบเขตต่างกันตามกลุ่ม (เหมือนเดิมทุกกรณี ไม่ได้เปลี่ยน)
   if (n.group_type === 'report') {
     void notificationsStore.read({ group_type: 'report' })
+  } else if (n.group_type === 'announcement') {
+    // 📢 ประกาศ (E2) ไม่มี entity/board ให้ mark เป็นชุด (ยิง `markOne` เท่านั้น)
+    // ⚠️ ต้อง mark **ก่อน** `router.push` ด้านล่าง เพราะบรรทัดนั้น `return` ทันที
+    //    ⇒ ถ้าลืมกรณีนี้ แถวประกาศจะนำทางไป Home แต่ **ป้ายยังไม่อ่านค้างตลอดไป**
+    //    (badge ไม่ลดทั้งที่ผู้ใช้กดอ่านแล้ว = อาการที่ผู้ใช้ตีความว่า "ระบบพัง")
+    void markOne(n)
   } else if (n.entity_type === 'issue' && n.entity_id != null) {
     void notificationsStore.read({ entity_type: 'issue', entity_id: n.entity_id })
   } else if (n.board_id != null) {

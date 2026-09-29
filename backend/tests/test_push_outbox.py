@@ -1121,6 +1121,13 @@ _DEEP_LINK_CASES = [
     ("board_hidden",    "board",          "piri_board",          3,    3, "/app/boards/3"),
     ("report_new",      "report",         "piri_board_report",   9,    3, "/app/boards/reports"),
     ("report_actioned", "report",         "piri_board_report",   9,    3, "/app/boards/3"),
+    # E2 — ประกาศฉุกเฉิน: `entity_type='announcement'` และ `board_id` เป็น NULL
+    ("announcement_urgent", "announcement", "announcement",      7, None, "/app/home"),
+    #   ↑ สองแถวนี้ **เจตนาให้ซ้ำกลุ่ม** (แบบเดียวกับ `issue_comment` ที่มี 2 แถว) เพราะกฎของ
+    #     ประกาศต้อง **ไม่ผูกกับ `entity_id`** — Home แสดงประกาศทั้งก้อน ไม่ได้เจาะจงใบ
+    #     ⇒ แถวล่างคือเคสที่ `entity_id` เป็น NULL ซึ่งถ้าเผลอเขียน `if ... and entity_id is not None`
+    #       จะตกไป fallback = กดแล้วไม่มีอะไรเกิดขึ้น (ฝั่ง FE ตรึงเคสเดียวกันที่ `deepLink.spec.ts` D11)
+    ("announcement_urgent", "announcement", "announcement",   None, None, "/app/home"),
 ]
 
 
@@ -1221,6 +1228,62 @@ def test_T21f_every_deep_link_is_an_in_app_path(
     assert url.startswith("/app/"), f"{url} ต้องอยู่ในแอพ"
     assert "//" not in url, f"{url} ห้ามเป็น protocol-relative"
     assert "None" not in url, f"{url} ห้ามมีค่า None หลุดเข้าไปใน path"
+
+
+def test_T21i_emergency_announcement_goes_home_and_ignores_entity_id():
+    """🚨 E2 — ประกาศฉุกเฉินต้องไป **Home** และต้องไม่ผูกกับ `entity_id`
+
+    ประกาศเป็น notification กลุ่มเดียวที่ **ไม่มีทั้ง `board_id` และ entity ที่กดต่อได้**
+    (พก `entity_type='announcement'` ซึ่งไม่ใช่ `'issue'`) ⇒ ถ้าไม่มีกฎของกลุ่มนี้โดยตรง
+    มันจะไหลไปถึงบรรทัดสุดท้ายแล้วได้ `DEFAULT_PUSH_URL` = ผู้ใช้กด push ฉุกเฉินแล้ว
+    **ไปโผล่หน้ารวมแจ้งเตือน** ต้องกดหาประกาศต่อเองอีกรอบ ทั้งที่ประกาศคือสิ่งที่ต้องเห็นให้เร็วที่สุด
+
+    ⚠️ **สองเคสในเทสต์เดียวโดยเจตนา** — เพราะมีสองทางที่พังคนละแบบ:
+      · `entity_id` มีค่า → ถ้าลบกฎกลุ่มนี้ออก จะตกไปที่หน้ารวม (fallback)
+      · `entity_id` เป็น NULL → ถ้าเขียนกฎเป็น `and entity_id is not None` จะตกไปที่หน้ารวมเช่นกัน
+    ⇒ assert แยกกันเพื่อให้ข้อความ fail บอกได้ว่ากฎหายไป หรือกฎผูกกับ id เกินไป
+
+    ⭐ **สัญญาสองภาษา:** ฝั่งแอปตัดสินที่ `router/deepLink.ts` (`{ name: 'home' }`) และ
+       `NotificationCenter.go()` เรียกตัวนั้น ⇒ ค่าที่นี่ต้องเท่ากับ `deepLink.spec.ts` D10/D11
+    """
+    base = {
+        "notification_id": 1, "type": "announcement_urgent", "group_type": "announcement",
+        "title": "งดเรียนกะทันหัน", "body": "b",
+        "entity_type": "announcement", "board_id": None,
+    }
+    # เคส 1 — มี entity_id (รูปที่ระบบผลิตจริง)
+    assert push_service._deep_link_url({**base, "entity_id": 7}) == "/app/home"
+    # เคส 2 — entity_id เป็น NULL ก็ยังต้องไป Home (ไม่ผูกกับ id ของใบ)
+    assert push_service._deep_link_url({**base, "entity_id": None}) == "/app/home"
+    # ⚠️ ต้องไม่ใช่ค่าคงที่ของ fallback — assert แยกเพื่อให้ข้อความชี้ว่า "กฎ announcement หายไป"
+    assert push_service._deep_link_url({**base, "entity_id": 7}) != push_service.DEFAULT_PUSH_URL
+
+
+def test_T21h_every_notification_group_has_a_deep_link_case():
+    """ด่านกัน "เพิ่มกลุ่มใหม่แล้วลืมนิยามปลายทาง" — ฝั่ง backend ไม่เคยมีมาก่อน
+
+    `_DEEP_LINK_CASES` ข้างบนเป็นตารางที่ **ต้องครบทุกสมาชิกของ `GROUP_TYPES`** แต่ตัว
+    ตารางเองไม่รู้จัก `GROUP_TYPES` ⇒ เพิ่มกลุ่มที่ 5 (E2 `announcement`) แล้วลืมเพิ่มเคส
+    จะ **ไม่มีอะไรฟ้องเลย** — เทสต์ทุกตัวยังผ่าน เพราะมันวนอยู่บนตารางที่ขาดสมาชิก
+    · ผลจริงที่จะเกิด: ประกาศฉุกเฉินกดจาก push แล้วเด้งไป `/app/notifications` แทน Home
+      โดยไม่มี error ที่ไหนให้เห็น
+
+    ⭐ **ฝั่ง frontend มีด่านคู่กันอยู่แล้ว** — `deepLink.spec.ts` D3 + `GROUP_COVERAGE`
+       (`Record<NotificationGroup, true>`) ซึ่งเป็น compile-time guard ⇒ ที่นี่เป็น
+       runtime guard ของฝั่งเดียวกัน · **สองฝั่งต้องตรงกันเสมอ** (ดู docstring ของ
+       `router/deepLink.ts` เรื่องสัญญาสองภาษา)
+
+    mutation ที่ต้องทำให้แตก: เพิ่มกลุ่มใดก็ได้ใน `notification_service.GROUP_TYPES`
+    โดยไม่เพิ่มแถวใน `_DEEP_LINK_CASES`
+    """
+    covered = {case[1] for case in _DEEP_LINK_CASES}
+    # ⚠️ assert เป็น "รายการที่ขาด" ไม่ใช่ `assert missing == set()` — เวลา fail
+    #    ข้อความจะบอกทันทีว่ากลุ่มไหนหาย (เทสต์ที่ fail แล้วต้องรู้ว่าต้องแก้อะไร)
+    missing = [g for g in notification_service.GROUP_TYPES if g not in covered]
+    assert missing == [], (
+        f"กลุ่มที่ไม่มีเคสใน _DEEP_LINK_CASES: {missing} — "
+        "เพิ่มแถวในตาราง (ที่นี่) **และ** ใน deepLink.spec.ts DEEP_LINK_CASES + GROUP_COVERAGE"
+    )
 
 
 @pytest.mark.asyncio

@@ -20,7 +20,15 @@ from typing import Iterable, List, Optional
 from core.exceptions import ValidationError
 
 # กลุ่ม badge ตามเมนู (เรียงตาม GROUP_TABS ใน frontend)
-GROUP_TYPES = ("issue_mine", "issue_received", "board", "report")
+#
+# ⚠️ **สองลิสต์นี้ต่างกันโดยเจตนา — อย่ารวมเป็นตัวเดียว:**
+#   · GROUP_TYPES      = ทุกกลุ่มที่ *ปรากฏได้* ในตาราง notifications (ใช้ zero-fill badge)
+#   · PREFERENCE_GROUPS = กลุ่มที่ผู้ใช้ *ปิดได้* (ใช้ zero-fill หน้าตั้งค่า + เป็น pattern ของ PUT)
+# `announcement` (E2 ประกาศฉุกเฉิน) อยู่ในลิสต์บนเท่านั้น ⇒ **ปิดไม่ได้โดยเจตนา**
+#   ประกาศฉุกเฉินที่เงียบได้ = ประกาศที่ล้มเหลวในหน้าที่ของมัน · ผู้ใช้ยังปิด *กลุ่มอื่น* ได้ตามเดิม
+#   และการที่มันไม่อยู่ใน PREFERENCE_GROUPS ทำให้ `_pref_allows` คืน True เสมอ (ไม่มีแถว = เปิด)
+GROUP_TYPES = ("issue_mine", "issue_received", "board", "report", "announcement")
+PREFERENCE_GROUPS = ("issue_mine", "issue_received", "board", "report")
 
 
 # ============================================================
@@ -71,9 +79,14 @@ async def notify(
     board_id: Optional[int] = None,
     actor_id: Optional[int] = None,
     actor_name: Optional[str] = None,
+    bypass_quiet_hours: bool = False,
 ) -> None:
     """สร้าง notification 1 แถว (skip ถ้า actor ทำกับตัวเอง — ไม่สแปมตัวเอง
-    และ skip ถ้าผู้รับปิดกลุ่มนี้ไว้)"""
+    และ skip ถ้าผู้รับปิดกลุ่มนี้ไว้)
+
+    `bypass_quiet_hours` (A8/E2) = ธงติดมากับ **แถว** ไม่ใช่กับผู้รับ ⇒ ใช้กับประกาศฉุกเฉิน
+    ที่ต้องถึงมือแม้โรงเรียนเปิดช่วงเวลาไม่ส่งแจ้งเตือน · ค่าตั้งต้น False = ถูก quiet hours
+    กลั้นตามปกติ (ด่านจริงอยู่ที่ `push_service.process_pending` ตอน *ส่ง* ไม่ใช่ตอน insert)"""
     if actor_id is not None and int(actor_id) == int(user_id):
         return
     if not await _pref_allows(conn, user_id, group_type):
@@ -82,11 +95,11 @@ async def notify(
         """
         INSERT INTO notifications
             (user_id, group_type, type, title, body, entity_type, entity_id,
-             board_id, actor_id, actor_name)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             board_id, actor_id, actor_name, bypass_quiet_hours)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         """,
         user_id, group_type, type, title, body, entity_type, entity_id,
-        board_id, actor_id, actor_name,
+        board_id, actor_id, actor_name, bypass_quiet_hours,
     )
 
 
@@ -103,8 +116,11 @@ async def notify_bulk(
     board_id: Optional[int] = None,
     actor_id: Optional[int] = None,
     actor_name: Optional[str] = None,
+    bypass_quiet_hours: bool = False,
 ) -> None:
-    """หลายผู้รับในคราวเดียว (filter actor ออกก่อน insert แล้วกรองคนที่ปิดกลุ่มนั้น)"""
+    """หลายผู้รับในคราวเดียว (filter actor ออกก่อน insert แล้วกรองคนที่ปิดกลุ่มนั้น)
+
+    `bypass_quiet_hours` ติดไปกับ **ทุกแถว** ที่สร้างในครั้งนี้ (ดู `notify`)"""
     ids = [
         u for u in {int(x) for x in user_ids}
         if actor_id is None or int(u) != int(actor_id)
@@ -116,12 +132,12 @@ async def notify_bulk(
         """
         INSERT INTO notifications
             (user_id, group_type, type, title, body, entity_type, entity_id,
-             board_id, actor_id, actor_name)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             board_id, actor_id, actor_name, bypass_quiet_hours)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         """,
         [
             (uid, group_type, type, title, body, entity_type, entity_id,
-             board_id, actor_id, actor_name)
+             board_id, actor_id, actor_name, bypass_quiet_hours)
             for uid in ids
         ],
     )
@@ -139,19 +155,25 @@ async def notify_fanout(
     board_id: Optional[int] = None,
     actor_id: Optional[int] = None,
     actor_name: Optional[str] = None,
+    bypass_quiet_hours: bool = False,
 ) -> None:
     """Fan-out ไปทุก active user (ตาราง students) — ขนาดโรงเรียนไม่กี่ร้อย/พันคน OK
     ใน transaction เดียว (ถ้า >10k คนค่อยย้ายไป queue ตามแผน)
 
     กรองคนที่ปิดกลุ่มนี้ใน SQL เลย (ไม่ดึงออกมา filter ใน Python) — $1 คือ group_type
-    ⚠️ `students.user_id` เขียน qualified เพราะใน WHERE มี subquery ที่มีคอลัมน์ user_id ของตัวเอง"""
+    ⚠️ `students.user_id` เขียน qualified เพราะใน WHERE มี subquery ที่มีคอลัมน์ user_id ของตัวเอง
+
+    `bypass_quiet_hours` ติดไปกับทุกแถว (E2: ประกาศฉุกเฉินต้องทะลุ quiet hours)
+    ⚠️ `NOT EXISTS` ด้านล่างเป็น no-op โดยธรรมชาติเมื่อ `group_type='announcement'` เพราะ
+       `PREFERENCE_GROUPS` ไม่มีค่านั้น ⇒ ไม่มีทางมีแถว preference ของกลุ่มนี้อยู่เลย
+       (ไม่ต้อง special-case — แต่ **อย่า** เผลอเพิ่ม 'announcement' เข้า PREFERENCE_GROUPS)"""
     await conn.execute(
         """
         INSERT INTO notifications
             (user_id, group_type, type, title, body, entity_type, entity_id,
-             board_id, actor_id, actor_name)
+             board_id, actor_id, actor_name, bypass_quiet_hours)
         SELECT DISTINCT students.user_id, $1::varchar, $2::varchar, $3::text, $4::text, $5::varchar,
-               $6::int, $7::int, $8::int, $9::text
+               $6::int, $7::int, $8::int, $9::text, $10::boolean
         FROM students
         WHERE deleted_at IS NULL AND status = 'active'
           AND ($8::int IS NULL OR students.user_id <> $8)
@@ -163,7 +185,7 @@ async def notify_fanout(
           )
         """,
         group_type, type, title, body, entity_type, entity_id,
-        board_id, actor_id, actor_name,
+        board_id, actor_id, actor_name, bypass_quiet_hours,
     )
 
 
@@ -255,10 +277,15 @@ async def get_unread_counts(pool, user_id: int) -> dict:
 
 
 async def get_preferences(pool, user_id: int) -> dict:
-    """ค่าตั้งค่าการแจ้งเตือนของฉัน — **คืนครบทุกกลุ่มเสมอ** (กลุ่มที่ไม่มีแถว = เปิด)
+    """ค่าตั้งค่าการแจ้งเตือนของฉัน — **คืนครบทุกกลุ่มที่ปิดได้เสมอ** (กลุ่มที่ไม่มีแถว = เปิด)
 
-    zero-fill แบบเดียวกับ get_unread_counts: frontend ไม่ต้องรู้จัก GROUP_TYPES เอง
-    ⇒ วันหน้าเพิ่มกลุ่มใหม่ แค่แก้ GROUP_TYPES ที่เดียว UI ก็ได้แถวใหม่อัตโนมัติ"""
+    zero-fill แบบเดียวกับ get_unread_counts: frontend ไม่ต้องรู้จักรายชื่อกลุ่มเอง
+    ⇒ วันหน้าเพิ่มกลุ่มใหม่ แค่แก้ PREFERENCE_GROUPS ที่เดียว UI ก็ได้แถวใหม่อัตโนมัติ
+
+    ⚠️ ใช้ `PREFERENCE_GROUPS` (4) **ไม่ใช่** `GROUP_TYPES` (5) — `announcement` ต้องไม่โผล่
+    เป็นสวิตช์ที่ปิดได้ (ดูเหตุผลที่หัวไฟล์) · ถ้าเผลอเปลี่ยนเป็น GROUP_TYPES เมื่อไหร่
+    UI จะขึ้นสวิตช์ "ประกาศฉุกเฉิน" ที่กดปิดได้ทันที = ความสามารถในการปิดประกาศฉุกเฉิน
+    ซึ่งเป็นสิ่งที่งานนี้ตั้งใจไม่ให้มี"""
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT group_type, enabled FROM notification_preferences WHERE user_id = $1",
@@ -268,7 +295,7 @@ async def get_preferences(pool, user_id: int) -> dict:
     return {
         "preferences": [
             {"group_type": g, "enabled": bool(saved.get(g, True))}
-            for g in GROUP_TYPES
+            for g in PREFERENCE_GROUPS
         ]
     }
 
