@@ -8,6 +8,7 @@ from models.board_schemas import (
     BoardSummaryOut, BoardDetailOut, BoardCommentOut, BoardListOut,
     ReportCreateRequest, HideCommentRequest, HideBoardRequest,
     ResolveReportRequest, ReportOut, ReportListOut,
+    SuggestionCreateRequest, SuggestionCreatedOut,
 )
 from services import board_service
 from services import board_moderation_service
@@ -44,7 +45,10 @@ def _client_ip(request: Request) -> str | None:
 # ===================== feed board =====================
 @router.get("", response_model=BoardListOut)
 async def list_public_boards(
-    board_type: str | None = Query(None, pattern="^(vote|talk)$", description="กรองตามประเภท: vote/talk"),
+    board_type: str | None = Query(
+        None, pattern="^(vote|talk|suggestion)$",
+        description="กรองตามประเภท: vote/talk/suggestion",
+    ),
     q: str | None = Query(None, max_length=100, description="ค้นหา: ชื่อ/รายละเอียด board"),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
@@ -110,6 +114,50 @@ async def get_board_detail(
         endpoint=f"GET /api/boards/{board_id}",
     )
     return BoardDetailOut(**detail)
+
+
+# ===================== E1: เสนอไอเดีย (ผู้ใช้ทั่วไป — ไม่ผ่านด่านสภา) =====================
+# ⚠️ **ทำไมเป็น route เฉพาะ `/suggestions` ไม่ใช่ `POST /boards` ทั่วไป**
+#    endpoint สร้างแบบเปิดกว้างจะให้ใครก็ได้สร้าง board `talk`/`vote` ตรง ๆ
+#    ⇒ **เลี่ยงด่านอนุมัติของสภาทั้งด่าน** (บอร์ดสองชนิดนั้นต้องมาจาก
+#    `issue_service.approve_to_public()` ที่ตรวจ `_has_council_authority` + ผูก issue ต้นทาง)
+#    ⇒ route นี้ **สร้างได้ชนิดเดียว** และไม่รับ `board_type` จาก client เลย
+#    ⇒ การเพิ่มชนิดใหม่ในอนาคตต้อง "เพิ่ม route" ซึ่งเป็นการตัดสินใจที่มองเห็นได้
+#      ต่างจากการเพิ่มค่าที่รับได้ในพารามิเตอร์ (ซึ่งเงียบกว่า)
+#
+# ⚠️ **ไม่ต้องใช้ `require_permission`** — สิทธิ์คือ "เป็นผู้ใช้ที่ล็อกอินแล้ว" (ตัวตนคือสิทธิ์)
+#    แบบเดียวกับ `/api/issues` (แจ้งเรื่อง) · **แต่ต้องมี `_ensure_user`** เพราะ
+#    `get_current_user` คืน `{"user_id": None}` เมื่อเรียกด้วย `X-API-Key` (system RPC)
+@router.post("/suggestions", response_model=SuggestionCreatedOut, status_code=201)
+async def create_suggestion(
+    req: SuggestionCreateRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """💡 เสนอไอเดีย/ข้อเสนอแนะ — ขึ้นบอร์ดสาธารณะทันที (สภาซ่อนย้อนหลังได้)
+
+    - **ไม่แจ้งเตือนใคร** โดยเจตนา (ผู้ใช้เลือก "ไม่แจ้งใครเลย") — กัน push storm
+    - **ไม่ต้องมี issue ต้นทาง** และไม่ต้องรออนุมัติ — ต่างจาก `talk`/`vote`
+    """
+    uid = _ensure_user(user_ctx)
+    # `.strip()` ที่ชั้น router: `min_length` ของ pydantic นับ " " เป็น 1 ตัวอักษร ⇒
+    # `"   "` ผ่าน validation ได้แต่กลายเป็นหัวข้อว่างในบอร์ด (strip ก่อนตรวจจะต้องทำใน
+    # schema — ซึ่งจะกระทบ response ที่ echo กลับ ⇒ ทำที่นี่ที่เดียวและคืนค่าที่ strip แล้ว)
+    title = req.title.strip()
+    description = req.description.strip()
+    if len(title) < 3 or not description:
+        raise HTTPException(status_code=422, detail="หัวข้อต้องมีอย่างน้อย 3 ตัวอักษร และรายละเอียดห้ามว่าง")
+
+    created = await board_service.create_suggestion(
+        pool, uid,
+        title=title, description=description, is_anonymous=req.is_anonymous,
+    )
+    return SuggestionCreatedOut(
+        id=created["id"],
+        board_type=board_service.BOARD_TYPE_SUGGESTION,
+        title=created["title"],
+        created_at=created["created_at"],
+    )
 
 
 # ===================== โหวต (PIRI Vote) =====================

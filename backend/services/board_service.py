@@ -29,6 +29,26 @@ from services.notification_service import notify, _user_display_name
 MAX_DISPLAY_DEPTH = 8   # root = 0 → ลึกสุด 8 (reply เกินถูกย้ายไปพับใต้บรรพบุรุษที่ยังใต้ลิมิต — ไม่หาย)
 MAX_REPLY_DEPTH = 30    # จำกัดความลึกตอนสร้าง reply ใหม่ (chain ยักษ์สร้างไม่ได้ผ่าน API)
 
+# ============================================================
+# 🏷️ ชนิดของ board — นิยามที่เดียว ให้ทุกจุดที่ตัดสินใจอ้างถึงตัวเดียวกัน
+# ============================================================
+# ⚠️ ค่าทั้งหมดต้องอยู่ใน `chk_piri_boards_type` (migration 022) ไม่งั้น INSERT จะได้
+#    CheckViolationError ตอน runtime — ชุดนี้คือ "สัญญา" ระหว่าง Python กับ DB
+BOARD_TYPE_VOTE = "vote"
+BOARD_TYPE_TALK = "talk"
+BOARD_TYPE_SUGGESTION = "suggestion"   # E1 — ผู้ใช้เสนอไอเดียเอง ไม่ผ่านด่านสภา
+
+# ชนิดที่ **คอมเมนต์ได้** (ทางเขียน ⇒ whitelist / fail-closed)
+# - vote: ไม่ได้ (มีตัวเลือกแทนช่องคอมเมนต์)
+# - talk: ได้มาตั้งแต่ต้น
+# - suggestion: ได้ — เป็นหัวใจของ E1 (คนอื่นต้องคุยใต้ข้อเสนอได้)
+COMMENTABLE_BOARD_TYPES = (BOARD_TYPE_TALK, BOARD_TYPE_SUGGESTION)
+
+# ชนิดที่ **โหวตได้** (มี `piri_vote_choices` + partial unique บน piri_votes)
+# ⚠️ suggestion **ไม่อยู่ในนี้โดยเจตนา** — ข้อเสนอไม่ใช่การโหวต ถ้าอนาคตอยากให้กด "เห็นด้วย"
+#    ต้องเป็นการตัดสินใจเชิงผลิตภัณฑ์ + เพิ่มตารางของตัวเอง (ไม่ใช่ยัดลง piri_votes)
+VOTABLE_BOARD_TYPES = (BOARD_TYPE_VOTE,)
+
 
 # ============================================================
 # 🔧 Helpers
@@ -109,9 +129,13 @@ async def list_public_boards(
 ) -> dict:
     """
     feed board ที่ active — ทุกคนที่ล็อกอินเห็นได้ (ข้อมูลสาธารณะ ไม่ต้องเช็คระดับ)
-    กรอง: board_type ('vote'/'talk'), q (ค้นหา title/description — escape wildcard)
+    กรอง: board_type ('vote'/'talk'/'suggestion'), q (ค้นหา title/description — escape wildcard)
     เรียง: สร้างใหม่สุดก่อน → แบ่งหน้า
     envelope: {items, total, page, page_size, pages} (pattern เดียวกับ /issues)
+
+    ⚠️ `board_type` ไม่ถูก whitelist ที่ชั้นนี้ — ค่ามาจาก `Query(pattern=...)` ของ router
+    ⇒ ค่าที่หลุดมาถึงนี่มีแต่ค่าที่ผ่าน regex แล้ว (ไม่ใช่ SQL injection เพราะ parameterized อยู่แล้ว
+    แต่กันการกรองด้วยค่าที่ไม่มีความหมายแล้วได้ [] เงียบ ๆ)
     """
     where = ["b.deleted_at IS NULL", "b.status = 'active'"]
     params: list = []
@@ -167,7 +191,7 @@ async def get_board_detail(pool: asyncpg.Pool, user_id: int, board_id: int) -> d
     """
     รายละเอียด board:
     - vote board → choices (พร้อม vote_count) + my_vote_choice_id (user โหวตตัวไหนอยู่)
-    - talk board → comments แบบ threaded (replies ซ้อนได้ลึกเท่าไหร่ก็ได้)
+    - talk / suggestion board → comments แบบ threaded (replies ซ้อนได้ลึกเท่าไหร่ก็ได้)
     hidden board (แอดมินซ่อน) → 404 (ไม่มีข้อมูลรั่ว — เหมือนซอฟต์ดีลีต)
     """
     async with pool.acquire() as conn:
@@ -191,7 +215,7 @@ async def get_board_detail(pool: asyncpg.Pool, user_id: int, board_id: int) -> d
         detail = _board_to_dict(row)
         detail["allow_comments"] = row["allow_comments"]
 
-        if row["board_type"] == "vote":
+        if row["board_type"] in VOTABLE_BOARD_TYPES:
             choices = await conn.fetch(
                 """
                 SELECT id, choice_text, description, image_url, sort_order, vote_count
@@ -221,7 +245,11 @@ async def get_board_detail(pool: asyncpg.Pool, user_id: int, board_id: int) -> d
                 board_id, user_id
             )
             detail["my_vote_choice_id"] = my_vote
-        else:  # talk
+        else:
+            # 'talk' และ 'suggestion' (E1) — ทั้งคู่ใช้เลย์เอาต์คอมเมนต์เดียวกัน
+            # ⚠️ ใช้ `else` (ไม่ใช่ `elif == 'talk'`) **โดยเจตนา — ตัวอ่าน default เปิด**:
+            #    ชนิดใหม่ที่เพิ่มในอนาคตจะแสดงได้ทันทีแทนที่จะได้ board เปล่า ๆ ที่อธิบายไม่ได้
+            #    (ทางเขียนคือที่ที่ต้อง fail-closed — ดู `add_comment` ที่ whitelist ไว้)
             comment_rows = await conn.fetch(
                 f"""
                 SELECT c.*, u_comm.full_name AS author_full_name,
@@ -323,7 +351,80 @@ def _thread_comments(rows) -> List[dict]:
 
 
 # ============================================================
-# 🗳️ 3) submit_vote — โหวต 1 เสียงต่อ board
+# 💡 3) create_suggestion — E1: ผู้ใช้เสนอไอเดียเอง (ไม่ผ่านด่านสภา)
+# ============================================================
+async def create_suggestion(
+    pool: asyncpg.Pool,
+    user_id: int,
+    *,
+    title: str,
+    description: str,
+    is_anonymous: bool = False,
+) -> dict:
+    """
+    สร้าง board ชนิด 'suggestion' จากผู้ใช้ทั่วไป — **คนละทางกับ `approve_to_public()`**
+
+    ความต่างที่ตั้งใจ (ทั้ง 4 ข้อ):
+    | | `approve_to_public` (talk/vote) | `create_suggestion` (E1) |
+    |---|---|---|
+    | ใครสร้างได้ | สภา/แอดมินเท่านั้น (`_has_council_authority`) | ผู้ใช้ที่ล็อกอินแล้วทุกคน |
+    | ต้นทาง | ต้องมี `issue` ที่ขอปลายทางสาธารณะ | ไม่มี issue — ตั้งต้นจากฟอร์มสั้น |
+    | `source_issue_id` / `approved_*` | มีค่า | **NULL ทั้งสาม** (ไม่มีต้นทาง ไม่มีผู้อนุมัติ) |
+    | แจ้งเตือน | `notify_fanout` (ทุกคน) | **ไม่แจ้งใครเลย** — ผู้ใช้เลือก "ไม่แจ้งใครเลย" (§4) |
+
+    ⚠️ **`status = 'active'` ทันที ไม่มีขั้นอนุมัติ** — ผู้ใช้เลือก "ขึ้นทันที + ซ่อนย้อนหลังได้"
+    ⇒ เครื่องมือ moderation คือปุ่ม "ซ่อนบอร์ด" ที่มีอยู่แล้ว (`board_moderation_service.hide_board`)
+    **ไม่ต้องมีสถานะ 'pending'** ในสคีมา และไม่ต้องขยาย `chk_piri_boards_status`
+
+    ⚠️ **ไม่เรียก `notify_fanout` โดยเจตนา** — ถ้าวันหน้าจะเพิ่ม ต้องคิดเรื่อง push storm ก่อน:
+    fanout ยิงทุก active student (~800–1,000 คน) ⇒ ข้อเสนอที่ส่งได้ทุกคนจะกลายเป็นสแปมทันที
+    (บทเรียน §20.14 ข้อ 7 — ความดังของ push เป็นความเสี่ยงเชิงสังคม ไม่ใช่เทคนิค)
+
+    ⚠️ **`author_id` = เจ้าของ token เท่านั้น** — ไม่รับจาก body (router ไม่มีฟิลด์นั้นในสคีมา)
+    และ `is_anonymous=True` จะถูก `_board_to_dict` ปิดชื่อให้เอง (เหมือน talk/vote)
+
+    คืน `{"id", "title", "created_at"}` **จากค่า `RETURNING` จริงของ INSERT**
+    — ไม่ใช่ `datetime.now()` ที่ router ประกอบเอง (ค่าที่ประทับตราคือ `CURRENT_TIMESTAMP`
+    ของ DB ⇒ สองค่านี้อาจต่างกันได้ และ client จะเห็นเวลาที่ไม่ตรงกับที่ list แสดง)
+    """
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                INSERT INTO piri_boards
+                    (source_issue_id, board_type, title, description, cover_image_url,
+                     author_id, is_anonymous, approved_by, approved_at,
+                     status, allow_comments, tags)
+                VALUES (NULL, $1, $2, $3, NULL, $4, $5, NULL, NULL, 'active', TRUE, '[]'::jsonb)
+                RETURNING id, title, created_at
+                """,
+                BOARD_TYPE_SUGGESTION, title, description, user_id, is_anonymous
+            )
+            board_id = row["id"]
+
+            # 🛡️ Audit log (ภายใน transaction เดียว — ตามกฎ backend.md)
+            # ⚠️ ต่างจาก A2/C2 ที่ **ไม่** audit (ค่าส่วนตัว) — อันนี้เป็น **state สาธารณะ**
+            #    ที่ทุกคนเห็น ⇒ ต้องมีร่องรอยว่าใครสร้างอะไร และใครซ่อน (hide_board audit อยู่แล้ว)
+            from core.logger import AuditLogger
+            await AuditLogger("board_service").log(
+                conn=conn, action="CREATE_SUGGESTION",
+                actor_identifier=str(user_id), client_source="web",
+                user_id=user_id,
+                entity_type="piri_board", entity_id=board_id,
+                old_values=None,
+                new_values={
+                    "board_type": BOARD_TYPE_SUGGESTION,
+                    "title": title,
+                    "is_anonymous": is_anonymous,
+                    "status": "active",
+                    "source_issue_id": None,
+                },
+            )
+            return {"id": board_id, "title": row["title"], "created_at": row["created_at"]}
+
+
+# ============================================================
+# 🗳️ 4) submit_vote — โหวต 1 เสียงต่อ board
 # ============================================================
 async def submit_vote(
     pool: asyncpg.Pool,
@@ -352,7 +453,7 @@ async def submit_vote(
             )
             if not board:
                 raise NotFoundError("ไม่พบ board นี้")
-            if board["board_type"] != "vote":
+            if board["board_type"] not in VOTABLE_BOARD_TYPES:
                 raise ValidationError("board นี้ไม่ใช่แบบโหวต")
 
             choice = await conn.fetchrow(
@@ -410,7 +511,7 @@ async def submit_vote(
 
 
 # ============================================================
-# 💬 4) add_comment — คอมเมนต์/รีพลาย (PIRI Talk)
+# 💬 5) add_comment — คอมเมนต์/รีพลาย (PIRI Talk + ข้อเสนอแนะ)
 # ============================================================
 async def add_comment(
     pool: asyncpg.Pool,
@@ -424,10 +525,14 @@ async def add_comment(
 ) -> int:
     """
     คอมเมนต์/รีพลายใน board:
-    - เฉพาะ talk board + allow_comments=True (vote board → 400, ปิดคอมเมนต์ → 403)
+    - เฉพาะ talk/suggestion board + allow_comments=True (vote board → 400, ปิดคอมเมนต์ → 403)
     - parent_id: reply ต่อคอมเมนต์ (ต้องเป็นคอมเมนต์ที่ยัง active ใน board เดียวกัน)
     - INCREMENT comment_count ใน piri_boards
     - AuditLogger(action="ADD_COMMENT")
+
+    ⚠️ **whitelist ชนิด ไม่ใช่ blacklist** — ทางเขียนต้อง fail-closed (ต่างจาก `get_board_detail`
+    ที่ใช้ `else` เปิดกว้างโดยเจตนา): ชนิดใหม่ที่ยังไม่มีใครตรวจว่าควรคอมเมนต์ได้ไหม
+    **ต้องถูกปฏิเสธ** ไม่ใช่ถูกเขียนข้อมูลลงไปก่อนแล้วค่อยรู้ตัว
     """
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -437,8 +542,8 @@ async def add_comment(
             )
             if not board:
                 raise NotFoundError("ไม่พบ board นี้")
-            if board["board_type"] != "talk":
-                raise ValidationError("คอมเมนต์ได้เฉพาะ board แบบ PIRI Talk")
+            if board["board_type"] not in COMMENTABLE_BOARD_TYPES:
+                raise ValidationError("คอมเมนต์ได้เฉพาะ board แบบ PIRI Talk และข้อเสนอแนะ")
             if not board["allow_comments"]:
                 raise ForbiddenError("board นี้ปิดคอมเมนต์แล้ว")
 

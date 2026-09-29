@@ -203,6 +203,7 @@ async def init_db(pool: asyncpg.Pool):
                 # piri_boards: โพสต์สาธารณะ
                 #   - source_issue_id → issues(id): ย้อนกลับไปเรื่องต้นทาง (issue ถูกลบ → ตัด link, board ยังอยู่)
                 #   - board_type: 'talk' (โพสต์+คอมเมนต์) / 'vote' (โหวต)
+                #                 / 'suggestion' (E1 — ผู้ใช้เสนอไอเดียเอง ไม่ผ่านด่านสภา)
                 #   - author_id: ผู้สร้างต้นเรื่อง (reporter ของ issue) — กันให้เห็นว่าใครเป็นเจ้าของเรื่อง
                 #   - status: 'active' / 'closed' (ปิดประเด็น) / 'hidden' (ซ่อนโดย admin)
                 #   - tags: JSONB array ของแท็ก (asyncpg คืนเป็น string → ต้อง json.loads ก่อนใช้)
@@ -210,7 +211,9 @@ async def init_db(pool: asyncpg.Pool):
                 CREATE TABLE IF NOT EXISTS piri_boards (
                     id SERIAL PRIMARY KEY,
                     source_issue_id INTEGER REFERENCES issues(id) ON DELETE SET NULL,
-                    board_type VARCHAR(10) NOT NULL DEFAULT 'talk',
+                    -- ⚠️ VARCHAR(20) ไม่ใช่ (10): 'suggestion' ยาว 10 พอดีเพดานเดิม ⇒ ไม่มีที่ว่างเลย
+                    --    (migration 022 ขยายให้ DB เดิม — ขยาย varchar = metadata-only ไม่ rewrite)
+                    board_type VARCHAR(20) NOT NULL DEFAULT 'talk',
                     title TEXT NOT NULL,
                     description TEXT NOT NULL,
                     cover_image_url TEXT,
@@ -230,7 +233,7 @@ async def init_db(pool: asyncpg.Pool):
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     deleted_at TIMESTAMP WITH TIME ZONE,
-                    CONSTRAINT chk_piri_boards_type CHECK (board_type IN ('talk', 'vote')),
+                    CONSTRAINT chk_piri_boards_type CHECK (board_type IN ('talk', 'vote', 'suggestion')),
                     CONSTRAINT chk_piri_boards_status CHECK (status IN ('active', 'closed', 'hidden'))
                 );
                 """)
@@ -597,7 +600,8 @@ async def init_db(pool: asyncpg.Pool):
                 #      (ตรวจว่า entity มีจริงและไม่ถูกลบก่อน insert — มีเทสต์ B3/B4 คุมอยู่)
                 # ⚠️ **ไม่มี CHECK บน entity_type โดยเจตนา** — ชุดนี้จะโต (D1 จะเพิ่ม 'event')
                 #    ⇒ validate ที่ชั้น Pydantic (`Literal`) ซึ่งตอบ 422 ให้เองโดยไม่ต้อง migrate
-                #      (ต่างจาก piri_boards.board_type ที่ CHECK ไว้ก่อนแล้ว ⇒ E1 ต้อง DROP CONSTRAINT)
+                #      (ต่างจาก piri_boards.board_type ที่ CHECK ไว้ก่อนแล้ว ⇒ E1 ต้อง DROP CONSTRAINT
+                #       — ดู migration 022)
                 # ⚠️ **ไม่มี deleted_at** — เลิกบันทึกคือ DELETE จริง (ไม่ใช่ข้อมูลที่ต้องเก็บประวัติ)
                 #    ⇒ unique index จึงเป็นแบบธรรมดา ไม่ใช่ partial แบบ piri_votes
                 await conn.execute("""
@@ -643,6 +647,10 @@ async def init_db(pool: asyncpg.Pool):
                 CREATE INDEX IF NOT EXISTS idx_issue_status_history_issue ON issue_status_history(issue_id);
                 CREATE INDEX IF NOT EXISTS idx_issue_comments_issue ON issue_comments(issue_id);
                 -- PIRI Boards (Phase 1: ตารางสาธารณะ) — feed ตาม status/เวลา + ค้นหา board จาก issue ต้นทาง
+                -- 📌 E1 ('suggestion') **ไม่เพิ่ม index** โดยเจตนา: ตัวกรองทุกเส้นทางนำด้วย
+                --    `status = 'active'` เสมอ ⇒ `idx_piri_boards_status_created` ใช้ได้อยู่แล้ว
+                --    และ `board_type` มี cardinality แค่ 3 ⇒ index เดี่ยวไม่ได้ช่วยอะไร
+                --    (ถ้าวันหน้าจำนวนบอร์ดโตจนวัดแล้วช้าจริง ค่อยพิจารณา composite (status, board_type, created_at))
                 CREATE INDEX IF NOT EXISTS idx_piri_boards_status_created ON piri_boards(status, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_piri_boards_source_issue ON piri_boards(source_issue_id);
                 CREATE INDEX IF NOT EXISTS idx_piri_boards_author ON piri_boards(author_id);

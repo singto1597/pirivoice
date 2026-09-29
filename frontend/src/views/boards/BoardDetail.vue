@@ -3,7 +3,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import { getBoard, submitVote, addComment, hideBoard } from '@/services/board'
-import { BOARD_TYPE_LABELS, boardTypeIcon, type BoardDetail } from '@/types/board'
+import {
+  boardTypeIcon,
+  boardTypeHeading,
+  boardAuthorFallback,
+  type BoardDetail,
+} from '@/types/board'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import CommentThread from '@/components/boards/CommentThread.vue'
@@ -177,7 +182,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
     <div class="page-card p-5">
       <div class="flex items-center justify-between gap-3 mb-2">
         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 text-[11px] font-semibold">
-          <i :class="boardTypeIcon(board.board_type)"></i> บอร์ด{{ BOARD_TYPE_LABELS[board.board_type] }}
+          <i :class="boardTypeIcon(board.board_type)"></i> {{ boardTypeHeading(board.board_type) }}
         </span>
         <div class="flex items-center gap-2">
           <span class="text-xs text-stone-400">{{ fmtDate(board.created_at) }}</span>
@@ -197,7 +202,9 @@ const rootComments = computed(() => board.value?.comments ?? [])
         </div>
       </div>
       <h1 class="text-lg sm:text-xl font-bold text-stone-900 leading-snug break-words">{{ board.title }}</h1>
-      <p class="text-stone-500 text-sm mt-1">โดย {{ board.is_anonymous ? 'ไม่ระบุชื่อ' : board.author_name || 'สภานักเรียน' }}</p>
+      <p class="text-stone-500 text-sm mt-1">
+        โดย {{ board.is_anonymous ? 'ไม่ระบุชื่อ' : board.author_name || boardAuthorFallback(board.board_type) }}
+      </p>
       <p class="text-stone-700 mt-3 whitespace-pre-wrap break-words">{{ board.description }}</p>
       <div v-if="board.tags.length" class="flex flex-wrap gap-1.5 mt-3">
         <span v-for="tag in board.tags" :key="tag" class="px-2 py-0.5 bg-stone-100 text-stone-600 text-[11px] rounded-full">#{{ tag }}</span>
