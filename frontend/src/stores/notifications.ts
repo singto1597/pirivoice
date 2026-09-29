@@ -1,17 +1,34 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { getUnreadCounts, markRead } from '@/services/notification';
-import type { MarkReadPayload } from '@/types/notification';
+import { openNotificationStream } from '@/services/notificationStream';
+import type { StreamState } from '@/services/notificationStream';
+import type { MarkReadPayload, UnreadCounts } from '@/types/notification';
 
-// 🔔 Unread badge state — poll ทุก 30 วิ (pattern เดียวกับ ImportStudents.vue)
-//   MainLayout เรียก startPolling() → badge บนเมนู + กระดิ่งอัปเดตเอง
+// 🔔 Unread badge state — มี 2 กลไกที่ทำงานคู่กัน (ไม่ใช่แทนกัน)
+//
+//   1. **stream (SSE)** — อัปเดตทันที (~1 วิ) ตอนเปิดแอพอยู่  ← `startStream()`
+//   2. **poll ทุก 30 วิ** — ตาข่ายชั้นสอง                        ← `startPolling()`
+//
+//   ⭐ **ห้ามลบ poll ทิ้งแม้ stream จะทำงานได้** — stream เป็น "ทำให้เร็วขึ้น"
+//      ไม่ใช่ "แหล่งความถูกต้อง" · ถ้า LISTEN ฝั่งเซิร์ฟเวอร์ตาย / proxy ตัด
+//      connection / เบราว์เซอร์ระงับแท็บเบื้องหลัง ⇒ poll คือสิ่งที่ทำให้ badge
+//      ยัง *ถูกต้อง* (ช้าได้ แต่ไม่ค้าง) · ถ้าลบ poll แล้ว stream มีปัญหาเงียบ ๆ
+//      badge จะค้างถาวรโดยไม่มีใครรู้ — ซึ่งเป็นอาการเดิมที่ผู้ใช้บ่นเป๊ะ ๆ
 
 const POLL_INTERVAL_MS = 30_000;
 const POLL_FAIL_LIMIT = 3;
 
+// ⏱️ รวมสัญญาณที่ซ้อนกันให้เหลือการถามยอดครั้งเดียว
+//   (fanout ครั้งเดียวอาจได้หลาย poke ถ้าผู้ใช้มีหลายแท็บ · และ `mark_read(all)`
+//    ก็อาจตามมาด้วย poke อีก ⇒ ไม่ต้องถามซ้ำ ๆ ในเสี้ยววินาที)
+const POKE_DEBOUNCE_MS = 300;
+
 export const useNotificationsStore = defineStore('notifications', () => {
   const counts = ref<Record<string, number>>({});
   const total = ref(0);
+  // 📡 สถานะสตรีม — ใช้เพื่อวินิจฉัย ("ทำไม badge ไม่ขยับ") ไม่มีตรรกะตัดสินใจจากค่านี้
+  const streamState = ref<StreamState>('stopped');
 
   // ⚠️ **ปล่อย error ออกไปโดยเจตนา — ห้ามกลืนในนี้**
   //    `startPolling()` นับ `failStreak` จาก catch ของ call นี้ ⇒ ถ้ากลืนซะเอง
@@ -75,5 +92,57 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
-  return { counts, total, fetchCounts, read, startPolling, stopPolling };
+  // ---- stream (SSE) ----
+
+  /** ใช้ยอดที่ server ส่งมาตรง ๆ — ไม่ต้องยิงถามซ้ำ (payload คือ `{counts,total}` เป๊ะ) */
+  function applySnapshot(snapshot: UnreadCounts) {
+    counts.value = snapshot.counts;
+    total.value = snapshot.total;
+  }
+
+  let pokeTimer: number | null = null;
+
+  // รวม poke ที่ซ้อนกัน: ตัวแรกตั้งเวลา ตัวถัดมาที่ตกในช่วงเดียวกันถูกกลืนไปเลย
+  // (ไม่ใช่ debounce แบบเลื่อนเวลา — poke แรกต้องไม่ถูกเลื่อนออกไปเรื่อย ๆ)
+  function onPoke() {
+    if (pokeTimer !== null) return;
+    pokeTimer = window.setTimeout(() => {
+      pokeTimer = null;
+      // กลืน error: ถ้าถามไม่ได้ เดี๋ยว poll รอบถัดไปเก็บให้ (ไม่ควรทำให้ stream ตาย)
+      void fetchCounts().catch(() => {});
+    }, POKE_DEBOUNCE_MS);
+  }
+
+  // ตัวปิดสตรีม (คืนจาก openNotificationStream) — null = ยังไม่เปิด
+  let closeStream: (() => void) | null = null;
+
+  function startStream() {
+    if (closeStream) return; // idempotent — เรียกซ้ำได้ (MainLayout อาจ mount หลายรอบ)
+    closeStream = openNotificationStream({
+      onSnapshot: applySnapshot,
+      onPoke,
+      onStateChange: (s) => {
+        streamState.value = s;
+      },
+    });
+  }
+
+  function stopStream() {
+    if (closeStream) {
+      closeStream();
+      closeStream = null;
+    }
+    streamState.value = 'stopped';
+    if (pokeTimer !== null) {
+      window.clearTimeout(pokeTimer);
+      pokeTimer = null;
+    }
+  }
+
+  return {
+    counts, total, streamState,
+    fetchCounts, read,
+    startPolling, stopPolling,
+    startStream, stopStream,
+  };
 });

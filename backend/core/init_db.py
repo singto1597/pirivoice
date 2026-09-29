@@ -389,6 +389,16 @@ async def init_db(pool: asyncpg.Pool):
                 #   - actor_name: snapshot ชื่อผู้ก่อเหตุ (เรื่อง anonymous → 'ไม่ระบุชื่อ')
                 #   - read_at: NULL = ยังไม่อ่าน → badge = COUNT(*) WHERE read_at IS NULL GROUP BY group_type
                 #   - ทุก insert อยู่ใน transaction เดียวกับข้อมูลหลัก (ลอกแบบ AuditLogger — ตามกฎ backend.md)
+                #
+                # ⚠️ **ตารางนี้มี trigger สองตัว และไม่มีตัวไหนถูก mirror ที่นี่เลย** (เจตนา):
+                #   1. `trg_notifications_push_outbox` → `push_outbox_enqueue()` (Web Push)
+                #      อยู่ที่ `migrations/018_push_notifications.py`
+                #   2. `trg_notifications_stream` → `notifications_stream_notify()` (SSE badge)
+                #      อยู่ที่ `migrations/020_notifications_pg_notify.py`
+                #   เหตุผลเดียวกันทั้งคู่: `CREATE OR REPLACE FUNCTION` ที่ copy ไว้สองที่
+                #   (ที่นี่ + migration) จะ drift กันได้ง่าย ⇒ **"ตาราง" อยู่ที่นี่ "พฤติกรรม" อยู่ที่ migration**
+                #   · สอง trigger อยู่บนตารางเดียวกันได้ ไม่ชนกัน (Postgres ยิงเรียงตามชื่อ) และ
+                #     จงใจใช้คนละฟังก์ชัน ไม่ไป `CREATE OR REPLACE` ทับกัน
                 await conn.execute("""
                 CREATE TABLE IF NOT EXISTS notifications (
                     id SERIAL PRIMARY KEY,

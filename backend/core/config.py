@@ -100,6 +100,25 @@ class Settings(BaseSettings):
     #    · ลดเป็น `normal` ได้ถ้าโรงเรียนบ่นว่าเปลืองแบต (ยอมแลกกับความหน่วง)
     PUSH_URGENCY: str = "high"
 
+    # ============================================================
+    # 📡 Notification stream (SSE) — migration 020
+    # ------------------------------------------------------------
+    # คนละเรื่องกับ PUSH_* ทั้งหมด: PUSH_* = "ปิดแอพอยู่ก็ยังเด้ง" (ผ่าน FCM/APNs)
+    # ส่วนนี้ = "เปิดแอพอยู่ badge ต้องขยับทันที" (ผ่าน Postgres LISTEN/NOTIFY)
+    # ============================================================
+    # ชื่อ channel ของ Postgres NOTIFY — ต้องตรงกับที่ trigger ใน migration 020 ยิง
+    # ⚠️ เปลี่ยนค่านี้ **ต้องแก้ทั้งสองที่** (ที่นี่ + ไฟล์ migration) ไม่งั้นเงียบทั้งระบบ
+    #    โดยไม่มี error: LISTEN ค้างอยู่บน channel ที่ไม่มีใครส่งมา
+    NOTIFY_CHANNEL: str = "piri_notifications"
+    # ⏱️ ส่ง comment `: ping` ทุกกี่วินาที
+    #    **จำเป็น ไม่ใช่ของประดับ** — proxy (Traefik/Cloudflare) ตัด connection ที่เงียบ
+    #    ทิ้งได้ตามใจ และ Cloudflare มีเพดานเวลารอ origin ด้วย ⇒ 20 วิ เผื่อไว้พอสมควร
+    #    (สั้นเกินไป = เปลือง · ยาวเกินไป = ถูกตัดโดยที่ client ไม่รู้ตัว)
+    STREAM_HEARTBEAT_SECONDS: float = 20.0
+    # จำนวนผู้ใช้ที่เปิด stream พร้อมกันได้ต่อ 1 โปรเซส (กัน memory/queue บวม)
+    # ⚠️ นี่คือเพดาน "ต่อ replica" และ backend รัน 3 replica ⇒ เพดานจริง = 3 เท่า
+    STREAM_MAX_SUBSCRIBERS: int = 2000
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1271,4 +1271,99 @@
   ```
   - ⚠️ **`high` ไม่ได้แปลว่า bypass Doze** — Android ยังคุมด้วยช่องทาง FCM ของตัวเอง · `high` แค่บอกว่าอย่ารวมมันเข้าคิวตอนตื่น ⇒ **ต้องบอกผู้ใช้ว่ามันช่วยได้มากแต่ไม่รับประกันว่า "ทันที"** (มีพื้นทางกายภาพของ FCM/APNs)
   - **หลักทั่วไป:** มาตรฐาน HTTP สำหรับ push มีช่องให้ผู้ส่ง *จัดชั้นความสำคัญ* — ถ้าไม่ใส่ ระบบจะเดา (และเดาผิดในทางที่ผู้ใช้เจ็บ)
+
+### 📡 `TestClient` ทดสอบ SSE ที่เป็น stream ไม่มีวันจบ **ไม่ได้** — และอาการคือ *ค้าง* ไม่ใช่ *ช้า*
+- **Context/Problem:** เขียนเทสต์ `GET /api/notifications/stream` (SSE ที่วน `queue.get()` ตลอดไป) ด้วย `client.stream(...)` ตามธรรมเนียมของโปรเจค ⇒ **ค้างไม่จบ** ไม่มี error ไม่มี timeout ของ pytest · อาการเตือนสัญชาตญาณไปทาง "ช้า/ต้องรอนาน" ทั้งที่ความจริงคือ **deadlock**
+- **Root Cause:** `starlette/testclient.py` ทำงานแบบนี้
+  ```python
+  response_complete = portal.call(anyio.Event)
+  portal.call(self.app, scope, receive, send)   # ← บล็อกจนกว่า ASGI app จะ "return"
+  ```
+  body ถูกสะสมใน `io.BytesIO` แล้วปล่อยออก **หลัง** `more_body=False` เท่านั้น ⇒ generator ที่วนไม่จบ = ไม่มีวัน return = `__enter__` ไม่มีวันคืนค่า · **httpx `ASGITransport` มีกับดักเดียวกันเป๊ะ** (`body_parts.append(body)` แล้ว `await self.app(...)`) ⇒ client มาตรฐาน **ทั้งสองตัว** ใช้กับ SSE ไม่ได้
+  · **วิธีแยก "ค้าง" จาก "ช้า":** ดู `wchan` ของทุก thread ใน `/proc/<pid>/task/*/wchan` — ถ้าเป็น `futex_wait_queue` ทั้งหมด **และ** `cpu_ticks` ไม่ขยับเลยในช่วงหลายวินาที = ค้าง (ช้าจริง cpu ต้องขยับบ้าง)
+- **Correct Pattern/Solution:** **ขับ ASGI app ตรง ๆ** ด้วย scope/send/receive ที่เราสร้างเอง — รัน `app(...)` เป็น task แล้วอ่าน message จาก `asyncio.Queue` ทีละก้อน
+  · **จำลอง disconnect ด้วย `{"type": "http.disconnect"}`** — นี่คือ **เส้นทางจริงของ production** ผ่าน `listen_for_disconnect` ของ Starlette ⇒ task group ถูก cancel ⇒ `async for` ใน body iterator ถูก cancel ⇒ `finally` ของ async generator ทำงานแน่นอน (ใช้พิสูจน์ว่า `hub.unsubscribe()` ถูกเรียกจริงตอน client หาย)
+  · ต้องมี fixture ที่ยัด `db_pool` ของเทสต์เข้า `app.state.db_pool` (เท่ากับที่ lifespan ทำ) เพราะ `get_db_pool` คือ `return request.app.state.db_pool`
+  · เก็บเป็น `_SseSession` + context manager `open_stream()` ที่ `aclose()` แล้วรายงาน `closed_gracefully` ⇒ เทสต์ SSE อ่าน frame ได้แบบ deterministic ทีละ frame
+- **Date Added:** 2026-09-28
+
+### 📡 ASGI ส่ง `status` **ก่อน** `body` เสมอ — รู้ status แล้วไม่ได้แปลว่าอ่าน body ได้
+- **Context/Problem:** เทสต์ที่รอ 503 แล้ว `json.loads(s.body_text)` ล้มด้วย `JSONDecodeError: Expecting value: line 1 column 1 (char 0)` — ทั้งที่ status ถูกต้องและ body มีจริง
+- **Root Cause:** โปรโตคอล ASGI แยกสอง message: `http.response.start` (มี `status`) **แล้ว** `http.response.body` (มี payload) · ตัวรอของเทสต์หยุดทันทีที่ `status is not None` ⇒ อ่าน body ก่อนที่มันจะมาถึง ⇒ ได้สตริงว่าง
+  · อาการหลอกมากเพราะ **status ถูกต้อง** ⇒ ชวนไปหาที่ parser/ที่ router ทั้งที่ปัญหาอยู่ที่ "อ่านเร็วเกินไป 1 message"
+- **Correct Pattern/Solution:** ต้องมีธงแยก **`body_complete`** ตั้งจาก `not message.get("more_body", False)` แล้วมีเมธอด `read_body(timeout)` ที่รอธงนั้น — **ห้ามใช้ `status is not None` เป็นเงื่อนไข "พร้อมอ่าน"**
+  ```python
+  if message["type"] == "http.response.start":
+      self.status = message["status"]; return
+  chunk = message.get("body", b"")
+  if not message.get("more_body", False):
+      self.body_complete = True     # ← เงื่อนไขที่ถูก
+  ```
+- **Date Added:** 2026-09-28
+
+### 🧪 mutation ที่ "ไม่ระเบิด" อาจเป็นเพราะมัน**ไม่ทำงานเลย** ไม่ใช่เพราะเทสต์ไม่มีฟัน
+- **Context/Problem:** พิสูจน์ว่าเทสต์หัวใจ (`test_D2_rolled_back_transaction_emits_nothing`) มีฟันจริงด้วยการใส่ mutant ให้ publish ก่อน commit ⇒ **เทสต์ยังผ่าน** ⇒ เกือบสรุปว่า "เทสต์นี้ไร้ฟัน ต้องเขียนใหม่" · ที่จริง **mutant เองต่างหากที่ไม่ได้ทำงาน**
+- **Root Cause:** mutant เปิด connection แยกด้วย `settings.DATABASE_URL` — แต่ `conftest.test_db_url` **คืนค่า `DATABASE_URL` เดิมก่อน `yield`**:
+  ```python
+  settings.DATABASE_URL = new_db_url      # สลับแค่ตอนรัน init_db
+  ...
+  finally:
+      settings.DATABASE_URL = original_db_url   # ← คืนค่า "ก่อน" yield
+  yield new_db_url
+  ```
+  ⇒ **ในตัวเทสต์ `settings.DATABASE_URL` ชี้ฐานข้อมูลเดิม (`test_piri_db`) ไม่ใช่ `test_db_<hex>` ที่ `db_pool` และ listener ใช้** · และ **Postgres NOTIFY แยกตามฐานข้อมูล** ⇒ สัญญาณของ mutant ไปลงที่ที่ไม่มีใครฟัง ⇒ เทสต์ผ่านอย่างถูกต้อง
+  · หลักฐานที่ชี้ขาด: listener ได้ `['{"user_id" : 1}']` **ตัวเดียว** และมี **ช่องว่างหน้า `:`** (ฝีมือ `json_build_object` ของ trigger) ไม่ใช่ `{"user_id": 1}` ของ mutant
+- **Correct Pattern/Solution:** ก่อนตีความผล mutation **ต้องพิสูจน์ว่า mutant ทำงานจริง** — ไม่ใช่แค่ "แทรกโค้ดติด":
+  · ดึง DSN จาก connection ของ caller เอง อย่าใช้ `settings`: `st = conn.get_settings()` แล้วประกอบ `postgresql://{st.user}:{st.password}@{st.host}:{st.port}/{st.database}` (ทำงานได้ทั้ง mutant และเทสต์ที่ต้องเปิด connection ที่สอง — **เป็นข้อเท็จจริงที่ต้องรู้ก่อนเขียนเทสต์ใด ๆ ที่แตะ connection นอก `db_pool`**)
+  · ตีความ **"mutant ผ่าน" ให้เป็นข้อสงสัยต่อ mutant ก่อนเสมอ** แล้วหาหลักฐานเชิงประจักษ์ (print ค่าที่ listener ได้จริง) ก่อนจะไปแก้เทสต์
+  · **เทสต์เดียวกันนี้ พอ mutant ชี้ฐานข้อมูลถูกตัว → ล้มจริง** ⇒ ฟันมีอยู่ ของเสียคือ mutant
+- **Date Added:** 2026-09-28
+
+### ✅ `vitest` เขียวทั้งชุด **แต่ build พัง** — ด่านต้องมี `type-check` + `lint` ไม่ใช่แค่ test runner
+- **Context/Problem:** เทสต์ SSE ใหม่ผ่าน `vitest` **145/145** ⇒ เกือบ commit · แต่ `npm run type-check` ล้ม **4 error** และ `npm run lint` ล้ม **4 error** ⇒ และเพราะ `npm run build` = `type-check + vite build` ⇒ **build ของจริงพัง** (ขึ้น staging ไม่ได้)
+- **Root Cause:** **`vitest` ไม่ได้ type-check** — มัน transform แล้วรันเลย (esbuild ตัด type ทิ้ง) ⇒ โค้ดที่ type ผิดแต่ runtime ถูก จะผ่าน `vitest` 100% · งานนี้มี 2 กับดักพร้อมกัน: (ก) payload ที่ขาด field ตาม type ที่ประกาศ (ข) `vi.fn()` ที่ไม่ระบุ type parameter
+- **Correct Pattern/Solution:** รัน **ครบทั้งสาม** ก่อน commit เสมอ — `npm run type-check && npm run lint && npm run test:unit` (คำสั่งใน §9 ของแผนเขียนไว้ถูกอยู่แล้ว; ที่พลาดคือรันไม่ครบ)
+  · ⚠️ **`vi.fn()` เปล่า ๆ คือรูรั่วชนิดเดียวกับ `any`** — mock ที่ไม่ระบุ type จะรับ `mockResolvedValue(...)` อะไรก็ได้ ⇒ ใส่ type จริง (`vi.fn<() => Promise<UnreadCounts>>()`) แล้ว "การโกหก" จะกลายเป็น compile error ทันที · และ **`vi.hoisted` อ้างได้แค่ type** (ถูก erase ตอน compile จึงไม่ชน hoisting)
+- **Date Added:** 2026-09-28
+
+### 🔒 อย่า **ผ่อน type** ให้เทสต์คอมไพล์ผ่าน — จงแก้ข้อมูลในเทสต์
+- **Context/Problem:** `const counts: UnreadCounts = { counts: { board: 2 }, total: 2 }` ไม่ผ่าน type เพราะ `UnreadCounts.counts` เป็น `Record<NotificationGroup, number>` **เต็มรูป** (ต้องมี 4 กลุ่ม) · ทางที่เร็วที่สุดคือเปลี่ยน type เป็น `Partial<Record<...>>`
+- **Root Cause:** type เต็มรูปนั้น **เป็นความจริงของสัญญาณ (contract) ไม่ใช่ความเข้มงวดเกินเหตุ** — `notification_service.get_unread_counts` **zero-fill ทุกกลุ่มเสมอ** (`counts.setdefault(g, 0)` วนทุก `GROUP_TYPES`) ⇒ payload ที่ขาดกลุ่มคือสิ่งที่ server **ไม่มีวันส่ง** · ถ้าผ่อน type บั๊กจริงอย่าง *"อ่าน `counts.board` ทั้งที่ server ไม่ได้ส่ง `board` มา"* จะหลุดผ่านเทสต์ไป production ⇒ **การผ่อน type เพื่อให้เทสต์ผ่าน = ปิดด่านที่เพิ่งสร้าง**
+- **Correct Pattern/Solution:** เทสต์ต้องสร้าง payload ให้ **ครบเหมือนของจริง** — เขียน helper ที่ zero-fill:
+  ```ts
+  function countsOf(over: Partial<Record<NotificationGroup, number>> = {}): UnreadCounts {
+    const counts: Record<NotificationGroup, number> = {
+      issue_mine: 0, issue_received: 0, board: 0, report: 0, ...over,
+    }
+    return { counts, total: Object.values(counts).reduce((a, b) => a + b, 0) }
+  }
+  ```
+  · **เขียนชื่อกลุ่มตรง ๆ ที่นี่ได้** (ต่างจากโค้ด production ที่ `types/notification.ts` ห้ามประกาศซ้ำ) เพราะ TypeScript **บังคับ** ให้ตรง: เพิ่มกลุ่มใหม่ใน `NotificationGroup` แล้วบรรทัดนี้ compile ไม่ผ่านทันที ⇒ drift เกิดไม่ได้
+  · และ assert **ทั้งก้อน** (`toEqual(snapshot.counts)`) ไม่ใช่แค่กลุ่มที่มีค่า — ยืนยันด้วยว่ากลุ่มที่เป็น 0 ไม่ถูกตัดทิ้ง (ถ้าถูกตัด ตัวเลขบนเมนูจะหายไปเฉย ๆ)
+  · หลักทั่วไป: **type ที่ "ดูกวนใจ" ในเทสต์มักกำลังบอกความจริงอยู่ — ฟังมัน**
+- **Date Added:** 2026-09-28
+
+### 🚨 บั๊กที่อยู่ใน **สาขา error** เท่านั้น จะรอดจากเทสต์ happy-path ทั้งชุด — ต้องมีเทสต์ที่ **เดินเข้าไปในสาขานั้น**
+- **Context/Problem:** `NotificationHub._supervise()` เรียก `await self._sleep_or_stop(lost, delay)` (2 arg) แต่เมธอดถูกเขียนเป็น `async def _sleep_or_stop(self, seconds: float)` (1 arg) ⇒ **`TypeError` ทุกครั้งที่ต่อ LISTEN ไม่สำเร็จ** ⇒ supervisor ตายตั้งแต่ reconnect รอบแรก ⇒ `badge` กลับไปเป็น poll 30 วิ **ตลอดกาลโดยที่ทุกอย่างดูปกติ** — ซึ่งคือความล้มเหลวแบบเงียบชนิดเดียวกับที่โมดูลนี้ถูกสร้างขึ้นมาป้องกันเป๊ะ ๆ
+- **Root Cause:** **ไม่มีเทสต์ตัวใดเคยพาโค้ดเข้าไปในสาขา `except` ของ `_open_conn()` เลย** — เทสต์ H1–H8 และ D*/E* ทั้งหมดใช้ DSN ที่ต่อติด (หรือ inject connection ที่สำเร็จ) ⇒ บรรทัดนั้นไม่เคยถูก execute ⇒ 494 เทสต์ผ่านหมดทั้งที่โค้ดมี `TypeError` รออยู่ · และ **`stop()` ทำ `await self._supervisor`** ⇒ ขยะของ task ที่ตายแล้วจะ re-raise ออกมาทำให้ **shutdown ของ lifespan ล้ม** ด้วย (อาการที่สองที่ห่างจากสาเหตุโดยสิ้นเชิง)
+- **Correct Pattern/Solution:** เขียนเทสต์ที่ **บังคับให้สาขา error ทำงานจริง** — `test_H9_start_never_raises_on_bad_dsn` ใช้ DSN ที่ชี้ไปพอร์ตปิด (`127.0.0.1:1`) แล้ว `await asyncio.sleep(0.5)` ⇒ mutation คือ "โค้ดเดิม" และมัน **FAILED → ผ่านหลังแก้** (พิสูจน์แล้ว ไม่ใช่การคาดเดา)
+  · **สัญญาณเตือนที่ควรสังเกต:** ถ้าเทสต์ทุกตัวของโมดูลหนึ่งต้อง "เตรียมของให้สำเร็จ" ก่อนเสมอ ⇒ สาขาล้มเหลวของโมดูลนั้น **ยังไม่ถูกทดสอบเลย** ให้เพิ่มเทสต์ที่จงใจทำให้ล้ม
+  · **วิธีแก้ signature:** รับ `lost: asyncio.Event` เป็น **argument** ไม่ใช่ไปอ่าน `self._conn_lost` ซ้ำเอง — ตามเหตุผลที่ `_supervise()` เขียนกำกับไว้เองว่า *"ต้องใช้ `lost` ให้ครบทุกจุด"* เพราะตัวแปรที่ `assert` ผ่านมาแล้วเท่านั้นที่ type checker รับประกันให้ (อ่าน attribute ซ้ำ = narrowing หายทั้งที่ยังต้องใช้)
+- **Date Added:** 2026-09-28
+
+### 🛡️ "การ์ดที่เฝ้าความล้มเหลวแบบเงียบ" **ต้องไม่ตายเงียบเอง** — ใส่ done-callback ให้ task ที่เฝ้า
+- **Context/Problem:** supervisor ของ notification stream เป็น task เดียวที่ทั้งโมดูลพึ่งพา · ถ้ามันตายด้วย exception ที่ไม่คาดคิด (แบบข้อข้างบน) จะไม่มีร่องรอยอะไรเลย — ไม่มี error, ไม่มี log, badge แค่กลับไปช้า 30 วิ ⇒ ผู้ใช้รู้สึกว่า *"ต้องรีเฟรช"* อีกครั้ง และคนดูแลระบบไม่มีทางรู้ว่ามีอะไรพัง
+- **Root Cause:** task ที่ไม่ได้ถูก `await` จะ **กลืน exception ไว้เงียบ ๆ** (asyncio เก็บไว้ที่ `task.exception()` และ GC ทิ้ง · ได้แค่ warning "Task exception was never retrieved" ที่มักโผล่ตอนปิดโปรเซส ซึ่งสายเกินไป) ⇒ `create_task()` เปล่า ๆ **ไม่ใช่** การเฝ้าที่ปลอดภัย
+- **Correct Pattern/Solution:** `self._supervisor.add_done_callback(self._on_supervisor_done)` โดย callback แยก **"ตายตามคำสั่ง"** ออกจาก **"ตายเอง"**:
+  ```python
+  @staticmethod
+  def _on_supervisor_done(task: "asyncio.Task[None]") -> None:
+      if task.cancelled():
+          return                      # ทางปกติตอน shutdown — ไม่ต้องรายงาน
+      exc = task.exception()
+      if exc is not None:
+          logger.error("… supervisor ตายกลางทาง — badge จะกลับไปเป็น 30 วิ …", exc_info=exc)
+  ```
+  · `logger.error` ไม่ใช่ `warning` — ระหว่างที่ supervisor ตาย badge จะ **ไม่** ทันที ⇒ "ต้องรู้" ไม่ใช่ "ต้องสงสัย"
+  · และ `stop()` ต้องทน supervisor ที่ตายไปก่อนแล้ว: `except asyncio.CancelledError: pass` **แล้วต่อด้วย** `except Exception: logger.debug(...)` ⇒ อย่าให้ขยะของ task ที่ตายไปแล้วไปทำให้ **shutdown ของ lifespan ล้ม** (หลักเดียวกับ `_close_conn()`: ปิดไม่สำเร็จก็ช่างมัน)
 - **Date Added:** 2026-09-28
