@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { REDIRECT_QUERY } from '@/router/redirect'
 import { useAuthStore } from '@/stores/auth'
 import MainLayout from '@/layouts/MainLayout.vue'
 
@@ -192,7 +193,11 @@ router.beforeEach(async (to) => {
   const isAuthenticated = authStore.isAuthenticated
 
   if (to.meta.requiresAuth && !isAuthenticated) {
-    return { name: 'login' }
+    // 🔗 จำปลายทางไว้ — deep link จาก push (A4) ที่เปิดตอนยังไม่ล็อกอิน/token หมดอายุ
+    //    จะได้กลับไปถึงของจริงหลังล็อกอิน ไม่ต้องให้ผู้ใช้ไปกด notification ซ้ำเอง
+    //    ⚠️ ฝั่ง **หน้า Login ต้องกรองค่านี้ก่อนใช้** (`safeRedirect`) เพราะมันมาจาก URL
+    //       ⇒ guard แค่ส่งต่อ ไม่ได้แปลว่าปลอดภัย (ดู `router/redirect.ts`)
+    return { name: 'login', query: { [REDIRECT_QUERY]: to.fullPath } }
   }
 
   // โหลด user ให้ชัวร์ก่อนตัดสินใจ redirect/สิทธิ์ — ไม่งั้น getHomeRoute()

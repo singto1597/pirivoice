@@ -1,12 +1,14 @@
 <!-- eslint-disable vue/multi-word-component-names -- ชื่อ Login ตาม spec (หน้าล็อกอิน) -->
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import { useAuthStore } from '@/stores/auth';
+import { REDIRECT_QUERY, safeRedirect } from '@/router/redirect';
 
 const authStore = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
 const username = ref('');
 const password = ref('');
@@ -30,6 +32,8 @@ async function handleLogin() {
     await authStore.login(username.value.trim(), password.value);
 
     if (authStore.mustChangePassword) {
+      // ⚠️ เส้นนี้ **ทิ้งปลายทางที่ตั้งใจไว้** โดยเจตนา — บัญชี seed ต้องเปลี่ยนรหัสผ่าน
+      //    ก่อนใช้ระบบอะไรทั้งนั้น ⇒ พาไปหน้าที่ตั้งใจก่อนไม่ได้ (โดน guard เด้งกลับอยู่ดี)
       Swal.fire({
         icon: 'info',
         title: 'ตั้งรหัสผ่านใหม่',
@@ -42,7 +46,14 @@ async function handleLogin() {
     }
 
     Swal.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ!', text: 'ยินดีต้อนรับสู่ PIRIvoice', timer: 1200, showConfirmButton: false });
-    router.push({ name: homeRouteName() });
+
+    // 🔗 กลับไปที่ที่ผู้ใช้ตั้งใจจะไป (deep link จาก push — A4) ถ้ามีและ **ผ่านด่าน**
+    //    ⚠️ `safeRedirect()` คือด่านกัน open redirect — ห้ามเอา `route.query.redirect`
+    //       ไป `push()` ตรง ๆ (เหตุผลเต็มอยู่ใน `router/redirect.ts`)
+    //    ⚠️ ใช้ `replace` ไม่ใช่ `push` — ไม่งั้นกด "ย้อนกลับ" จะเจอหน้า login อีกครั้ง
+    //       ทั้งที่เพิ่งล็อกอินสำเร็จ (วนกลับมาที่เดิมที่ผู้ใช้เพิ่งผ่านไปแล้ว)
+    const target = safeRedirect(route.query[REDIRECT_QUERY]);
+    router.replace(target ?? { name: homeRouteName() });
   } catch (e) {
     const msg =
       typeof e === 'string'

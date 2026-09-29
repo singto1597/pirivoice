@@ -45,10 +45,17 @@ from core.config import settings
 
 logger = logging.getLogger("PUSH")
 
-# ปลายทางเริ่มต้นของ notification — A4 (deep link) จะมาเปลี่ยนให้ตรงเรื่อง/บอร์ด
+# ปลายทางเริ่มต้นของ notification — ใช้เมื่อคำนวณ deep link ไม่ได้
 # ⚠️ ต้องเป็น `/app/notifications` **ไม่ใช่** `/notifications` — router ของ frontend
 #    มี redirect แบบ string ที่ทำ query หลุด (ดูกับดักในแผน §20.8)
 DEFAULT_PUSH_URL = "/app/notifications"
+
+# ── A4 (deep link) — ปลายทางจริงของแต่ละ notification ─────────────────────────
+# ⚠️ **ต้องตรงกับ `NotificationCenter.go()`** (`frontend/src/views/notifications/NotificationCenter.vue`)
+#    ไม่งั้นผู้ใช้จะเจอสองพฤติกรรม: กดในแอปไปที่หนึ่ง กดจาก push ไปอีกที่หนึ่ง
+#    ซึ่งเป็นความไม่สม่ำเสมอที่หาสาเหตุยาก เพราะทั้งสองทาง "ดูเหมือนถูก" แยกกัน
+#    ⇒ เทสต์ `test_T16d_*` ตรึงลำดับการตัดสินไว้ — **อย่าสลับลำดับ**
+BOARD_REPORTS_URL = "/app/boards/reports"
 
 # เวลารอสูงสุดต่อ 1 คำขอ — FCM/APNs ปกติตอบใน <1 วิ, 10 วิคือ "ปลายทางตายแล้ว"
 _SEND_TIMEOUT_SECONDS = 10.0
@@ -144,6 +151,61 @@ def _decode_key(s: str) -> bytes:
 # 🧱 Payload builder — pure function (เทสง่าย ไม่ต้องมี DB/network)
 # ============================================================
 
+def _field(row: Any, key: str) -> Any:
+    """อ่านคีย์จาก row ที่อาจเป็น `asyncpg.Record` **หรือ** `dict` — คืน `None` ถ้าไม่มี
+
+    ⚠️ จำเป็นจริง ไม่ใช่ความระแวง: เทสต์หลายตัวส่ง `dict` เปล่า ๆ ที่ไม่มีคีย์ครบ
+       (เช่น `test_T16b` ส่ง row ที่ไม่มี `group_type`) และ row จาก SQL จริงก็เพิ่ม/ลด
+       คอลัมน์ได้โดยไม่ต้องแก้ทุก call site ⇒ ถ้าใช้ `row[key]` ตรง ๆ จะได้ `KeyError`
+       ที่โผล่เป็น "push ตายทั้งระบบ" ไม่ใช่ "เทสต์พังหนึ่งตัว"
+    """
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None
+
+
+def _deep_link_url(row: Any) -> str:
+    """ปลายทางเมื่อผู้ใช้กด notification — **ฟังก์ชันบริสุทธิ์**
+
+    ลำดับการตัดสินลอกจาก `NotificationCenter.go()` ตรง ๆ (4 ขั้น) — **ลำดับมีความหมาย**:
+
+      1. กลุ่ม `report` + ชนิด `report_new` → **คิวรายงาน** (`/app/boards/reports`)
+         ★ ต้องมาก่อนข้อ 3 เพราะ notification นี้พก `board_id` มาด้วย — ถ้าตกไปข้อ 3
+         จะพาสภาฯ ไปที่ตัวบอร์ด แทนที่จะพาไป "คิวที่ต้องลงมือ" ซึ่งเป็นเหตุผลที่แจ้ง
+      2. กลุ่ม `report` ชนิดอื่น ที่มี `board_id` → **บอร์ดนั้น** (`report_actioned`
+         ส่งถึง *ผู้แจ้ง* ซึ่งอาจเป็นนักเรียน — ต้องไปดูบอร์ด ไม่ใช่คิวของสภา)
+      3. `entity_type == 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
+      4. มี `board_id` → **หน้าบอร์ด**
+
+    ไม่เข้าเงื่อนไขใด → `/app/notifications` (ปลอดภัยเสมอ: ไม่พาไปที่ที่ไม่มีอยู่)
+
+    ⚠️ **ห้ามใส่ `report_new` ไว้หลังข้อ 3** — ทั้งสองชนิดมี `board_id` เหมือนกัน
+       การสลับลำดับจะเปลี่ยนปลายทางของ `report_new` โดยที่เทสต์ที่ assert แค่
+       "มี url" จะไม่จับได้
+    """
+    group_type = _field(row, "group_type")
+    notif_type = _field(row, "type")
+    entity_type = _field(row, "entity_type")
+    entity_id = _field(row, "entity_id")
+    board_id = _field(row, "board_id")
+
+    if group_type == "report":
+        if notif_type == "report_new":
+            return BOARD_REPORTS_URL
+        if board_id is not None:
+            return f"/app/boards/{board_id}"
+        return DEFAULT_PUSH_URL
+
+    if entity_type == "issue" and entity_id is not None:
+        return f"/app/issues/{entity_id}"
+
+    if board_id is not None:
+        return f"/app/boards/{board_id}"
+
+    return DEFAULT_PUSH_URL
+
+
 def build_payload(row: Any) -> Dict[str, Any]:
     """สร้าง payload ของ notification 1 อัน — **ฟังก์ชันบริสุทธิ์**
 
@@ -155,14 +217,19 @@ def build_payload(row: Any) -> Dict[str, Any]:
       - `title`, `body` → เนื้อ notification
       - `tag`           → ให้ notification ใหม่ *แทนที่* อันเก่าของเรื่องเดียวกัน
                           (ไม่ให้มือถือขึ้นซ้ำ 5 อันเมื่อมีคนตอบรัว ๆ)
-      - `data.url`      → ปลายทางเมื่อคลิก
+      - `data.url`      → ปลายทางเมื่อคลิก — **คำนวณจาก `_deep_link_url()`** (A4)
+                          ไม่ใช่ค่าคงที่อีกต่อไป
+
+    คีย์อื่นใน `data` (`notification_id`/`type`/`entity_type`/`entity_id`/`board_id`)
+    ยังส่งต่อไปเหมือนเดิม — `sw.js` ไม่ได้ใช้ แต่มันคือสัญญาที่เปิดให้ฝั่ง client
+    ตัดสินใจเองได้ในอนาคต (เช่น เลือกยิง analytics หรือรวม notification)
     """
     return {
         "title": row["title"],
         "body": row["body"],
         "tag": f"piri-notif-{row['notification_id']}",
         "data": {
-            "url": DEFAULT_PUSH_URL,
+            "url": _deep_link_url(row),
             "notification_id": row["notification_id"],
             "type": row["type"],
             "entity_type": row["entity_type"],
@@ -385,6 +452,9 @@ async def _load_payloads(pool, outbox_ids: List[int]) -> List[Dict[str, Any]]:
                    o.notification_id,
                    o.user_id,
                    n.type, n.title, n.body,
+                   -- ⭐ A4: `group_type` ต้องมาก่อน `type` ในการตัดสิน deep link
+                   --    (report_new ต้องไปคิวรายงาน ไม่ใช่ไปบอร์ด) — ดู `_deep_link_url()`
+                   n.group_type,
                    n.entity_type, n.entity_id, n.board_id,
                    n.created_at    AS notification_created_at,
                    s.id            AS subscription_id,

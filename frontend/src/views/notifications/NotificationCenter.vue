@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import { listNotifications } from '@/services/notification'
 import { GROUP_TABS, NOTIFICATION_TYPE_ICONS, type NotificationItem, type NotificationGroup } from '@/types/notification'
+import {
+  UNAVAILABLE_QUERY,
+  UNAVAILABLE_TITLE,
+  readUnavailable,
+  unavailableMessage,
+} from '@/router/unavailable'
+import { deepLinkTarget } from '@/router/deepLink'
 import { useNotificationsStore } from '@/stores/notifications'
 import PaginationBar from '@/components/PaginationBar.vue'
 
@@ -13,7 +20,9 @@ import PaginationBar from '@/components/PaginationBar.vue'
  * - แถวยังไม่อ่านไฮไลต์แดงอ่อน + ปุ่ม mark-read รายการ
  * - "อ่านทั้งหมด" เคลียร์ทุกกลุ่ม
  * - คลิกแถว → ไปที่เรื่อง/บอร์ด/รายงานที่เกี่ยวข้อง (แล้ว mark อ่าน)
+ * - 🚪 ปลายทางของหน้าที่ถูกซ่อน/ลบ (บั๊ก #32) → เด้งกลับมาที่นี่พร้อม `?unavailable=`
  */
+const route = useRoute()
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
 
@@ -26,7 +35,38 @@ const unreadOnly = ref(false)
 const page = ref(1)
 const pageSize = 15
 
-onMounted(load)
+onMounted(async () => {
+  // 🚪 เช็คก่อนโหลด — ผู้ใช้ที่เพิ่งถูกเด้งกลับมาควรเห็น "ทำไม" ทันที ไม่ใช่หลังรายการโผล่
+  await announceUnavailable()
+  await load()
+})
+
+/**
+ * 🚪 บอกว่าทำไมเพิ่งถูกเด้งกลับมาจากหน้าที่เปิดไม่ได้ (บั๊ก #32)
+ *
+ * ทางที่ผู้ใช้มาถึงตรงนี้เกือบทั้งหมดคือ **กด notification** หรือ **กด push** ที่ชี้ไป
+ * บอร์ด/เรื่องซึ่งถูกซ่อนหรือถูกลบไปแล้ว ⇒ ถ้าเงียบ ๆ แค่โชว์รายการ เขาจะเข้าใจว่า
+ * "กดแล้วไม่มีอะไรเกิดขึ้น" หรือ "แอพพาไปผิดที่" ซึ่งแย่กว่าการบอกตรง ๆ
+ *
+ * ⚠️ **ล้าง query ทิ้งก่อนแสดง Swal** — ถ้าไม่ล้าง การกด refresh หรือปุ่มย้อนกลับ/
+ *    เดินหน้าของเบราว์เซอร์จะทำให้ Swal เด้งซ้ำทุกครั้ง (query ยังค้างใน URL)
+ *    แล้วอ่านเหมือนแอพมีบั๊ก · ล้างก่อน = พฤติกรรม "แสดงครั้งเดียว" ที่ถูกต้อง
+ *
+ * ⚠️ ใช้ `readUnavailable()` ที่ **กรองค่าที่รู้จัก** ไม่ใช่รับค่าจาก URL มาตรง ๆ —
+ *    query นี้ใครก็ใส่ได้ (`?unavailable=<มั่ว>`) ⇒ ค่าที่ไม่รู้จักต้องเงียบ ไม่ใช่
+ *    เอาไปแสดงเป็นข้อความ (ซึ่งจะกลายเป็น "undefined" ให้ผู้ใช้เห็น)
+ */
+async function announceUnavailable() {
+  const kind = readUnavailable(route.query[UNAVAILABLE_QUERY])
+  if (!kind) return
+  await router.replace({ name: 'notifications' })
+  await Swal.fire({
+    icon: 'info',
+    title: UNAVAILABLE_TITLE,
+    text: unavailableMessage(kind),
+    confirmButtonText: 'รับทราบ',
+  })
+}
 
 watch([activeTab, unreadOnly], () => {
   page.value = 1
@@ -114,30 +154,32 @@ async function markAll() {
   await load()
 }
 
-// 🧭 คลิกแถว → navigate ไปที่ entity + mark อ่าน
+// 🧭 คลิกแถว → mark อ่าน + navigate ไปที่ entity
+//
+// ⚠️ **"จะไปไหน" ไม่ได้ตัดสินที่นี่** — ยกไปที่ `@/router/deepLink` เพราะปลายทาง
+//    ต้องตรงกับ `data.url` ที่ฝั่ง push ส่งมา (`push_service._deep_link_url()`)
+//    ซึ่งเป็นคนละภาษา ⇒ ตรรกะต้องอยู่ที่ที่ประกาศตัวว่าเป็นสัญญาร่วม ไม่ใช่ใน SFC
+//    (ดูเหตุผลเต็มใน `router/deepLink.ts`) — ที่นี่เหลือแค่ **ผลข้างเคียง** การ mark อ่าน
 function go(n: NotificationItem) {
+  // 1) mark อ่าน — ขอบเขตต่างกันตามกลุ่ม (เหมือนเดิมทุกกรณี ไม่ได้เปลี่ยน)
   if (n.group_type === 'report') {
     void notificationsStore.read({ group_type: 'report' })
-    // report_new → สภาเท่านั้น → ไปคิวรายงาน;
-    // report_actioned → ผู้แจ้ง (อาจเป็นนักเรียน) → ไปบอร์ดนั้น (board-reports กันสิทธิ์)
-    if (n.type === 'report_new') {
-      void router.push({ name: 'board-reports' })
-    } else if (n.board_id != null) {
-      void router.push({ name: 'board-detail', params: { id: n.board_id } })
-    }
-    return
-  }
-  if (n.entity_type === 'issue' && n.entity_id != null) {
+  } else if (n.entity_type === 'issue' && n.entity_id != null) {
     void notificationsStore.read({ entity_type: 'issue', entity_id: n.entity_id })
-    void router.push({ name: 'issue-detail', params: { id: n.entity_id } })
-    return
-  }
-  if (n.board_id != null) {
+  } else if (n.board_id != null) {
     void notificationsStore.read({ board_id: n.board_id })
-    void router.push({ name: 'board-detail', params: { id: n.board_id } })
+  }
+
+  // 2) ไปปลายทางของจริง (เรื่อง/บอร์ด/คิวรายงาน)
+  const target = deepLinkTarget(n)
+  if (target) {
+    void router.push(target)
     return
   }
-  void markOne(n)
+
+  // ไม่มีปลายทางเฉพาะ = อยู่ที่รายการนี้ต่อ · รายงานที่ไม่มี board_id ถูก mark
+  // ทั้งกลุ่มไปแล้วข้างบน ⇒ เหลือแต่กรณีที่ยังไม่ได้ mark อะไรเลย (แถวเดียว)
+  if (n.group_type !== 'report') void markOne(n)
 }
 </script>
 
