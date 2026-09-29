@@ -69,6 +69,24 @@ export type PushEnableResult = 'enabled' | 'denied' | 'dismissed'
 const SWAP_TIMEOUT_MS = 5000
 
 /**
+ * หน่วงก่อนลอง `subscribe()` ใหม่ เมื่อปลายทางตอบ "push service error"
+ *
+ * ⚠️ **ทำไมต้องมี (ไม่ใช่การเดา):** อาการ `Registration failed - push service error`
+ *    เกิดกับ **เครื่องที่เคยเปิดการแจ้งเตือนแล้ว** เท่านั้น — เครื่องใหม่ที่ยังไม่เคยผูก
+ *    จะ subscribe ผ่านทันที · เพราะการซ่อมต้อง `unsubscribe()` (ลบ token ที่ FCM) แล้ว
+ *    `subscribe()` (ขอ token ใหม่) **ติดกันทันที** ซึ่งเป็นการโยก token ถี่เกินไป
+ *    ฝั่งปลายทางจึงปฏิเสธคำขอที่สอง · เว้นจังหวะแล้วลองใหม่คือสิ่งที่ได้ผล
+ * ⚠️ จำนวนครั้ง **มีขอบเขต** (4 ครั้ง รวมรอ ~5.2 วิ) — ถ้าปลายทางล่มจริง การรอนานกว่านี้
+ *    ไม่ช่วยอะไร และผู้ใช้จะยืนรอปุ่มที่ดูเหมือนค้าง
+ */
+const SUBSCRIBE_RETRY_DELAYS_MS = [700, 1500, 3000]
+
+/** หน่วงแบบรอได้ (`setTimeout` ไม่มี promise) — ห่อไว้ให้ `subscribeWithRetry` อ่านออก */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
  * คีย์ public ที่ subscription ของ **เครื่องนี้** ผูกไว้ — บันทึกตอน subscribe
  *
  * ⚠️ **ห้ามเปลี่ยนชื่อคีย์นี้** — เครื่องที่บันทึกไว้แล้วจะกลายเป็น "ไม่รู้ว่าผูกกับอะไร"
@@ -204,6 +222,91 @@ async function discardSubscription(sub: PushSubscription): Promise<void> {
 }
 
 /**
+ * ⚠️ **ประตูแคบโดยเจตนา** — จับเฉพาะ "ปลายทางปฏิเสธคำขอลงทะเบียน"
+ *
+ * `AbortError` ตัวเปล่า ๆ ถูกใช้กับ **คำขอที่ถูกยกเลิก** ด้วย (เช่น ผู้ใช้ปิดแท็บ
+ * หรือสลับหน้า) ซึ่งคำแนะนำคนละเรื่องกันเลย ⇒ ถ้ากว้างเกินจะกลายเป็น "ลองใหม่"
+ * ทั้งที่การลองใหม่ไม่ช่วยอะไร
+ *
+ * ⚠️ และ `NotAllowedError` (ผู้ใช้ไม่อนุญาต) กับ `InvalidStateError` (ชนกันเอง)
+ *    **ต้องไม่ถูกลองใหม่** — การลองใหม่ทำให้ผู้ใช้ **รอนานขึ้น** เพื่อรอข้อความเดิม
+ *    ที่ควรเห็นทันที · ข้อความจริงของ Chrome ในเคสนี้คือ
+ *    `Registration failed - push service error`
+ */
+function isPushServiceFailure(e: unknown): boolean {
+  return (
+    e instanceof DOMException &&
+    e.name === 'AbortError' &&
+    /push service|Registration failed/i.test(e.message)
+  )
+}
+
+/**
+ * ขอ subscription ใหม่ — **ลองซ้ำได้** เมื่อปลายทางยังไม่พร้อม
+ *
+ * ⚠️ เส้นทางที่ต้องลองซ้ำจริงคือ **หลังเพิ่ง `discardSubscription()`** (ปุ่ม "เปิดใหม่
+ *    บนเครื่องนี้" ของ #44) เพราะเป็นการ `unsubscribe()` → `subscribe()` ติดกัน
+ *    ⇒ ปลายทางไม่ทันตั้งตัวและปฏิเสธคำขอที่สอง
+ *    ⇒ ผู้ใช้เห็น `Registration failed - push service error`
+ *    แล้ว **กดไม่ได้อีกเลย** ทั้งที่ทุกอย่างในโค้ดถูกต้อง
+ * ⚠️ ผู้ใช้ที่ **ยังไม่เคยเปิด** จะผ่าน attempt แรกเสมอ (ไม่มี token ให้ลบ) ⇒ การรอ
+ *    ไม่มีต้นทุนกับคนกลุ่มนี้ · ลำดับความสำคัญคือ "อย่าลงโทษคนที่ยังไม่เคยทำอะไรผิด"
+ */
+async function subscribeWithRetry(
+  reg: ServiceWorkerRegistration,
+  key: string,
+): Promise<PushSubscription> {
+  let lastError: unknown = new Error('สมัครรับการแจ้งเตือนไม่สำเร็จ')
+
+  for (let attempt = 0; attempt <= SUBSCRIBE_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await reg.pushManager.subscribe({
+        // ⚠️ Chrome บังคับ `true` — push ที่ไม่แสดงอะไรให้ผู้ใช้จะถูกบล็อก
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      })
+    } catch (e) {
+      lastError = e
+      // ⚠️ หยุดทันทีเมื่อไม่ใช่ความล้มเหลวที่รอแล้วหาย — ดูเหตุผลใน `isPushServiceFailure()`
+      if (!isPushServiceFailure(e)) break
+      const delay = SUBSCRIBE_RETRY_DELAYS_MS[attempt]
+      if (delay === undefined) break
+      await sleep(delay)
+    }
+  }
+
+  throw lastError
+}
+
+/**
+ * แปลงสิ่งที่เบราว์เซอร์โยน → **ข้อความที่ผู้ใช้ทำอะไรต่อได้**
+ *
+ * ⚠️ `DOMException` ดิบ (`AbortError: Registration failed - push service error`)
+ *    บอกผู้ใช้ว่า "มีอะไรผิด" แต่ไม่บอกว่า **ต้องทำอะไร** ⇒ คนที่เจอจะกดซ้ำ ๆ แล้วเจอ
+ *    ข้อความเดิม จนสรุปว่าแอพพัง
+ * ⚠️ ข้อความที่เราเขียนเองในไฟล์นี้ (`Error` ธรรมดา) **ต้องผ่านออกไปตามเดิม ไม่ถูกแทนที่** —
+ *    มันเขียนมาเจาะจงกว่าแผนที่นี้อยู่แล้ว (เอาไว้ตรง `throw` ท้ายฟังก์ชัน)
+ */
+export function describePushError(e: unknown): string {
+  if (e instanceof DOMException) {
+    if (isPushServiceFailure(e)) {
+      return 'ติดต่อบริการแจ้งเตือนของเบราว์เซอร์ไม่สำเร็จ — ลองปิดแล้วเปิดเบราว์เซอร์ใหม่ หรือสลับไปใช้เน็ตอื่น แล้วกดอีกครั้ง'
+    }
+    switch (e.name) {
+      case 'NotAllowedError':
+        return 'เบราว์เซอร์ไม่อนุญาตการแจ้งเตือนสำหรับเว็บนี้ — เปิดได้ที่ ตั้งค่าเบราว์เซอร์ → การแจ้งเตือน'
+      case 'InvalidStateError':
+        return 'เครื่องนี้ยังมีการแจ้งเตือนเดิมค้างอยู่ — กด “ปิดบนเครื่องนี้” ให้ขึ้นว่าปิดแล้วก่อน แล้วจึงกดเปิดใหม่'
+      case 'SecurityError':
+        return 'หน้านี้ไม่ได้รับอนุญาตให้เปิดการแจ้งเตือน — ต้องเปิดผ่าน https:// เท่านั้น'
+      default:
+        return `เบราว์เซอร์ปฏิเสธการเปิดการแจ้งเตือน (${e.name}) — ลองใหม่หรือเปลี่ยนไปใช้ Chrome รุ่นล่าสุด`
+    }
+  }
+  return e instanceof Error ? e.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่'
+}
+
+/**
  * ⭐ หัวใจของงานนี้ — ขอ subscription ที่ **ผูกกับคีย์ปัจจุบันจริง**
  *
  * ปัญหา: หลัง rotate คีย์ VAPID เบราว์เซอร์ยังคืน subscription เก่าจาก `getSubscription()`
@@ -227,11 +330,9 @@ async function obtainSubscription(reg: ServiceWorkerRegistration): Promise<PushS
 
   if (existing) await discardSubscription(existing)
 
-  const fresh = await reg.pushManager.subscribe({
-    // ⚠️ Chrome บังคับ `true` — push ที่ไม่แสดงอะไรให้ผู้ใช้จะถูกบล็อก
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(key),
-  })
+  // ⚠️ ต้องผ่าน `subscribeWithRetry()` **ไม่ใช่** `pushManager.subscribe()` ตรง ๆ —
+  //    เมื่อเพิ่งทิ้งของเดิมไป ปลายทางมักปฏิเสธคำขอแรก (ดูคอมเมนต์ในฟังก์ชันนั้น)
+  const fresh = await subscribeWithRetry(reg, key)
 
   if (existing && fresh.endpoint === existing.endpoint) {
     throw new Error('เบราว์เซอร์ไม่ยอมทิ้งการแจ้งเตือนเดิม — ลองปิดแล้วเปิดใหม่อีกครั้ง')
