@@ -22,9 +22,29 @@ class VoteSubmitRequest(BaseModel):
 
 
 class CommentCreateRequest(BaseModel):
-    """คอมเมนต์/รีพลายใน board (PIRI Talk)"""
+    """คอมเมนต์/รีพลายใน board (PIRI Talk + ข้อเสนอแนะ)"""
     body: str = Field(..., min_length=1, max_length=1000)
     parent_id: Optional[int] = Field(None, description="reply ต่อคอมเมนต์ (id ของคอมเมนต์ต้นทาง)")
+
+
+class SuggestionCreateRequest(BaseModel):
+    """💡 E1 — ผู้ใช้เสนอไอเดียเอง (board ชนิด 'suggestion') — ฟอร์มสั้น แค่หัวข้อ + รายละเอียด
+
+    ⚠️ **ไม่มีฟิลด์ `board_type` โดยเจตนา** — endpoint นี้สร้างได้ **ชนิดเดียว** เท่านั้น
+    ถ้าเปิดให้ส่ง `board_type` มาจะกลายเป็นช่องเลี่ยงด่านอนุมัติของสภาสำหรับ `talk`/`vote`
+    (บอร์ดสองชนิดนั้นต้องเกิดจาก `issue_service.approve_to_public()` เท่านั้น)
+    ⇒ ชนิดถูกกำหนดเป็น literal ที่ service — ไม่ใช่ค่าที่ client เลือกได้
+
+    ⚠️ **ไม่มีฟิลด์ `user_id`** — เจ้าของคือผู้ถือ token (pattern เดียวกับ bookmark/push:
+    pydantic ตัดทิ้งอัตโนมัติถ้าส่งมา ⇒ มีเทสต์ยืนยันว่าไม่รั่วข้ามคน)
+
+    ⚠️ **ไม่รับ `cover_image_url`** — ยังไม่มีช่องอัปโหลดในฟอร์มสั้นโดยเจตนา (ผู้ใช้ขอ "ฟอร์มสั้น")
+    ถ้าวันหน้าจะเพิ่ม ต้องคิดเรื่อง moderation ของรูปก่อน (ตอนนี้ `approve_to_public` คัดรูปมา
+    จาก issue ที่ผ่านสายตาสภาแล้ว ซึ่งเป็นด่านที่ E1 ไม่มี)
+    """
+    title: str = Field(..., min_length=3, max_length=200, description="หัวข้อข้อเสนอ")
+    description: str = Field(..., min_length=1, max_length=2000, description="รายละเอียด")
+    is_anonymous: bool = Field(False, description="แสดงชื่อหรือไม่ (True = ซ่อนชื่อผู้เสนอ)")
 
 
 # ===================== Response =====================
@@ -96,6 +116,21 @@ class BoardListOut(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class SuggestionCreatedOut(BaseModel):
+    """ผลของการสร้างข้อเสนอ (E1) — **ไม่คืนรายละเอียดเต็ม** โดยเจตนา
+
+    เหตุผลที่แยกจาก `BoardSummaryOut`: `GET /boards/{id}` มี **ผลข้างเคียง** คือ `view_count += 1`
+    (dedup 10 นาที) ⇒ ถ้า POST คืน detail ผู้สร้างจะ "นับวิวให้ตัวเอง" ทุกครั้งที่กดส่ง
+    ⇒ คืนแค่สิ่งที่ client ต้องใช้ตัดสินใจ (id สำหรับพาไปหน้า detail + title ให้ toast อ่านรู้เรื่อง)
+    แล้วให้ client ยิง `GET /boards/{id}` เองถ้าต้องการรายละเอียด — วิวจะถูกนับตอนนั้น
+    ซึ่งตรงกับความหมายของ "มีคนเปิดดู" มากกว่า
+    """
+    id: int
+    board_type: str
+    title: str
+    created_at: datetime
 
 
 # ===================== Moderation / Report (Phase 5) =====================

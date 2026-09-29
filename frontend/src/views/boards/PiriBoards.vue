@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { listBoards } from '@/services/board'
 import { BOARD_TYPE_LABELS, boardTypeIcon, type BoardSummary, type BoardType } from '@/types/board'
 import PaginationBar from '@/components/PaginationBar.vue'
+import QuickSuggestionModal from '@/components/boards/QuickSuggestionModal.vue'
 
 /**
- * 📋 PIRI Boards — feed สาธารณะ (PIRI Vote + PIRI Talk)
- * กรองตามประเภท (ทั้งหมด/โหวต/พูดคุย) + ค้นหา + แบ่งหน้า
+ * 📋 PIRI Boards — feed สาธารณะ (PIRI Vote + PIRI Talk + ข้อเสนอแนะ)
+ * กรองตามประเภท (ทั้งหมด/โหวต/พูดคุย/ข้อเสนอแนะ) + ค้นหา + แบ่งหน้า
+ * + ปุ่ม "เสนอไอเดีย" (E1) — ผู้ใช้ทั่วไปสร้างบอร์ดข้อเสนอได้เองโดยไม่ผ่านสภา
+ *
+ * ⚠️ ชนิดที่เพิ่มเข้ามาต้องกรองได้ทาง `?board_type=` ซึ่ง backend จำกัดด้วย
+ *    `Query(pattern="^(vote|talk|suggestion)$")` ⇒ ค่าที่นี่ต้องเป็นหนึ่งในสามเท่านั้น
  */
+const router = useRouter()
 const boards = ref<BoardSummary[]>([])
 const total = ref(0)
 const isLoading = ref(true)
@@ -17,15 +23,22 @@ const typeFilter = ref<'' | BoardType>('') // '' = ทั้งหมด
 const q = ref('')
 const page = ref(1)
 const pageSize = 12
+const showSuggestionModal = ref(false)
 
 // แท็บกรองประเภท
 const TABS: Array<{ value: '' | BoardType; label: string; icon: string }> = [
   { value: '', label: 'ทั้งหมด', icon: 'bi bi-grid' },
   { value: 'vote', label: 'โหวต', icon: 'bi bi-bar-chart-fill' },
   { value: 'talk', label: 'พูดคุย', icon: 'bi bi-chat-dots-fill' },
+  { value: 'suggestion', label: 'ข้อเสนอแนะ', icon: 'bi bi-lightbulb-fill' },
 ]
 
 onMounted(load)
+
+// สร้างข้อเสนอสำเร็จ → พาไปหน้า detail ของบอร์ดที่เพิ่งสร้าง (ตรงกับที่ ApproveBoardModal ทำ)
+function onSuggestionCreated(boardId: number) {
+  router.push({ name: 'board-detail', params: { id: boardId } })
+}
 
 // ค้นหา (debounce 300ms) → กลับหน้า 1
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -85,8 +98,20 @@ function fmtDate(iso: string): string {
         <i class="bi bi-columns-gap mr-1"></i> Public Forum
       </p>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">PIRI Boards</h1>
-      <p class="text-sm text-stone-500 mt-1.5">โหวต + พูดคุยสาธารณะ ที่สภานักเรียนอนุมัติแล้ว</p>
+      <p class="text-sm text-stone-500 mt-1.5">
+        โหวต + พูดคุยสาธารณะ ที่สภานักเรียนอนุมัติแล้ว · ข้อเสนอแนะจากทุกคน
+      </p>
     </div>
+
+    <!-- ปุ่มเสนอไอเดีย (E1) — ทุกคนที่ล็อกอินกดได้ ขึ้นบอร์ดทันที ไม่ต้องรอสภา -->
+    <button
+      type="button"
+      data-testid="open-suggestion"
+      @click="showSuggestionModal = true"
+      class="mb-5 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-3 text-sm font-bold text-white hover:bg-[#991B1B] transition-colors"
+    >
+      <i class="bi bi-lightbulb"></i> เสนอไอเดีย
+    </button>
 
     <!-- แถบกรอง + ค้นหา -->
     <div class="flex flex-wrap items-center gap-2 mb-5">
@@ -187,5 +212,7 @@ function fmtDate(iso: string): string {
     </div>
 
     <PaginationBar :total="total" :page="page" :page-size="pageSize" :loading="isLoading" @page-change="onPageChange" />
+
+    <QuickSuggestionModal v-model:open="showSuggestionModal" @created="onSuggestionCreated" />
   </div>
 </template>

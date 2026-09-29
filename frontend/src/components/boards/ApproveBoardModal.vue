@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue'
 import Swal from 'sweetalert2'
 import { approveToPublic } from '@/services/issue'
 import { DESTINATION_LABELS, type Issue } from '@/types/issue'
-import { BOARD_TYPE_LABELS, type BoardType } from '@/types/board'
+import { BOARD_TYPE_LABELS, type PublicBoardType } from '@/types/board'
 
 /**
  * 🏛️ Modal อนุมัติเผยแพร่สาธารณะ (สภานักเรียน/แอดมิน)
@@ -19,7 +19,8 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ approved: [boardId: number] }>()
 
 // ปลายทางที่ขอ (vote/talk เท่านั้นที่เข้ามาถึง modal นี้) — ใช้เป็น board_type ตรง ๆ
-const boardType = computed<BoardType>(() => {
+// ⚠️ ชนิดเป็น PublicBoardType ไม่ใช่ BoardType — สายอนุมัติสร้าง 'suggestion' ไม่ได้ (E1)
+const boardType = computed<PublicBoardType>(() => {
   return props.issue?.requested_destination === 'talk' ? 'talk' : 'vote'
 })
 

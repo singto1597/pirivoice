@@ -1,7 +1,15 @@
-// PIRI Boards (PIRI Vote + PIRI Talk) — data models
+// PIRI Boards (PIRI Vote + PIRI Talk + ข้อเสนอแนะ) — data models
 // ตรงกับ backend models/board_schemas.py
 
-export type BoardType = 'vote' | 'talk'
+// 'suggestion' (E1) — ผู้ใช้เสนอไอเดียเอง ขึ้นบอร์ดทันทีโดยไม่ผ่านด่านอนุมัติของสภา
+// ⚠️ ค่าทุกตัวต้องอยู่ใน `chk_piri_boards_type` ฝั่ง DB (migration 022) ไม่งั้น INSERT จะล้ม
+export type BoardType = 'vote' | 'talk' | 'suggestion'
+
+// ชนิด board ที่ **สายอนุมัติของสภา** สร้างได้ (`approve_to_public`)
+// ⚠️ ไม่รวม 'suggestion' โดยเจตนา — ตรงกับ `PUBLIC_BOARD_TYPES` ฝั่ง backend
+//    ข้อเสนอจากผู้ใช้ไม่ได้มาจาก issue และไม่มีผู้อนุมัติ ⇒ ใช้ `BoardType` แทนไม่ได้
+//    (ถ้าเผลอใช้ BoardType ที่นี่ modal อนุมัติจะส่ง 'suggestion' ไปให้ endpoint ที่ไม่รับ)
+export type PublicBoardType = 'vote' | 'talk'
 
 // ตัวเลือกโหวต 1 อัน (มี vote_count เพื่อคำนวณ % บน frontend)
 export interface VoteChoice {
@@ -75,10 +83,30 @@ export interface VoteResult {
 export const BOARD_TYPE_LABELS: Record<BoardType, string> = {
   vote: 'โหวต',
   talk: 'พูดคุย',
+  suggestion: 'ข้อเสนอแนะ',
 }
 
 export function boardTypeIcon(t: BoardType): string {
-  return t === 'vote' ? 'bi bi-bar-chart-fill' : 'bi bi-chat-dots-fill'
+  if (t === 'vote') return 'bi bi-bar-chart-fill'
+  // ข้อเสนอแนะใช้เลย์เอาต์คอมเมนต์เหมือน talk แต่คนละไอคอน ให้แยกออกด้วยตาได้ในฟีด
+  if (t === 'suggestion') return 'bi bi-lightbulb-fill'
+  return 'bi bi-chat-dots-fill'
+}
+
+// ข้อเสนอแนะเสนอไอเดียได้ — ไม่ใช่บอร์ดโหวต (ตรงกับ VOTABLE_BOARD_TYPES ฝั่ง backend)
+export function isVotableBoard(t: BoardType): boolean {
+  return t === 'vote'
+}
+
+// ป้ายหัวบอร์ดในหน้ารายละเอียด — 'บอร์ดโหวต'/'บอร์ดพูดคุย'/'ข้อเสนอแนะ'
+// (คำว่า "บอร์ดข้อเสนอแนะ" อ่านผิดธรรมชาติไทย จึงตัด "บอร์ด" ออกเฉพาะชนิดนี้)
+export function boardTypeHeading(t: BoardType): string {
+  return t === 'suggestion' ? 'ข้อเสนอแนะ' : `บอร์ด${BOARD_TYPE_LABELS[t]}`
+}
+
+// ข้อความ fallback เมื่อไม่รู้ชื่อผู้สร้าง — บอร์ดของสภาสร้างโดยสภา แต่ข้อเสนอสร้างโดยผู้ใช้ทั่วไป
+export function boardAuthorFallback(t: BoardType): string {
+  return t === 'suggestion' ? 'ผู้ใช้' : 'สภานักเรียน'
 }
 
 // ===== Report (แจ้งความไม่เหมาะสม) — ตรงกับ backend piri_board_reports =====

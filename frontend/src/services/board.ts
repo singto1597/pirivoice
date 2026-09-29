@@ -25,6 +25,32 @@ export async function getBoard(id: number): Promise<BoardDetail> {
   return (await api.get(`/api/boards/${id}`)) as BoardDetail
 }
 
+// ===== E1: เสนอไอเดีย (ผู้ใช้ทั่วไป — ขึ้นบอร์ดทันที ไม่ผ่านด่านสภา) =====
+export interface SuggestionPayload {
+  title: string
+  description: string
+  is_anonymous?: boolean
+}
+
+// ผลที่ได้ — **ไม่ใช่ BoardDetail** โดยเจตนา: backend ไม่คืนรายละเอียดเต็มเพราะ
+// `GET /boards/{id}` มีผลข้างเคียงคือ view_count += 1 (ผู้สร้างไม่ควรนับวิวให้ตัวเอง)
+export interface SuggestionCreated {
+  id: number
+  board_type: BoardType
+  title: string
+  created_at: string
+}
+
+export async function createSuggestion(payload: SuggestionPayload): Promise<SuggestionCreated> {
+  // ⚠️ ส่งแค่ 3 ฟิลด์นี้ — `board_type`/`user_id` ถูกตัดทิ้งฝั่ง backend อยู่แล้ว
+  //    (endpoint สร้างได้ชนิดเดียว และเจ้าของคือผู้ถือ token)
+  return (await api.post('/api/boards/suggestions', {
+    title: payload.title,
+    description: payload.description,
+    is_anonymous: payload.is_anonymous ?? false,
+  })) as SuggestionCreated
+}
+
 export async function submitVote(boardId: number, choice_id: number): Promise<VoteResult> {
   return (await api.post(`/api/boards/${boardId}/vote`, { choice_id })) as VoteResult
 }

@@ -72,6 +72,8 @@ ACTION_LABELS = {
     "DELETE_ACADEMIC_TERM": "ลบภาคเรียน",
     "RESTORE_ACADEMIC_TERM": "กู้คืนภาคเรียน",
     "SET_CURRENT_TERM": "ตั้งภาคปัจจุบัน",
+    # E1 — ข้อเสนอจากผู้ใช้ (บอร์ดชนิด 'suggestion')
+    "CREATE_SUGGESTION": "สร้างข้อเสนอแนะ",
 }
 
 

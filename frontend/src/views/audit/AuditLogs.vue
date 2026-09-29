@@ -56,6 +56,11 @@ const ACTION_LABELS: Record<string, string> = {
   DELETE_ACADEMIC_TERM: 'ลบภาคเรียน',
   RESTORE_ACADEMIC_TERM: 'กู้คืนภาคเรียน',
   SET_CURRENT_TERM: 'ตั้งภาคปัจจุบัน',
+  // E1 — ข้อเสนอจากผู้ใช้ (บอร์ดชนิด 'suggestion')
+  CREATE_SUGGESTION: 'สร้างข้อเสนอแนะ',
+  // ⚠️ หนี้ที่มีอยู่ก่อนรอบนี้: action ของ PIRI Boards ตัวอื่น (SUBMIT_VOTE · ADD_COMMENT ·
+  //    APPROVE_TO_PUBLIC · HIDE_BOARD · …) ยังไม่มีป้ายทั้งสอง map ⇒ หน้าจอจะโชว์ชื่อดิบ
+  //    ไม่ใช่บั๊กที่รอบนี้ก่อ และไม่แก้ในรอบนี้ (นอกขอบเขต E1 — บันทึกไว้ใน PR)
 };
 
 function actionLabel(action: string): string {

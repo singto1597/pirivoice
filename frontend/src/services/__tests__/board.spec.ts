@@ -19,8 +19,10 @@ import {
   hideBoard,
   listReports,
   resolveReport,
+  createSuggestion,
 } from '@/services/board'
 import { approveToPublic } from '@/services/issue'
+import { boardTypeHeading, boardAuthorFallback, isVotableBoard, boardTypeIcon } from '@/types/board'
 
 describe('board services (PIRI Vote + PIRI Talk)', () => {
   beforeEach(() => {
@@ -163,5 +165,78 @@ describe('board services (PIRI Vote + PIRI Talk)', () => {
     await resolveReport(4, 'dismiss')
 
     expect(postMock).toHaveBeenCalledWith('/api/boards/reports/4/resolve', { action: 'dismiss', note: undefined })
+  })
+
+  // ===== E1: เสนอไอเดีย (ผู้ใช้ทั่วไป — ขึ้นบอร์ดทันที ไม่ผ่านด่านสภา) =====
+
+  it('createSuggestion → POST /api/boards/suggestions ส่งแค่ 3 ฟิลด์ที่อนุญาต', async () => {
+    const fake = {
+      id: 21,
+      board_type: 'suggestion',
+      title: 'ควรมีน้ำดื่มฟรีที่โรงอาหาร',
+      created_at: '2026-09-29T08:00:00Z',
+    }
+    postMock.mockResolvedValue(fake)
+
+    const result = await createSuggestion({
+      title: 'ควรมีน้ำดื่มฟรีที่โรงอาหาร',
+      description: 'นักเรียนหลายคนไม่มีเงินซื้อน้ำระหว่างวัน',
+      is_anonymous: true,
+    })
+
+    expect(postMock).toHaveBeenCalledWith('/api/boards/suggestions', {
+      title: 'ควรมีน้ำดื่มฟรีที่โรงอาหาร',
+      description: 'นักเรียนหลายคนไม่มีเงินซื้อน้ำระหว่างวัน',
+      is_anonymous: true,
+    })
+    // ★ ต้องมีคีย์แค่ 3 ตัวนี้ — `board_type`/`user_id` ถูกตัดทิ้งตั้งแต่ชั้น service
+    //   (endpoint สร้างได้ชนิดเดียว และเจ้าของคือผู้ถือ token ไม่ใช่ค่าที่ client ส่งมา)
+    const [, sentBody] = postMock.mock.calls[0] ?? []
+    expect(Object.keys(sentBody as object).sort()).toEqual(['description', 'is_anonymous', 'title'])
+    // ผลลัพธ์ไม่ใช่ BoardDetail — backend ไม่คืนรายละเอียดเต็มเพราะ GET /boards/{id} นับ view
+    expect(result).toEqual(fake)
+  })
+
+  it('createSuggestion → ไม่ส่ง is_anonymous มา = false (ไม่ปล่อยเป็น undefined ให้ backend เดา)', async () => {
+    postMock.mockResolvedValue({
+      id: 22,
+      board_type: 'suggestion',
+      title: 'ควรมีที่จอดจักรยาน',
+      created_at: '2026-09-29T08:00:00Z',
+    })
+
+    await createSuggestion({ title: 'ควรมีที่จอดจักรยาน', description: 'จักรยานล้นหน้าอาคาร' })
+
+    expect(postMock).toHaveBeenCalledWith('/api/boards/suggestions', {
+      title: 'ควรมีที่จอดจักรยาน',
+      description: 'จักรยานล้นหน้าอาคาร',
+      is_anonymous: false,
+    })
+  })
+})
+
+// ===== ตัวช่วยใน types/board ที่แยกพฤติกรรมตามชนิดบอร์ด (E1) =====
+// ไม่มี type error ถ้าค่าเหล่านี้ผิด — แต่ผู้ใช้จะเห็นข้อความผิดทันที (เช่น "บอร์ดข้อเสนอแนะ")
+describe('board type helpers — พฤติกรรมของ suggestion', () => {
+  it('boardTypeHeading → suggestion ตัดคำว่า "บอร์ด" ออก (ภาษาอ่านผิดธรรมชาติ)', () => {
+    expect(boardTypeHeading('suggestion')).toBe('ข้อเสนอแนะ')
+    expect(boardTypeHeading('vote')).toBe('บอร์ดโหวต')
+    expect(boardTypeHeading('talk')).toBe('บอร์ดพูดคุย')
+  })
+
+  it('boardAuthorFallback → suggestion สร้างโดย "ผู้ใช้" ไม่ใช่ "สภานักเรียน"', () => {
+    expect(boardAuthorFallback('suggestion')).toBe('ผู้ใช้')
+    expect(boardAuthorFallback('vote')).toBe('สภานักเรียน')
+  })
+
+  it('isVotableBoard → โหวตได้เฉพาะ vote (ตรงกับ VOTABLE_BOARD_TYPES ฝั่ง backend)', () => {
+    expect(isVotableBoard('vote')).toBe(true)
+    expect(isVotableBoard('talk')).toBe(false)
+    expect(isVotableBoard('suggestion')).toBe(false)
+  })
+
+  it('boardTypeIcon → suggestion ใช้ไอคอนหลอดไฟ แยกจาก talk ได้ด้วยตา', () => {
+    expect(boardTypeIcon('suggestion')).toBe('bi bi-lightbulb-fill')
+    expect(boardTypeIcon('suggestion')).not.toBe(boardTypeIcon('talk'))
   })
 })

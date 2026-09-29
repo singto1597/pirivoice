@@ -8,6 +8,7 @@ import type {
   RequestedDestination,
   UpdateIssuePayload,
 } from '@/types/issue'
+import type { PublicBoardType } from '@/types/board'
 
 // Issue API
 
@@ -24,7 +25,7 @@ export interface CreateIssuePayload {
 
 // Payload สำหรับอนุมัติเผยแพร่สาธารณะ (สภานักเรียน/แอดมิน) — ตรงกับ backend ApproveToPublicRequest
 export interface ApproveToPublicPayload {
-  board_type: 'vote' | 'talk'
+  board_type: PublicBoardType
   vote_choices?: string[]
   allow_comments?: boolean
 }

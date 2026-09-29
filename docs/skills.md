@@ -1585,3 +1585,141 @@
   · ⇒ **เปลี่ยนชื่อ repo ได้โดยระบบไม่สะดุด** เพราะสามอย่างข้างบนคนละชั้นกับชื่อ repo
 
 - **Date Added:** 2026-09-29
+
+### 🌿 ต้องทำงานอื่นคู่กับ suite ที่ **bind-mount ทรีหลัก** ⇒ ใช้ `git worktree` ไม่ใช่ `git stash`/สลับ branch
+- **Context/Problem:** `docker-compose.test.yml` bind mount `./backend` เข้า container ⇒ **ระหว่างที่ suite รันอยู่ แก้ไฟล์ใต้ `backend/` เมื่อไรเทสต์พังยกชุด** และ **สลับ branch ในทรีหลักก็พังเหมือนกัน** (ไฟล์ใต้ mount เปลี่ยนทั้งชุดกลางเทสต์) — แต่บางงาน (เช่น rebrand, งานเอกสาร) ไม่เกี่ยวกันเลยและไม่ควรรอ 40–70 นาที
+- **Root Cause:** `git stash` / `git checkout` **แก้ไฟล์ในทรีเดียวกับที่ container มองเห็น** ⇒ ตัวเลือก "สลับไปทำอย่างอื่นแล้วกลับมา" ทั้งหมดใช้ไม่ได้ระหว่างเทสต์รัน · และการรอเปล่า ๆ คือการเผา context ของคนทำงาน (ซึ่งถูกตัดกลางทางได้)
+- **Correct Pattern/Solution:** แตก **worktree** — ได้ checkout อีกชุดที่ **ไม่แตะทรีหลักเลย**
+  ```bash
+  git worktree add /tmp/piri-rebrand -b chore/rebrand          # ฐาน = HEAD ปัจจุบัน
+  ln -sfn "$PWD/frontend/node_modules" /tmp/piri-rebrand/frontend/node_modules   # ★ ไม่ต้อง npm install ใหม่
+  cd /tmp/piri-rebrand && <แก้ + รันด่านตรวจของงานนั้น>
+  git worktree remove /tmp/piri-rebrand                        # ลบ symlink ทิ้ง ไม่ลบ target
+  ```
+  · ★ **worktree แชร์ `.git` กับทรีหลัก** ⇒ ได้ `origin` remote ที่แก้ล่าสุดแล้วไปด้วย (สำคัญมากเมื่องานนั้นคือ "เปลี่ยน remote") · และ `git fetch` จาก worktree อัปเดต ref ที่ทรีหลักเห็นทันที
+  · ⚠️ `frontend/` **ไม่ได้ถูก bind mount** เข้า test container (มีแต่ `./backend`) ⇒ รัน `npm run type-check|lint|test:unit|build` ใน worktree พร้อมกับ suite ได้ไม่มีปัญหา
+  · ⚠️ **อย่า `cd` เข้า worktree แล้วลืม** — คำสั่งถัดไปจะไปรันผิดที่ · ตรวจด้วย `git rev-parse --show-toplevel` เมื่อไม่แน่ใจ
+  · 📌 ทางเลือกที่ไม่ต้องใช้ worktree: **งานที่แตะแค่ `docs/` · `frontend/` · `~/reports/` ทำในทรีหลักได้เลย** เพราะไม่ถูก mount ⇒ **ก่อนตัดสินใจว่าต้อง worktree ไหม ให้ถามว่า "งานนี้แตะ `backend/` ไหม"** (คำถามเดียวจบ)
+- **Date Added:** 2026-09-29
+
+### 🧮 พิสูจน์ว่า merge "ไม่ทำของหาย" ด้วย **multiset ของบรรทัด** ไม่ใช่ความยาวไบต์ — ผลต่างไบต์หลอกได้
+- **Context/Problem:** merge conflict ที่แก้ด้วยมือ (แก้บน GitHub) ต้องพิสูจน์ว่า **ของทั้งสองฝั่งอยู่ครบ** ไม่ใช่แค่ "diff ดูสวย" · วิธีที่ล่อใจที่สุดคือเทียบความยาว/ไบต์ ⇒ รอบนี้ได้ `head = 404,830` แต่ `base + deltaA + deltaB = 404,857` คือ **−27 ไบต์** และ `head.startswith(deltaA)` เป็น **False** ⇒ เกือบสรุปว่า merge ผิด
+- **Root Cause:** **บรรทัดที่ทั้งสองฝั่งเพิ่มเหมือนกันเป๊ะ ถูกนับครั้งเดียวอย่างถูกต้อง** ⇒ ผลบวกของสอง delta จึงมากกว่าของจริงเสมอเมื่อมีบรรทัดซ้ำ · และ `startswith` พังเพราะการแทรกบรรทัดว่าง/คอมเมนต์กันรอยต่อ ทำให้ "ส่วนหัวของฝั่งหนึ่ง" ไม่ได้อยู่ติดกันเป็นบล็อกเดิมอีก · ⇒ **การวัดผลรวมแบบ "บวกลบ" ใช้กับ merge ไม่ได้ตั้งแต่ต้น** เพราะ merge ไม่ใช่การบวก
+- **Correct Pattern/Solution:** เทียบ **เซต/มัลติเซต** ซึ่งเป็นสมบัติที่ merge ต้องรักษาไว้จริง
+  ```python
+  from collections import Counter
+  a, b, m = (Counter(p.read_text(encoding="utf-8").splitlines()) for p in (fa, fb, fm))
+  assert not (a - m), "บรรทัดของฝั่ง A หายไป"      # ★ คุณสมบัติที่ต้องเป็นจริง
+  assert not (b - m), "บรรทัดของฝั่ง B หายไป"
+  # หัวข้อ (heading) ของ merge ต้องเท่ากับยูเนียนของสองฝั่งพอดี
+  assert set(headings(m)) == set(headings(a)) | set(headings(b))
+  ```
+  · **ใช้ `Counter` ไม่ใช่ `set`** — ไฟล์ที่มีบรรทัดซ้ำ (ตาราง/ลิสต์) ต้องนับจำนวนด้วย ไม่ใช่แค่มี/ไม่มี
+  · **`git diff --numstat <base> <head>` ที่โชว์ `N 0` (ลบ 0 บรรทัด)** คือหลักฐานเสริมที่อ่านง่ายและคนอื่นตรวจซ้ำได้ — ใช้คู่กัน
+  · ⚠️ **`git merge-tree --write-tree A B` merge "commit" ไม่ใช่ working tree** ⇒ การตรวจ conflict **ก่อน commit ไม่มีความหมาย** ต้อง commit แล้วตรวจ `git merge-tree` บน ref จริง
+  · ⚠️ **สอง branch ที่ append ต่อท้ายไฟล์เดียวกันจากฐานเดียวกัน = ชนแน่นอนไม่ว่า merge ใบไหนก่อน** (GitHub คำนวณ mergeability กับ base ปัจจุบันเสมอ) ⇒ ถ้ารู้ล่วงหน้า ให้ **เตือนให้ merge ใบที่แตะไฟล์นั้นก่อน** หรือเตรียมแก้ไว้เลย
+- **Date Added:** 2026-09-29
+
+### 🎯 "ด่าน delta" ต้องมาจาก **`grep` หาผู้บริโภคของโมดูล** ไม่ใช่จากรายชื่อไฟล์เทสต์ที่เราเขียนเอง
+- **Context/Problem:** หลัง rebase ขึ้น base ใหม่ ไม่อยากเสีย 60 นาทีรัน suite ทั้งชุด จึงเลือกรัน "เฉพาะไฟล์ที่กระทบ" — รอบนี้รัน **4 ไฟล์ → 136 passed** แล้วเกือบสรุปว่า "ครบ" · ของจริงต้องรัน **7 ไฟล์ → 203 passed**
+- **Root Cause:** รายชื่อ 4 ไฟล์มาจาก **"ไฟล์ที่เราเขียน/แก้ในรอบนี้"** ซึ่งเป็นมุมของ *คนเขียน* ไม่ใช่มุมของ *โค้ดที่เปลี่ยน* · ที่ขาดคือ **ไฟล์เทสต์ของคนอื่นที่ import โมดูลที่เราแก้** — และไม่มีทางเห็นได้จากการอ่านรายชื่อไฟล์ของตัวเอง
+- **Correct Pattern/Solution:** สร้างด่านจาก **การค้นหาผู้บริโภค** เสมอ
+  ```bash
+  # 1) ไฟล์ production ที่เปลี่ยนในช่วง rebase
+  git diff --name-only <old-base> <new-base> | grep '\.py$'
+  # 2) ใครอ้างถึงโมดูลเหล่านั้น (ทั้ง production และ tests)
+  grep -rn 'me_service\|push_service\|bookmark_service' backend/tests/ | cut -d: -f1 | sort -u
+  # 3) รวมกับไฟล์ที่เราแตะ แล้วนั่นคือรายชื่อด่าน
+  ```
+  · รอบนี้ `grep -rn 'push_service'` เปิดเผย `test_push_subscriptions` · `me_service` เปิดเผย `test_me_stats` + `test_home_summary` ⇒ **3 ไฟล์ที่มองไม่เห็นจากมุมคนเขียน**
+  · ★ **ยืนยันจำนวนด้วย `--collect-only` ไม่ใช่นับจาก progress line** — progress line ตัดบรรทัดที่ 72 ตัวอักษรและบรรทัดสุดท้ายอาจยังเขียนไม่จบ ⇒ ตัวเลขที่ได้จะคลาดไป 1–2 ตัวแบบหาสาเหตุไม่ได้
+    ```bash
+    ... --collect-only -q <files> | grep '::' | sed 's/::.*//' | sed 's#.*/##' | sort | uniq -c
+    ```
+    แล้ว **assert ว่าจำนวนที่ collect ได้ == จำนวนที่ passed** (รอบนี้ 203 == 203, F=0, E=0 ⇒ ไม่มี skip แฝง)
+  · 📌 **เมื่อไร "ด่าน delta" พอ และเมื่อไรต้องรันทั้งชุด:** delta **พอ** เมื่อช่วง base→head แตะไฟล์ production จำกัดและ enumerate ผู้บริโภคได้ครบ · **ต้องรันทั้งชุด** เมื่อมีการเปลี่ยนสคีมา/`init_db`/`conftest`/fixture ที่ใช้ร่วมกัน หรือเมื่อ enumerate ไม่ครบ — **"ไม่แน่ใจ" = รันทั้งชุด**
+- **Date Added:** 2026-09-29
+
+### 🟢 ด่านที่ "ผ่าน" ทั้งที่ไม่ได้รัน — `cmd | tail` คืน exit code ของ `tail` และ background command รับ cwd ต่อจาก session
+- **Context/Problem:** สั่งรันเทสต์เดี่ยวเป็น background task แล้วได้ผลลัพธ์ `open /…/frontend/docker-compose.test.yml: no such file or directory` ต่อท้ายด้วย **`[exited with code 0]`** ⇒ อ่านผ่าน ๆ คือ "ผ่าน" · ของจริงคือ **เทสต์ไม่เคยรันเลย** แต่รายงานว่าสำเร็จ
+- **Root Cause:** สองอย่างซ้อนกัน ① **cwd ของ background command = cwd ปัจจุบันของ session** ซึ่งเปลี่ยนไปเป็น `frontend/` ได้จากคำสั่งก่อนหน้า (`cd frontend && …`) ⇒ `docker-compose.test.yml` อยู่ที่ราก repo จึงหาไม่เจอ ② **exit code ของ pipeline = ของคำสั่งสุดท้าย** ⇒ `docker compose … | grep … | tail -40` คืน 0 ของ `tail` เสมอ ไม่ว่า `docker compose` จะล้มหรือหาไฟล์ไม่เจอ
+- **Correct Pattern/Solution:**
+  ```bash
+  cd /abs/path/to/repo && set -o pipefail && cmd 2>&1 | grep -vE '^(INFO|DEBUG)' | tail -60
+  ```
+  · **`cd` เป็น absolute path ทุกครั้งในคำสั่งที่รันเป็น background** อย่าพึ่ง cwd ของ session — มันเปลี่ยนได้กลางบทสนทนา และคำสั่งที่รันไปแล้วไม่ย้อนกลับมาแก้
+  · **`set -o pipefail`** ทำให้ pipeline คืน status ที่ไม่ใช่ 0 ถ้ามีขั้นใดล้ม · ทางเลือกที่ไม่ต้อง pipefail: อ่าน `${PIPESTATUS[0]}`
+  · ★ **ด่านที่รายงานผลต้องมีหลักฐานว่า "รันจริง" ไม่ใช่แค่ "exit 0"** — ข้อความที่พิสูจน์ได้คือบรรทัดสรุปของตัวรันเอง (`24 passed in 172.66s`) หรือจำนวนจาก `--collect-only` ⇒ **ถ้า output ไม่มีบรรทัดสรุป ให้ถือว่าไม่ผ่าน ไม่ใช่ผ่าน**
+- **Date Added:** 2026-09-29
+
+### ⏱️ pydantic v2 เขียน UTC เป็น `…Z` แต่ `.isoformat()` เขียน `…+00:00` — เทียบ "สตริง" จะพังทั้งที่เป็นเวลาเดียวกัน
+- **Context/Problem:** เทสต์ยืนยันว่า `created_at` ที่ API คืนมาตรงกับค่าใน DB (`assert body["created_at"] == row["created_at"].isoformat()`) ⇒ ล้มด้วย `'2026-09-29T08:23:32.590780Z' == '2026-09-29T08:23:32.590780+00:00'` · ตัวเลขเวลาตรงกันทุกหลัก ต่างแค่ตัวแทนของ timezone
+- **Root Cause:** pydantic v2 serialize `datetime` ที่เป็น UTC ด้วย suffix **`Z`** ส่วน `datetime.isoformat()` ของ Python ให้ **`+00:00`** ⇒ สตริงไม่เท่ากันแม้เป็น instant เดียวกันเป๊ะ · **ไม่ใช่บั๊กของโปรดักต์** แต่เป็นเทสต์ที่ผูกกับ "รูปแบบ" แทนที่จะผูกกับ "ความหมาย"
+- **Correct Pattern/Solution:** แปลงเป็น `datetime` แล้วเทียบ instant · เขียน helper ไว้ใช้ซ้ำ
+  ```python
+  from datetime import datetime
+  def _as_utc(iso: str) -> datetime:            # pydantic v2 → aware datetime
+      return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+  assert _as_utc(body["created_at"]) == row["created_at"]
+  ```
+  · `datetime.fromisoformat` อ่าน `Z` ได้ตั้งแต่ Python 3.11 แต่ `replace` ไว้ก็ไม่เสียหาย และทำให้ไม่ผูกกับเวอร์ชัน Python ที่รันเทสต์
+  · ⚠️ **อย่าแก้ด้วยการ `replace("Z", "+00:00")` ที่สตริงทั้งสองฝั่งแล้วเทียบกัน** — ได้ผลเหมือนกันแต่วิธีนั้น "ปรับให้สตริงเท่ากัน" ไม่ได้พิสูจน์ว่าเป็น instant เดียวกัน
+  · 📌 **เจตนาของเทสต์ต้องคงอยู่** — เทสต์ตัวนี้มีไว้พิสูจน์ว่า `created_at` มาจาก `RETURNING` ของ DB ไม่ใช่ `datetime.now()` ที่ router สร้างเอง ⇒ เทียบ instant **ไม่ได้ทำให้เจตนาอ่อนลง** · ใส่ f-string ของทั้งสองค่าลง AssertionError ด้วย เพื่อให้อ่านออกทันทีว่าเป็นเรื่องรูปแบบหรือเรื่องค่าจริง
+- **Date Added:** 2026-09-29
+
+### 🧱 ขยาย union type = สัญญาที่แตกทุกผู้บริโภคที่ "รู้แคบกว่า" — ตั้งชื่อแนวคิดที่แคบกว่า อย่าไปคลายสัญญาของผู้บริโภค
+- **Context/Problem:** เพิ่ม `'suggestion'` เข้า `BoardType = 'vote' | 'talk'` ⇒ `vue-tsc` ล้มที่ `ApproveBoardModal.vue` — `Type 'BoardType' is not assignable to type '"vote" | "talk"'` ที่ `approveToPublic({ board_type: boardType.value })` ทั้งที่บรรทัดนั้นไม่ได้ถูกแก้เลย
+- **Root Cause:** `BoardType` เป็น **ยูเนียนกลางที่ทุกคนใช้ร่วม** ⇒ พอขยาย มันกลายเป็น "กว้างกว่า" สัญญาของผู้บริโภคบางรายโดยอัตโนมัติ · modal อนุมัติของสภา **สร้างได้แค่ vote/talk** (ตรงกับ `PUBLIC_BOARD_TYPES` ฝั่ง backend ที่ตั้งใจไม่รวม `'suggestion'`) ⇒ คำตอบที่ถูกคือ "แคบกว่านี้" ไม่ใช่ "แก้ให้ผ่าน"
+- **Correct Pattern/Solution:** **ตั้งชื่อยูเนียนที่แคบกว่าเป็น type ของตัวเอง** แล้วให้ทั้งสองฝั่งอ้างชื่อนั้น
+  ```ts
+  export type BoardType = 'vote' | 'talk' | 'suggestion'
+  // ชนิด board ที่สายอนุมัติของสภา สร้างได้ — ไม่รวม 'suggestion' โดยเจตนา (ตรงกับ PUBLIC_BOARD_TYPES)
+  export type PublicBoardType = 'vote' | 'talk'
+  ```
+  · แล้ว `ApproveToPublicPayload.board_type: PublicBoardType` · `computed<PublicBoardType>` ใน modal ⇒ **type error หายเพราะสัญญาตรงกันจริง ไม่ใช่เพราะปิดปาก compiler**
+  · ⛔ **ทางที่ห้าม:** cast `as 'vote' | 'talk'`, ขยาย `ApproveToPublicPayload` ให้รับ `'suggestion'` (จะยิงไปให้ endpoint ที่ไม่รับ) หรือ `@ts-expect-error` — **ทุกทางทำให้ compiler เงียบ แต่ไม่ทำให้สัญญาตรง**
+  · 📌 **สัญญาณว่าเจอของจริง:** type error โผล่ที่ไฟล์ที่เราไม่ได้แก้ ⇒ ก่อนแก้ ให้ถามว่า *"ผู้บริโภครายนี้ควรรู้จักค่ามากขึ้นจริงไหม"* — ถ้าไม่ นั่นคือ type ใหม่ ไม่ใช่ cast ใหม่ · และการแยก type ทำให้กับดักฝั่ง backend ปรากฏตอน compile (`PUBLIC_BOARD_TYPES` มีคู่ตรงข้ามที่ตรวจได้แล้ว)
+- **Date Added:** 2026-09-29
+
+### 📏 ค่าใหม่ที่ "พอดีความกว้างเดิม" = ไม่พอ — และ `CHECK` ที่ลิสต์ค่าตายตัวต้อง `DROP`+`ADD` ไม่ใช่แค่แก้ comment
+- **Context/Problem:** เพิ่ม `board_type = 'suggestion'` ให้ PIRI Boards · คอลัมน์เป็น `VARCHAR(10)` และ `'suggestion'` **ยาว 10 ตัวอักษรพอดี** ⇒ ดูเหมือน "ใส่ได้" แต่เหลือ headroom **0** · และมี `chk_piri_boards_type CHECK (board_type IN ('talk','vote'))` อยู่ ⇒ ถ้าแก้แค่ comment/ขนาดคอลัมน์ INSERT จะล้มด้วย CheckViolation
+- **Root Cause:** สองด่านที่แยกกันและต้องผ่านทั้งคู่ — **ความกว้างคอลัมน์** (ข้อมูลไหลผ่านได้ไหม) และ **CHECK constraint** (ค่าถูกอนุญาตไหม) · ค่าที่พอดีความกว้างเดิมทำให้ด่านแรก "ดูผ่าน" ทั้งที่ความจริงคือไม่มีที่ให้ค่าใดโตอีกเลย · และ CHECK ที่ลิสต์ค่าตายตัวเป็น **ข้อผูกมัดที่ต้องแก้ในฐานข้อมูลจริง** — แก้ comment หรือ `init_db.py` อย่างเดียวไม่พอ เพราะสคีมาที่มีอยู่แล้วไม่เปลี่ยนตาม
+- **Correct Pattern/Solution:** migration เดียว แก้ทั้งสองอย่าง เรียงตามลำดับที่ปลอดภัย
+  ```sql
+  ALTER TABLE piri_boards DROP CONSTRAINT IF EXISTS chk_piri_boards_type;      -- ① ถอดก่อน
+  ALTER TABLE piri_boards ALTER COLUMN board_type TYPE VARCHAR(20);            -- ② ขยาย + เผื่อที่
+  ALTER TABLE piri_boards ADD CONSTRAINT chk_piri_boards_type
+      CHECK (board_type IN ('talk','vote','suggestion'));                      -- ③ ใส่ใหม่
+  ```
+  · **`DROP CONSTRAINT IF EXISTS` ต้องมาก่อน `ADD`** และต้องมี `IF EXISTS` ไม่งั้นรันรอบสองพัง (เทสต์ idempotency จับได้)
+  · **เพิ่มความกว้างเผื่อไว้ ไม่ใช่ให้พอดี** — `VARCHAR(20)` ไม่ได้มีต้นทุนอะไรบน Postgres (เก็บตามความยาวจริง) ⇒ **"พอดีเป๊ะ" คือสัญญาณให้ขยาย ไม่ใช่สัญญาณว่าไม่ต้องแก้**
+  · **mirror `init_db.py` ให้ตรงกับสคีมาหลัง migration** (ทั้งความกว้างและรายการใน CHECK) ไม่งั้น DB ใหม่กับ DB เก่าจะต่างกัน
+  · ⚠️ **เทสต์ migration ต้องถอยสคีมากลับเป็นเวอร์ชันเก่าจริงก่อน** (`DROP` + `ALTER` กลับเป็น `VARCHAR(10)` + CHECK 2 ค่า) แล้วค่อยเรียก `upgrade()` **สองครั้ง** ⇒ พิสูจน์ทั้ง "แก้สคีมาเก่าได้จริง" และ "idempotent" · **และต้องคืนสคีมาเป็นเวอร์ชันล่าสุดตอนจบ** ไม่งั้นเทสต์ไฟล์ถัดไปพังด้วยเหตุผลผิด (บทเรียน §20.18)
+  · 📌 **ต่างจาก polymorphic ที่เลือก "ไม่มี CHECK" โดยเจตนา** — ตารางที่ค่ามีจำกัดและเป็นของระบบเองควรมี CHECK (กันข้อมูลเพี้ยน) · ตารางที่ค่าจะโตจากฟีเจอร์อนาคต (`entity_type` ที่จะรับ `'event'`) ไม่ควรมี ⇒ **ตัดสินที่ "ใครเป็นคนกำหนดค่า — ระบบหรือฟีเจอร์ถัดไป"**
+- **Date Added:** 2026-09-29
+
+### 🔍 ตัวตรวจ "ยังรันอยู่ไหม" ที่ exit code 1 แปลว่า "ถามไม่ได้" ไม่ใช่ "ตายแล้ว" — `kill -0` ใน sandbox คืน false completion
+- **Context/Problem:** รอ suite ทั้งชุดจบด้วย `until ! kill -0 1522949 2>/dev/null; do sleep 15; done` ⇒ **พิมพ์ว่าเสร็จทันที** ทั้งที่ pytest เพิ่งรันไปได้ ~10 นาทีจาก ~65 นาที ⇒ ถ้าเชื่อ จะ commit ไปทั้งที่ด่านยังไม่ผ่าน (และเข้าไปแก้ไฟล์ใต้ `backend/` ที่ bind-mount อยู่ = พังทั้งรอบ)
+- **Root Cause:** `kill -0` **ต้องมีสิทธิ์ส่งสัญญาณ** ไม่ใช่แค่มีโปรเซส · ใน sandbox นี้เรียกแล้วได้ `kill: (1522949) - Operation not permitted` **exit 1** สำหรับโปรเซสที่ยังมีชีวิตและเป็นเจ้าของเดียวกัน ⇒ **exit 1 มีสองความหมายที่แยกไม่ออก** ("ไม่มีโปรเซส" กับ "มีแต่ถามไม่ได้") และ `until ! X` ตีความครั้งแรกเป็น "จบแล้ว" ⇒ **ทิศทางของความผิดพลาดคือรายงานว่า "เสร็จ" ขณะที่งานยังวิ่ง** ซึ่งอันตรายกว่าเงียบเฉย ๆ
+- **Correct Pattern/Solution:** ใช้ตัวตรวจที่ **ความหมายของความล้มเหลวไม่กำกวม** — ตรวจ *การมีอยู่* ไม่ใช่ *สิทธิ์*
+  ```bash
+  until ! test -d /proc/1522949; do sleep 20; done; echo "FINISHED"; date -Is
+  ```
+  · เทียบข้างกันบน PID เดียวกัน (ยืนยันแล้ว): `kill -0` → **exit 1 "Operation not permitted"** · `ps -p 1522949 -o pid=` → **exit 0** · `test -d /proc/1522949` → **จริง** · `pgrep -f 'python -m pytest'` → **เจอ**
+  · 📌 **`/proc/<pid>` และ `ps -p` ต่างจาก `kill -0` ตรงที่มันตอบคำถาม "มีอยู่ไหม" ล้วน ๆ ไม่ปนเรื่องสิทธิ์** ⇒ ใช้เป็นค่าเริ่มต้นสำหรับรอโปรเซสในสภาพแวดล้อมที่ไม่รู้ข้อจำกัด
+  · ⚠️ **และถึงตัวตรวจถูก ก็ยังต้องอ่าน "บรรทัดสรุปของตัวรันเอง"** — การที่โปรเซสหายไปบอกแค่ว่าจบ **ไม่ได้บอกว่าผ่าน** (บทเรียน `cmd | tail` ข้างบนคือคู่กันของข้อนี้)
+- **Date Added:** 2026-09-29
+
+### 🎯 เป้าเทสต์ที่คำนวณจาก "ผลรันครั้งก่อน + ของใหม่" เปื่อยทันทีที่มี PR อื่น merge คั่น — หักจาก `--collect-only` ของทรีปัจจุบันเสมอ
+- **Context/Problem:** ตั้งเป้าด่านก่อน commit ว่า `621 passed` (597 เดิม + 24 ของงานนี้) · รันจริงได้ **624** ⇒ ถ้ายึดเป้าเดิม ตัวเลขที่ "เกินมา 3" จะถูกอ่านเป็นความผิดปกติ และถ้าเผลอเขียนเป้าเป็น 624 ไว้ก่อนก็จะอ่าน 621 ว่า **"ขาด 3 = มีเทสต์ถูก skip เงียบ ๆ"** ทั้งสองทางเป็น false alarm ที่ทำให้เสียเวลาตามหาผี
+- **Root Cause:** `597` วัดบนทรีที่ฐาน **`023a09b` ซึ่งอยู่ก่อน `#51`** ⇒ **ไม่รวมเทสต์ที่ `#51` เพิ่ม** ภายหลัง (`test_T20a/T20b/T20c` ใน `test_push_outbox.py`) · สูตร "ผลรันครั้งก่อน + ของที่เราเพิ่ม" **สมมติเงียบ ๆ ว่าไม่มีอะไรอย่างอื่นลงระหว่างนั้น** ซึ่งผิดทุกครั้งที่มี PR อื่น merge คั่น — และจุดที่พลาดคือ **เป้าถูกจำไว้โดยไม่มี commit กำกับ** ⇒ พอจะตรวจก็ไม่รู้ว่าไปเทียบกับอะไร
+- **Correct Pattern/Solution:** หักเป้าจาก **ทรีที่จะรันจริง** ไม่ใช่จากความจำ แล้วให้ตัวรันพิสูจน์ตัวเอง
+  ```bash
+  cd /abs/repo && docker compose -f docker-compose.test.yml run --rm test_runner \
+    sh -c "python -m pytest --collect-only -q /app/tests/ | tail -1"     # ← เป้าที่ถูกของทรีนี้
+  ```
+  · **เขียนกำกับ commit ไว้ข้างทุกตัวเลขที่อ้างอิง** (`597 @ 023a09b`) ⇒ ตรวจย้อนได้ทันทีว่ามีอะไร merge คั่นหรือยัง
+  · **`def test_` ไม่เท่ากับจำนวนที่เก็บได้** — `parametrize` ขยายเพิ่ม (งานนี้ 18 `def test_` → **24** collected · C1/C2 60 → 65) ⇒ **นับจาก `--collect-only` เท่านั้น**
+  · ★ **assert ว่า `collected == passed`** ⇒ ปิดช่อง "มีเทสต์ถูก skip แล้วตัวเลขยังสวย" ซึ่งเป็นเหตุผลเดียวที่ตัวเลขเป้าจะมีค่า
+  · 📌 **ตัวเลขเป้าที่ "เกิน" หรือ "ขาด" ไม่ใช่หลักฐานเสมอไป** — ก่อนสรุปว่ามีอะไรผิด ให้ถามก่อนว่า *"เป้านี้ผูกกับ commit ไหน"* · **ด่านที่ดีต้องบอกได้ว่ามันเทียบกับอะไร ไม่ใช่แค่บอกว่าผ่าน**
+- **Date Added:** 2026-09-29

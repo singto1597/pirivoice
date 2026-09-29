@@ -193,6 +193,11 @@ def can_see(level: str, issue_level: str, reporter_id: int, user_id: int, is_ano
 # ============================================================
 # ปลายทางที่ผู้แจ้งขอได้: normal (เรื่องปกติ) / vote / talk (PIRI Boards)
 PUBLIC_DESTINATIONS = ("vote", "talk")
+# ชนิด board ที่ **สายอนุมัติของสภา** สร้างได้ (approve_to_public)
+# ⚠️ **ไม่รวม 'suggestion' โดยเจตนา (E1)** — ข้อเสนอจากผู้ใช้ไม่ได้มาจาก issue และไม่มีผู้อนุมัติ
+#    ⇒ เกิดจาก `board_service.create_suggestion()` ทางตรง ไม่ผ่านไฟล์นี้เลย
+#    ⇒ ถ้าเผลอเพิ่ม 'suggestion' เข้ามา `approve_to_public` จะสร้างบอร์ดที่ไม่มี
+#      issue ต้นทางและ `approved_by` = NULL ซึ่งขัดกับสัญญาของฟังก์ชันนั้น
 PUBLIC_BOARD_TYPES = ("vote", "talk")
 
 
