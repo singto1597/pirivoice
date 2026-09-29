@@ -36,6 +36,7 @@ vi.mock('@/services/notification', () => ({
 //    การต่อสายระหว่างสองโมดูลจริง ๆ (การ mock จะทำให้เทสยืนยันแค่ของที่ตัวเองเขียน)
 import { registerPwa } from '@/pwa'
 import {
+  describePushError,
   disablePush,
   enablePush,
   pushAvailable,
@@ -122,11 +123,21 @@ interface EnvOptions {
   requestResult?: NotificationPermission
   /** ไม่มี `navigator.serviceWorker` เลย (เช่น http:// ที่ไม่ใช่ localhost) */
   noServiceWorker?: boolean
+  /**
+   * ให้ `subscribe()` **ล้มด้วย `AbortError: Registration failed - push service error`**
+   * จำนวน N ครั้งแรก — จำลองพฤติกรรมจริงของปลายทางหลังเพิ่ง `unsubscribe()` ไปหมาด ๆ
+   * (เครื่องที่ **ไม่เคยเปิด** จะไม่เจอเลย — นั่นคือความต่างที่ทำให้บั๊กนี้ดู "เป็นที่เครื่อง")
+   */
+  subscribeFailures?: number
+  /** ให้ `subscribe()` โยน error นี้ **ทุกครั้ง** — ใช้พิสูจน์ว่า error ที่ลองใหม่ไม่ได้ ไม่ถูกลองใหม่ */
+  subscribeAlwaysThrows?: { name: string; message: string }
 }
 
 function installEnv(opt: EnvOptions = {}) {
   const { waiting = false, swapFires = true, stubborn = false, unsubscribeError = false } = opt
   const freshEndpoint = opt.freshEndpoint ?? 'https://fcm.googleapis.com/fcm/send/fresh'
+  /** นับถอยหลังใน `subscribe()` — สถานะของ *การจำลอง* จึงต้องมีชีวิตอยู่ในฟังก์ชันนี้ */
+  let failuresLeft = opt.subscribeFailures ?? 0
 
   /**
    * ⚠️ "เบราว์เซอร์นี้มี subscription อะไรอยู่" ต้อง **เปลี่ยนได้ระหว่างเทส**
@@ -167,6 +178,15 @@ function installEnv(opt: EnvOptions = {}) {
       subscribe: vi.fn<(init: PushSubscriptionOptionsInit) => Promise<FakeSub>>(async (init) => {
         calls.push('pushManager.subscribe')
         subscribeInit = init
+        // ⚠️ จำลอง "ปลายทางยังไม่พร้อม" — ของจริงเกิดหลังเพิ่ง unsubscribe() ไปหมาด ๆ
+        //    ⇒ ต้องนับถอยหลัง ไม่ใช่ล้มทุกครั้ง (ไม่งั้นพิสูจน์ไม่ได้ว่า "ลองใหม่แล้วสำเร็จ")
+        if (failuresLeft > 0) {
+          failuresLeft -= 1
+          throw new DOMException('Registration failed - push service error', 'AbortError')
+        }
+        if (opt.subscribeAlwaysThrows) {
+          throw new DOMException(opt.subscribeAlwaysThrows.message, opt.subscribeAlwaysThrows.name)
+        }
         // ⚠️ เบราว์เซอร์จริงคืน subscription **ตัวเดิม** ถ้ายังไม่ถูก unsubscribe สำเร็จ
         //    ⇒ `stubborn` จะได้ endpoint เดิมกลับไปชนด่านใน `obtainSubscription()` (นั่นคือ K5)
         if (!current) current = bindSub(makeSubscription(freshEndpoint))
@@ -255,8 +275,30 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // ⚠️ `restoreAllMocks()` **ไม่คืนเวลาเทียม** — เทสกลุ่ม R ใช้ `useFakeTimers()`
+  //    ถ้าลืมคืนตรงนี้ เทสถัดไปจะค้างเพราะ `setTimeout` ไม่เดินเลย (หาเหตุยากมาก)
+  vi.useRealTimers()
   delete (navigator as unknown as Record<string, unknown>).serviceWorker
 })
+
+/**
+ * รันงานที่มี "ลองซ้ำโดยเว้นจังหวะ" ให้จบ — ด้วย **เวลาเทียม**
+ *
+ * ⚠️ ของจริงรอรวม ~5.2 วิต่อเคส ⇒ ปล่อยให้รอจริง = suite ช้าลงโดยไม่ได้อะไรเพิ่ม
+ * ⚠️ `task.catch(() => {})` ต้องมาก่อน `runAllTimersAsync()` — ถ้าปล่อยให้ promise
+ *    reject ระหว่างที่ยังไม่มีใคร `await` Node จะรายงาน unhandled rejection
+ */
+async function withFakeTimers<T>(run: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers()
+  try {
+    const task = run()
+    task.catch(() => {})
+    await vi.runAllTimersAsync()
+    return await task
+  } finally {
+    vi.useRealTimers()
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -694,5 +736,132 @@ describe('#44 — เครื่องที่ผูกคีย์เก่�
     await disablePush()
 
     expect(pushSubscriptionStale.value).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 🧪 `Registration failed - push service error` — บั๊กที่เกิดกับ **เครื่องที่เคยเปิด** เท่านั้น
+ *
+ * อาการจริงบนมือถือ (29 ก.ย. 2026): การ์ดขึ้นกรอบเหลือง → กด "เปิดใหม่บนเครื่องนี้" →
+ * Swal `เปิดการแจ้งเตือนไม่สำเร็จ · Registration failed - push service error` กดกี่ครั้งก็ไม่ได้
+ * · **ขณะที่คอมพิวเตอร์ที่ยังไม่เคยกดเปิด เปิดได้ปกติ** ← เบาะแสที่ชี้สาเหตุตรง ๆ
+ *
+ * สาเหตุ: การซ่อมต้อง `unsubscribe()` (ลบ token ที่ปลายทาง) แล้ว `subscribe()`
+ * (ขอ token ใหม่) **ติดกันทันที** ⇒ ปลายทางปฏิเสธคำขอที่สอง · เครื่องใหม่ไม่มี token
+ * ให้ลบ จึงไม่เคยเจอ — ตรงกับที่ผู้ใช้รายงานเป๊ะ
+ *
+ * ⚠️ เทสกลุ่มนี้พิสูจน์ **จำนวนครั้งที่ลอง** ไม่ใช่แค่ "สำเร็จในที่สุด" — ถ้าลบ retry ทิ้ง
+ *    R1/R2/R4 จะล้มทันที (นั่นคือด่านที่มีค่าที่สุดของกลุ่มนี้)
+ */
+describe('#44b — ปลายทางยังไม่พร้อม (push service error) ตอนกดเปิดใหม่', () => {
+  it('★ R1: เครื่องที่เคยเปิด — ล้ม 2 ครั้งแรก แล้ว **ครั้งที่ 3 สำเร็จ**', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    const { reg } = await readyEnv({
+      subscription: makeSubscription('https://fcm.googleapis.com/fcm/send/old'),
+      subscribeFailures: 2,
+    })
+
+    await expect(withFakeTimers(() => repairPush())).resolves.toBe('enabled')
+
+    // ⚠️ 3 = ล้ม 2 + สำเร็จ 1 · ถ้า retry หายไป จะได้ 1 แล้วเทสนี้ล้ม
+    expect(reg.pushManager.subscribe).toHaveBeenCalledTimes(3)
+    // สำเร็จแล้วต้องเดินจบเส้นทางเดิมให้ครบ ไม่ใช่แค่ subscribe ผ่าน
+    expect(boundKey()).toBe(FAKE_PUBLIC_KEY)
+    expect(subscribeMock).toHaveBeenCalledWith({
+      endpoint: 'https://fcm.googleapis.com/fcm/send/fresh',
+      keys: { p256dh: 'AAAA', auth: 'BBBB' },
+    })
+  })
+
+  it('★ R2: ล้มทุกครั้ง → โยนตัวเดิมออกไป และลอง **ไม่เกินขอบเขต** (4 ครั้ง)', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    const { reg } = await readyEnv({
+      subscription: makeSubscription('https://fcm.googleapis.com/fcm/send/old'),
+      subscribeFailures: 99,
+    })
+
+    await expect(withFakeTimers(() => repairPush())).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+
+    // ⚠️ ขอบเขตคือ 1 + 3 ดีเลย์ — กัน "ลองไม่รู้จบ" ที่ทำให้ปุ่มดูค้าง
+    expect(reg.pushManager.subscribe).toHaveBeenCalledTimes(4)
+    // ⚠️ ล้มเหลวแล้ว **ห้ามเขียนคีย์ทับ** — มันคือทางกลับทางเดียวของผู้ใช้ (เหตุผลเดียวกับ K5)
+    expect(boundKey()).toBe('คีย์เก่า')
+    expect(subscribeMock).not.toHaveBeenCalled()
+  })
+
+  it('★ R3: error ที่ลองใหม่ไม่ได้ (`NotAllowedError`) → ยิง **ครั้งเดียว** แล้วโยนทันที', async () => {
+    localStorage.setItem(BOUND_KEY_STORAGE, 'คีย์เก่า')
+    const { reg } = await readyEnv({
+      subscription: makeSubscription('https://fcm.googleapis.com/fcm/send/old'),
+      subscribeAlwaysThrows: { name: 'NotAllowedError', message: 'Permission denied' },
+    })
+
+    await expect(withFakeTimers(() => repairPush())).rejects.toMatchObject({
+      name: 'NotAllowedError',
+    })
+
+    // ⚠️ หัวใจของ R3: การลองใหม่ไม่ช่วยอะไรกับ "ผู้ใช้ไม่อนุญาต" — ทำแล้วมีแต่ทำให้
+    //    ผู้ใช้ **รอนานขึ้น** เพื่อรอข้อความเดิมที่ควรเห็นทันที
+    expect(reg.pushManager.subscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('R4: เครื่องที่ยังไม่เคยเปิดก็ลองใหม่ได้ — ไม่ได้ผูก retry ไว้กับเส้นทางซ่อม', async () => {
+    const { reg } = await readyEnv({ subscribeFailures: 1 })
+
+    await expect(withFakeTimers(() => enablePush())).resolves.toBe('enabled')
+
+    expect(reg.pushManager.subscribe).toHaveBeenCalledTimes(2)
+    expect(boundKey()).toBe(FAKE_PUBLIC_KEY)
+  })
+})
+
+/**
+ * 🧪 ข้อความ error ที่ผู้ใช้เห็น
+ *
+ * ⚠️ ต้นเหตุของกลุ่มนี้คือ `AbortError: Registration failed - push service error` ล้วน ๆ
+ *    ซึ่งบอกผู้ใช้ว่า "มีอะไรผิด" แต่ไม่บอกว่า **ต้องทำอะไร** ⇒ คนที่เจอจะกดซ้ำแล้วเจอ
+ *    ข้อความเดิม จนสรุปว่าแอพพัง (เกิดจริงกับผู้ใช้ 29 ก.ย. 2026)
+ */
+describe('describePushError — แปล error เป็นคำที่ทำต่อได้', () => {
+  it('★ R5: `AbortError` ของ push service → บอกให้ปิด/เปิดเบราว์เซอร์ใหม่หรือเปลี่ยนเน็ต', () => {
+    const text = describePushError(
+      new DOMException('Registration failed - push service error', 'AbortError'),
+    )
+    expect(text).toContain('ปิดแล้วเปิดเบราว์เซอร์ใหม่')
+    expect(text).toContain('เน็ตอื่น')
+    // ⚠️ ต้องไม่หลุดชื่อ exception ดิบออกไปให้ผู้ใช้เห็น
+    expect(text).not.toContain('AbortError')
+  })
+
+  it('R6: `AbortError` ที่ **ไม่ใช่** เรื่อง push service → ไม่ถูกกล่าวหาว่าเป็นปัญหาปลายทาง', () => {
+    const text = describePushError(new DOMException('The operation was aborted.', 'AbortError'))
+    expect(text).not.toContain('ปิดแล้วเปิดเบราว์เซอร์ใหม่')
+    expect(text).toContain('AbortError') // ตกไปสาขา default ที่บอกชื่อไว้ (ดีกว่าเงียบ)
+  })
+
+  it('R7: แต่ละชื่อ exception → คำแนะนำคนละเรื่องกัน (ไม่ใช่ข้อความเดียวใช้ซ้ำ)', () => {
+    expect(describePushError(new DOMException('x', 'NotAllowedError'))).toContain(
+      'ตั้งค่าเบราว์เซอร์',
+    )
+    // เคสนี้ต่างจาก AbortError ตรงที่ "กดเปิดใหม่" ไม่ช่วย — ต้องปิดของเดิมให้จบก่อน
+    expect(describePushError(new DOMException('x', 'InvalidStateError'))).toContain(
+      'ปิดบนเครื่องนี้',
+    )
+    expect(describePushError(new DOMException('x', 'SecurityError'))).toContain('https')
+  })
+
+  it('R8: ข้อความที่ **เราเขียนเอง** ต้องผ่านออกไปตามเดิม (เจาะจงกว่าแผนที่นี้อยู่แล้ว)', () => {
+    expect(describePushError(new Error('ตัวช่วยแอพเวอร์ชันใหม่ยังไม่พร้อม — ลองใหม่อีกครั้ง'))).toBe(
+      'ตัวช่วยแอพเวอร์ชันใหม่ยังไม่พร้อม — ลองใหม่อีกครั้ง',
+    )
+  })
+
+  it('R9: สิ่งที่ไม่ใช่ Error เลย → ข้อความกลาง ๆ ไม่ใช่ `undefined`', () => {
+    expect(describePushError(null)).toBe('เกิดข้อผิดพลาด กรุณาลองใหม่')
+    expect(describePushError('พัง')).toBe('เกิดข้อผิดพลาด กรุณาลองใหม่')
   })
 })

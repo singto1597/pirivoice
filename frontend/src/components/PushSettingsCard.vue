@@ -14,6 +14,7 @@ import { computed, onMounted, ref } from 'vue'
 import Swal from 'sweetalert2'
 import { isIosSafari, isStandalone } from '@/pwa'
 import {
+  describePushError,
   disablePush,
   enablePush,
   pushBusy,
@@ -90,12 +91,18 @@ async function reportEnableResult(result: PushEnableResult): Promise<void> {
   }
 }
 
-/** แจ้ง error แบบเดียวกันทั้งสองปุ่ม — ต่างแค่หัวข้อ */
+/**
+ * แจ้ง error แบบเดียวกันทั้งสองปุ่ม — ต่างแค่หัวข้อ
+ *
+ * ⚠️ ข้อความมาจาก `describePushError()` **ไม่ใช่ `e.message` ตรง ๆ** — `DOMException`
+ *    ของเบราว์เซอร์บอกแค่ว่าอะไรพัง ไม่บอกว่าต้องทำอะไรต่อ · ผู้ใช้ที่เจอ
+ *    `Registration failed - push service error` แล้วกดซ้ำจะเจอข้อความเดิมจนคิดว่าแอพพัง
+ */
 async function reportError(title: string, e: unknown): Promise<void> {
   await Swal.fire({
     icon: 'error',
     title,
-    text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่',
+    text: describePushError(e),
   })
 }
 
