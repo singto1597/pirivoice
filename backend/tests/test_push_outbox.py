@@ -1057,10 +1057,14 @@ def test_T16a_build_payload_shape_matches_sw_js():
     ⇒ ถ้าที่นี่เปลี่ยนชื่อคีย์ `sw.js` จะพัง **โดยไม่มีอะไรจับได้ฝั่ง Python**
        (notification ยังขึ้นในแอพ แต่ push เงียบ) — เทสต์นี้คือด่านเดียว
 
-    ⚠️ `data.url` ต้องเป็น `/app/notifications` **ไม่ใช่** `/notifications`
+    ⚠️ `data.url` **เปลี่ยนความหมายตอน A4** — เดิมเป็นค่าคงที่ `/app/notifications`
+       ตอนนี้คำนวณจาก `entity_type`/`entity_id`/`board_id` (ดู `test_T21*`)
+       ⇒ สำหรับ `issue_update` ที่มี `entity_id=12` คำตอบที่ถูกคือ `/app/issues/12`
+
+    ⚠️ ยังต้องเป็น path ที่เริ่มด้วย `/app/` เสมอ — **ห้าม** เป็น `/notifications`
        เพราะ router ของ frontend มี redirect แบบ string ที่ทำ query หลุด (แผน §20.8)
 
-    mutation ที่ต้องทำให้แตก: เปลี่ยนเป็น '/notifications' หรือเปลี่ยนชื่อคีย์ 'tag'
+    mutation ที่ต้องทำให้แตก: เปลี่ยนชื่อคีย์ 'tag' · คืน `DEFAULT_PUSH_URL` แทน deep link
     """
     payload = push_service.build_payload({
         "notification_id": 42, "type": "issue_update",
@@ -1071,7 +1075,8 @@ def test_T16a_build_payload_shape_matches_sw_js():
     assert payload["title"] == "มีคนตอบเรื่องของคุณ"
     assert payload["body"] == "เรื่อง #12 ถูกตอบกลับแล้ว"
     assert payload["tag"] == "piri-notif-42", "tag ต้องไม่ซ้ำข้าม notification"
-    assert payload["data"]["url"] == "/app/notifications"
+    assert payload["data"]["url"].startswith("/app/"), "ต้องเป็น path ในแอพเสมอ"
+    assert payload["data"]["url"] == "/app/issues/12"
     assert payload["data"]["notification_id"] == 42
     assert payload["data"]["entity_type"] == "issue"
     assert payload["data"]["entity_id"] == 12
@@ -1082,12 +1087,178 @@ def test_T16b_build_payload_tag_is_stable_per_notification():
     """notification เดียวกันสร้าง payload ซ้ำกี่ครั้งก็ได้ tag เดิม
 
     ⇒ มือถือจะ **แทนที่** notification เก่าของเรื่องเดียวกัน ไม่ขึ้นซ้อนกัน 5 อัน
+
+    ⚠️ row นี้ **ไม่มีคีย์ `group_type`** โดยเจตนา — เป็นด่านที่พิสูจน์ว่า
+       `_field()` ทน row ที่ไม่ครบคีย์ได้ (ถ้าเปลี่ยนไปใช้ `row[key]` ตรง ๆ
+       เทสต์นี้จะกลายเป็น `KeyError` ไม่ใช่ assertion failure ⇒ อ่านยากกว่ามาก)
     """
     row = {
         "notification_id": 7, "type": "board_new", "title": "t", "body": "b",
         "entity_type": "board", "entity_id": 1, "board_id": 1,
     }
     assert push_service.build_payload(row)["tag"] == push_service.build_payload(row)["tag"]
+    # ไม่มี group_type ก็ยังต้องคำนวณ deep link ได้ (ตกไปข้อ 4: มี board_id)
+    assert push_service.build_payload(row)["data"]["url"] == "/app/boards/1"
+
+
+# ============================================================
+# 2b) A4 — Deep Link: `data.url` ต้องพาไปถึงของจริง ไม่ใช่หน้ารวม
+# ============================================================
+
+# ตารางนี้คือ **สำเนาของ call site จริงทั้ง 13 จุด** ที่วัดจาก backend (ไม่นับเทสต์):
+#   board_service.py:618,628 · board_moderation_service.py:256,416,634
+#   issue_service.py:353,519,656,670,1351,1556,1568,1622,1695,1870,1879
+# ⇒ ถ้ามีการเพิ่มชนิด notification ใหม่แล้วลืมเพิ่มในตารางนี้ **ไม่เป็นไร** (เทสต์จะยังผ่าน)
+#   แต่ถ้า `_deep_link_url()` เปลี่ยนลำดับการตัดสิน ตารางนี้จะแตกทันที
+_DEEP_LINK_CASES = [
+    # (type, group_type, entity_type, entity_id, board_id, ปลายทางที่ต้องได้)
+    ("issue_update",    "issue_mine",     "issue",             12, None, "/app/issues/12"),
+    ("issue_new",       "issue_received", "issue",             12, None, "/app/issues/12"),
+    ("issue_comment",   "issue_mine",     "issue",             12, None, "/app/issues/12"),
+    ("issue_comment",   "issue_received", "issue",             12, None, "/app/issues/12"),
+    ("board_reply",     "board",          "piri_board_comment", 55,    3, "/app/boards/3"),
+    ("board_new",       "board",          "piri_board",          3,    3, "/app/boards/3"),
+    ("board_hidden",    "board",          "piri_board",          3,    3, "/app/boards/3"),
+    ("report_new",      "report",         "piri_board_report",   9,    3, "/app/boards/reports"),
+    ("report_actioned", "report",         "piri_board_report",   9,    3, "/app/boards/3"),
+]
+
+
+@pytest.mark.parametrize("ntype,group,etype,eid,board_id,expected", _DEEP_LINK_CASES)
+def test_T21a_deep_link_covers_every_real_notification_type(
+    ntype, group, etype, eid, board_id, expected
+):
+    """⭐ เทสต์หลักของ A4 — ทุกชนิด notification จริงต้องมีปลายทางที่ถูกต้อง
+
+    เจตนาของ A4: กด notification แล้วไป **ถึงเรื่อง/บอร์ดนั้น** ไม่ใช่ไปหน้ารวม
+    แล้วให้ผู้ใช้หาต่อเอง ⇒ เทสต์นี้ตรึงคำตอบของทุกชนิดที่ระบบผลิตได้จริง
+
+    mutation ที่ต้องทำให้แตก: คืน `DEFAULT_PUSH_URL` แทน deep link (ทุกบรรทัดแตก)
+      · ลบ `group_type` ออกจาก SQL ของ `_load_payloads()` (T21g จับ — อันนี้ไม่)
+    """
+    row = {
+        "notification_id": 1, "type": ntype, "group_type": group,
+        "title": "t", "body": "b",
+        "entity_type": etype, "entity_id": eid, "board_id": board_id,
+    }
+    assert push_service._deep_link_url(row) == expected
+
+
+def test_T21b_report_new_must_beat_board_id_not_fall_through_to_the_board():
+    """🚨 **กับดักลำดับ** — `report_new` มี `board_id` ติดมาด้วย
+
+    ถ้าสลับข้อ 1 กับข้อ 3 ใน `_deep_link_url()` คำตอบจะกลายเป็น `/app/boards/3`
+    ซึ่ง **ดูสมเหตุสมผล** (มันคือบอร์ดที่รายงานอยู่นั่นแหละ) แต่ผิดเจตนา:
+    notification ชนิดนี้แจ้ง *สภาฯ* ว่ามีรายงานใหม่เข้ามา ⇒ ต้องพาไป **คิวงาน**
+    ไม่ใช่พาไปดูบอร์ดที่ตัวเองเพิ่งกดรายงาน
+
+    ⇒ เทสต์นี้มีไว้ **บอกชื่อสาเหตุ** เมื่อมีคนเรียงลำดับใหม่ — ถ้าขาดไป
+      `test_T21a` จะฟ้องด้วย `'/app/boards/3' != '/app/boards/reports'`
+      ซึ่งอ่านไม่ออกว่าทำไมถึงผิด
+    """
+    row = {
+        "notification_id": 1, "type": "report_new", "group_type": "report",
+        "title": "t", "body": "b",
+        "entity_type": "piri_board_report", "entity_id": 9, "board_id": 3,
+    }
+    url = push_service._deep_link_url(row)
+    assert url == "/app/boards/reports"
+    assert url != "/app/boards/3", "ต้องไม่ตกไปที่บอร์ด — นั่นคืออาการของลำดับที่สลับ"
+
+
+def test_T21c_report_without_board_id_falls_back_to_the_list():
+    """รายงานที่ไม่มี `board_id` (ข้อมูลเก่า/บอร์ดถูกลบ) → หน้ารวม ไม่ใช่ path พัง"""
+    row = {
+        "notification_id": 1, "type": "report_actioned", "group_type": "report",
+        "title": "t", "body": "b",
+        "entity_type": "piri_board_report", "entity_id": 9, "board_id": None,
+    }
+    assert push_service._deep_link_url(row) == push_service.DEFAULT_PUSH_URL
+
+
+def test_T21d_issue_without_entity_id_uses_board_id_then_default():
+    """`entity_type='issue'` แต่ `entity_id` เป็น NULL → ห้ามสร้าง `/app/issues/None`
+
+    ⚠️ นี่คือกับดักที่พังเงียบ: f-string จะสร้างสตริง `/app/issues/None` ที่ **ดูเหมือน
+       path จริง** ⇒ ผู้ใช้กดแล้วได้ 404 ที่หน้า detail แทนที่จะได้ fallback ที่ถูก
+    """
+    base = {
+        "notification_id": 1, "type": "issue_update", "group_type": "issue_mine",
+        "title": "t", "body": "b", "entity_type": "issue", "entity_id": None,
+    }
+    assert push_service._deep_link_url({**base, "board_id": 7}) == "/app/boards/7"
+    assert push_service._deep_link_url({**base, "board_id": None}) == "/app/notifications"
+
+
+def test_T21e_unknown_or_empty_row_never_raises_and_lands_on_the_list():
+    """row ที่ไม่รู้จัก/ว่างเปล่า → ต้อง **ไม่โยน exception** และตกที่หน้ารวม
+
+    ⚠️ ฟังก์ชันนี้ถูกเรียกในเส้นทางของ worker ⇒ exception ที่นี่ = push ตายทั้งรอบ
+       ไม่ใช่แค่ "หนึ่งอันไม่มีปลายทาง" · และ row จาก SQL จริงอาจขาดคีย์ได้เสมอ
+    """
+    assert push_service._deep_link_url({}) == "/app/notifications"
+    assert push_service._deep_link_url({"group_type": "event"}) == "/app/notifications"
+    assert push_service._deep_link_url({
+        "group_type": "board", "entity_type": "piri_board", "board_id": None,
+    }) == "/app/notifications"
+
+
+@pytest.mark.parametrize("ntype,group,etype,eid,board_id,_expected", _DEEP_LINK_CASES)
+def test_T21f_every_deep_link_is_an_in_app_path(
+    ntype, group, etype, eid, board_id, _expected
+):
+    """ทุกปลายทางต้องเป็น path **ภายในแอพ** — ขึ้นต้น `/app/` และไม่มี `//`
+
+    ⚠️ `/app/` คือข้อกำหนดจริง ไม่ใช่ความสวยงาม: router ของ frontend มี redirect
+       แบบ **string** ที่ทำ query หลุด (แผน §20.8) และ `//host` คือ protocol-relative
+       URL ซึ่งจะพาออกนอกแอพ (open redirect) — ทั้งคู่ต้องกันตั้งแต่ฝั่งที่สร้าง
+    """
+    url = push_service._deep_link_url({
+        "notification_id": 1, "type": ntype, "group_type": group,
+        "title": "t", "body": "b",
+        "entity_type": etype, "entity_id": eid, "board_id": board_id,
+    })
+    assert url.startswith("/app/"), f"{url} ต้องอยู่ในแอพ"
+    assert "//" not in url, f"{url} ห้ามเป็น protocol-relative"
+    assert "None" not in url, f"{url} ห้ามมีค่า None หลุดเข้าไปใน path"
+
+
+@pytest.mark.asyncio
+async def test_T21g_payload_sql_really_selects_group_type(push_world, db_pool):
+    """⭐ ด่านกัน "แก้โค้ดแล้วแต่ลืมแก้ SQL" — พิสูจน์ **end-to-end** ถึง payload จริง
+
+    `_deep_link_url()` ต้องการ `group_type` แต่ค่ามันมาจาก SQL ใน `_load_payloads()`
+    ⇒ ถ้าลบ `n.group_type` ออกจากคิวรี **เทสต์ T21a–T21f ยังผ่านหมด** (เพราะป้อน dict เอง)
+       แต่ของจริงจะตกไปข้อ 4 ทุกครั้ง ⇒ `report_new` พาไปบอร์ดแทนคิวรายงาน
+       = **บั๊กที่เทสต์หน่วยมองไม่เห็น** และไม่มี error ที่ไหนให้เห็น
+
+    mutation ที่ต้องทำให้แตก: ลบ `n.group_type,` ออกจาก SELECT ใน `_load_payloads()`
+    """
+    uid = push_world["student"]["user_id"]
+    await _give_device(db_pool, uid)
+
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO notifications
+                (user_id, group_type, type, title, body, entity_type, entity_id, board_id)
+            VALUES ($1, 'report', 'report_new', 'มีรายงานใหม่', 'บอร์ด #3 ถูกรายงาน',
+                    'piri_board_report', 9, 3)
+            """,
+            uid,
+        )
+        outbox_id = await conn.fetchval("SELECT id FROM push_outbox LIMIT 1")
+
+    assert outbox_id is not None, "trigger ไม่สร้าง outbox — ปัญหาอยู่ที่ migration 018/019"
+
+    rows = await push_service._load_payloads(db_pool, [outbox_id])
+    assert len(rows) == 1
+    # ① ด่านตรง: คีย์ต้องมา
+    assert "group_type" in rows[0], "SQL ไม่ได้ SELECT n.group_type → deep link จะเพี้ยนทั้งระบบ"
+    assert rows[0]["group_type"] == "report"
+
+    # ② ด่านปลายทาง: ผลลัพธ์จริงที่ผู้ใช้จะเห็น
+    assert push_service.build_payload(rows[0])["data"]["url"] == "/app/boards/reports"
 
 
 def test_T16c_decode_key_accepts_paddingless_base64url():

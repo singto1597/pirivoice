@@ -9,6 +9,8 @@ import {
   boardAuthorFallback,
   type BoardDetail,
 } from '@/types/board'
+import type { ApiError } from '@/services/api'
+import { goUnavailable } from '@/router/unavailable'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import CommentThread from '@/components/boards/CommentThread.vue'
@@ -83,6 +85,15 @@ async function load() {
     // 🔔 เปิดบอร์ดแล้ว → mark notification ของบอร์ดนี้ว่าอ่านแล้ว (badge ลด)
     if (board.value) void notificationsStore.read({ board_id: board.value.id })
   } catch (e) {
+    // 🚪 404 = บอร์ด "เปิดดูไม่ได้แล้ว" มีสองทางที่อยู่คนละคอลัมน์ — `deleted_at IS NOT NULL`
+    //    (ถูกลบ) และ `status = 'hidden'` (สภาฯ กดซ่อน) · backend ตอบ 404 เหมือนกันทั้งคู่
+    //    ⇒ ลิงก์ที่ผู้ใช้กดมา (จาก notification หรือ deep link ของ push) ใช้ต่อไม่ได้
+    //    ⇒ พากลับไปที่ที่ไปต่อได้ + บอกสาเหตุ ดีกว่าค้างไว้กับ error ที่กดลองใหม่ก็ได้ 404
+    //    (เหตุผลเต็มอยู่ใน `router/unavailable.ts` — **ห้ามแยกสองกรณีนี้ออกจากกัน**)
+    if (e instanceof Error && (e as ApiError).status === 404) {
+      await goUnavailable(router, 'board')
+      return
+    }
     loadError.value = e instanceof Error ? e.message : 'โหลดบอร์ดไม่สำเร็จ'
   } finally {
     isLoading.value = false

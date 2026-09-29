@@ -1723,3 +1723,102 @@
   · ★ **assert ว่า `collected == passed`** ⇒ ปิดช่อง "มีเทสต์ถูก skip แล้วตัวเลขยังสวย" ซึ่งเป็นเหตุผลเดียวที่ตัวเลขเป้าจะมีค่า
   · 📌 **ตัวเลขเป้าที่ "เกิน" หรือ "ขาด" ไม่ใช่หลักฐานเสมอไป** — ก่อนสรุปว่ามีอะไรผิด ให้ถามก่อนว่า *"เป้านี้ผูกกับ commit ไหน"* · **ด่านที่ดีต้องบอกได้ว่ามันเทียบกับอะไร ไม่ใช่แค่บอกว่าผ่าน**
 - **Date Added:** 2026-09-29
+
+### 🔗 สัญญาที่อยู่คนละภาษา ต้องอยู่ใน "โมดูลที่ประกาศตัวว่าเป็นสัญญา" — และตรึงสองฝั่งด้วยตารางที่เทียบกันได้ตรง ๆ
+- **Context/Problem:** A4 Deep Link — ปลายทางเมื่อผู้ใช้กด notification ถูกตัดสิน **สองที่คนละภาษา**: `backend/services/push_service.py::_deep_link_url()` (สร้าง `data.url` ให้ FCM/OS เปิด) และ `NotificationCenter.vue::go()` (กดในแอพ) · ตรรกะฝั่งในแอพเดิมฝังอยู่ใน `go()` ของ SFC ⇒ docstring ฝั่ง backend ต้องชี้มาที่ไฟล์ `.vue` และไม่มีเทสต์ฝั่ง frontend ที่เทียบกับตารางของ backend ได้
+- **Root Cause:** สองภาษา "ตกลงกัน" ผ่านข้อความในคอมเมนต์ ไม่มีอะไรบังคับ ⇒ ถ้าไม่ตรงกัน **ทั้งสองฝั่ง "ดูถูก" แยกกัน** ไม่มี error ไม่มี log · อาการที่ผู้ใช้เห็นคือ notification อันเดียวกันให้ผลต่างกัน (กดในแอปไปที่หนึ่ง กดจาก push ไปอีกที่หนึ่ง) ซึ่งไม่มีใครบ่นเป็นคำที่หาสาเหตุได้ · และการวางสัญญาไว้ใน SFC ทำให้ (ก) เทสต์ยากเพราะต้อง mount component (ข) คนอ่านฝั่ง backend ต้องเปิดไฟล์ Vue
+- **Correct Pattern/Solution:** ยกการตัดสินออกเป็น **ฟังก์ชันบริสุทธิ์ในโมดูลที่ชื่อบอกว่ามันคือสัญญา** แล้วแยก "ผลข้างเคียง" ออกจาก "ปลายทาง"
+  ```ts
+  // router/deepLink.ts — โมดูลนี้คือสัญญาร่วมกับ push_service._deep_link_url()
+  export function deepLinkTarget(n: DeepLinkSource): DeepLinkTarget   // {name,params} | null
+  ```
+  · `go()` ใน SFC เหลือแค่ **ผลข้างเคียง** (mark-read) แล้วเรียก `deepLinkTarget(n)` ไป navigate ⇒ SFC กับ pure function แยกกันเทสต์ได้อิสระ
+  · **ตรึงสองฝั่งด้วยตารางเดียวกันที่แสดงเป็น "path สตริง" ไม่ใช่ชื่อ route** ⇒ เทียบข้ามภาษาได้ตรง ๆ
+  ```py
+  _DEEP_LINK_CASES = [("report_new", "report", "piri_board_report", 9, 3, "/app/boards/reports"), …]
+  ```
+  ```ts
+  function targetToPath(t: DeepLinkTarget): string   // แปลง route → สตริงเดียวกับที่ backend สร้าง
+  ```
+  ฝั่ง backend assert สตริงนั้นตรง ๆ · ฝั่ง frontend แปลง route กลับเป็นสตริงแล้ว assert สตริงเดียวกัน
+  · ⚠️ **ลำดับในการตัดสินมีความหมาย** — `report_new` ต้องชนะ `board_id` (ถ้าสลับจะได้ `/app/boards/3` ซึ่ง "ดูสมเหตุสมผล" เพราะเป็นบอร์ดที่ถูกรายงานนั่นแหละ แต่ผิดเจตนา) ⇒ มีเทสต์เฉพาะข้อนี้ทั้งสองฝั่ง (`T21b` / `D4`) และคอมเมนต์ห้ามสลับลำดับกำกับไว้ที่ตัวโค้ด
+  · **เพิ่มชนิดใหม่ = เพิ่มสองที่** ⇒ ใช้ `Record<NotificationGroup, true>` เป็นด่าน **compile-time** (ลืม = ไม่คอมไพล์ ไม่ใช่ตกตอนรันบน staging)
+  · 📌 `entity_id` เป็น NULL ต้อง **ห้าม** เรนเดอร์ `/app/issues/null` — ตกไปใช้ `board_id` ก่อน แล้วจึงเป็น `null` (เทสต์ `D6`/`T21d`) · และเทียบด้วย `!= null` ไม่ใช่ truthy (`board_id = 0` ต้องไม่ถูกมองว่า "ไม่มี" — เทสต์ `D9`)
+- **Date Added:** 2026-09-29
+
+### 🩺 ข้อมูลวินิจฉัยที่ "หายไปหนึ่งชั้น" ทำให้แก้บั๊กไม่ได้ — ตรึงตัวข้อมูลเอง ไม่ใช่ตรึงพฤติกรรมที่พึ่งมัน
+- **Context/Problem:** บั๊ก #32 — notification ชี้บอร์ดที่ถูกซ่อนภายหลัง กดแล้วได้ 404 · หน้าเดิม **แยกไม่ออก** ระหว่าง 404 (ถูกซ่อน/ลบ → ควรพากลับหน้ารายการ + บอกสาเหตุ) กับ 500 (เซิร์ฟเวอร์พัง → ควรอยู่หน้าเดิม + ปุ่มลองใหม่) ⇒ ทางแก้ที่ปลายทางจึงมีได้แค่ "เด้งกลับหน้ารวม" ซึ่ง **ผิดสำหรับ 500** · สาเหตุคือ `api.ts` โยน `new Error(detail)` ล้วน — **status หายตั้งแต่ชั้นล่างสุด**
+- **Root Cause:** interceptor **ทิ้งข้อมูลวินิจฉัย** ⇒ ทุกชั้นที่อยู่เหนือขึ้นไปสูญเสียความสามารถในการแยกแยะ โดยไม่มีใครรู้ว่าสูญเสีย · โค้ดที่เขียนว่า `catch (e) { Swal.fire(e.message) }` **ดู "จัดการครบแล้ว"** ทั้งที่มันแยกสถานการณ์ไม่ได้เลย
+- **Correct Pattern/Solution:** แนบ status กลับไปกับ Error — **เป็นส่วนเพิ่ม ไม่ใช่การเปลี่ยนสัญญา**
+  ```ts
+  export interface ApiError extends Error { status?: number }
+  const apiError = new Error(detail) as ApiError
+  apiError.status = error.response.status
+  ```
+  · ยัง `instanceof Error` จริง และ `.message` เหมือนเดิม ⇒ **ผู้เรียกเดิมทั้งหมดไม่ต้องแก้แม้บรรทัดเดียว**
+  · ⚠️ **"ไม่มี response" (เน็ตหลุด/timeout) ต้องเป็น `undefined` ไม่ใช่ `0`/`-1`** — "ไม่มีข้อมูล" ต้องต่างจาก "มีข้อมูลว่าเป็น 0" ไม่งั้นโค้ดที่เขียน `if (!err.status)` จะตีความผิด
+  · ⚠️ **เทสต์ต้องตรึง "ตัวข้อมูล" ไม่ใช่ "พฤติกรรมที่พึ่งมัน"** — ถ้าเทสต์แค่ "ผู้ใช้ถูกพากลับหน้ารายการ" แล้ววันหนึ่งมีคนเปลี่ยนชื่อ property เป็น `httpStatus` การพากลับจะหยุดทำงาน **แต่เทสต์ยังผ่าน** (เพราะ `as ApiError` ไม่มีอะไรผูกชื่อ property ไว้) ⇒ ต้องมีเทสต์ที่ assert `status === 404` และ `hasOwnProperty('status')` ผ่าน **adapter จริง** (แทน `api.defaults.adapter` ให้ reject ด้วย object ที่มี `.response`) ไม่ใช่เรียก handler ของ interceptor ตรง ๆ ซึ่งเป็นโครงสร้างภายในที่เปลี่ยนได้
+  · 🚩 **สัญญาณของคลาสนี้:** *"แก้บั๊กด้วยบรรทัดเดียว"* และบรรทัดนั้น **ถ้าลบออก ทุกอย่างยังคอมไพล์และเทสต์อื่นยังผ่านทั้งหมด** ⇒ ต้องมีเทสต์ที่ fail เมื่อลบบรรทัดนั้นโดยเฉพาะ — ไม่งั้น "การทำความสะอาด" ในอนาคตจะเอากลับมาพังเงียบ ๆ
+- **Date Added:** 2026-09-29
+
+### 🚪 ค่าที่มาจาก URL และถูกใช้ "หลังล็อกอินสำเร็จ" ต้องถูกปฏิเสธ ไม่ใช่ถูกซ่อม
+- **Context/Problem:** A4 — deep link ที่เปิดตอนยังไม่ล็อกอิน/token หมดอายุถูกจำไว้ที่ `?redirect=` แล้วนำไป `router.replace(target)` **ทันทีหลังใส่รหัสผ่านถูก** ⇒ `/login?redirect=https://evil.example` กลายเป็นฟิชชิงที่เชื่อถือได้มาก เพราะต้นทางเป็นโดเมนโรงเรียนจริงและเหยื่อเพิ่งพิสูจน์ตัวเองด้วยรหัสผ่าน
+- **Root Cause:** ด่าน "ต้องขึ้นต้นด้วย `/`" **ไม่พอ** และ payload ที่ผ่านด่านนั้นได้มีอยู่จริงหลายแบบ: เบราว์เซอร์ตีความ `\` เป็น `/` ⇒ `/\evil.example` และ `\\evil.example` ผ่านแล้วออกนอกแอพ · `//evil.example` เป็น protocol-relative ⇒ ก็ผ่าน "ขึ้นต้นด้วย /" · ⇒ **ต้องรู้ payload แต่ละแบบจึงจะกันได้** และการพยายาม "ซ่อม" (strip scheme, ตัด backslash) สร้างช่องใหม่ที่ต้องคิดต่อไม่จบ
+- **Correct Pattern/Solution:** **ปฏิเสธที่ "รูปของค่า" ด้วย allowlist คำนำหน้าแคบ ๆ** ไม่ใช่พยายามตีความ
+  ```ts
+  if (!value.startsWith('/app/')) return null   // allowlist แคบ — ไม่ใช่ startsWith('/')
+  if (value.includes('\\')) return null          // backslash bypass (เบราว์เซอร์ตีความเป็น /)
+  ```
+  · **"ปฏิเสธ" ไม่ใช่ "ซ่อม"** ⇒ คืน `null` แล้วให้หน้า Login ไปหน้าแรกตามบทบาท ซึ่งเป็นพฤติกรรมเดิมที่ปลอดภัยอยู่แล้ว
+  · คำนำหน้าต้องแคบ: `/login`, `/`, `/app` (ไม่มีสแลชปิด), `/application/evil`, `' /app/boards/5'` (มีช่องว่างนำ) ต้องตกทั้งหมด
+  · ⚠️ **ค่าจาก URL รูปร่างเป็นอะไรก็ได้** — query ซ้ำทำให้เป็น array, อาจเป็น number/object ⇒ **ห้าม throw** เพราะ throw ที่นี่ = หน้า Login พังทั้งหน้าหลังผู้ใช้ใส่รหัสผ่านถูกแล้ว (worst case)
+  · เทสต์ต้องมีทั้ง **payload โจมตีจริง** (absolute, http, protocol-relative, backslash เดี่ยว/คู่, `javascript:`, `data:`) และ **คุณสมบัติเชิงโครงสร้าง** (ผลลัพธ์ที่ผ่านต้องขึ้นต้น `/` เสมอ ไม่ขึ้นต้น `//` ไม่ match scheme) เพื่อกันเคสที่ยังไม่มีใครคิดถึง
+  · 📌 **`safeRedirect` อยู่คนละไฟล์กับ guard** โดยเจตนา — guard แค่ *ส่งต่อ* ค่า (`to.fullPath`) ไม่ได้แปลว่าค่าปลอดภัย และคอมเมนต์ต้องเขียนกำกับไว้ทั้งสองที่ ไม่งั้นวันหน้าจะมีคนคิดว่า guard กรองให้แล้ว
+- **Date Added:** 2026-09-29
+
+### 🔁 คู่ "ผู้ผลิต–ผู้บริโภค" ที่ผูกกันผ่าน URL ไม่ได้ผูกกันด้วย type — เทสต์ต้องส่งค่าที่ผลิตจริงกลับเข้าผู้บริโภค
+- **Context/Problem:** `goUnavailable(router, 'board')` ผลิต `?unavailable=board` แล้ว `readUnavailable()` อ่านค่านั้นกลับมาทำ Swal · ทั้งคู่ใช้ `UnavailableKind` ร่วมกัน ⇒ **ดูเหมือน type รับประกันให้แล้ว**
+- **Root Cause:** type รับประกันแค่ *ชนิดของตัวแปร* **ไม่ได้ผูกเส้นทางข้อมูล** — ผู้ผลิตเขียน `query: { unavailable: kind }` ด้วย literal string และผู้บริโภคอ่าน `to.query['unavailable']` ด้วย literal string **ชื่อคีย์ไม่ถูกตรวจโดยใครเลย** ⇒ เปลี่ยนชื่อฝั่งใดฝั่งหนึ่ง อีกฝั่งยังคอมไพล์ผ่าน และอาการคือ "Swal ไม่ขึ้น" ซึ่ง **แยกไม่ออกจาก "ยังไม่ deploy"** หรือ "เน็ตช้า"
+- **Correct Pattern/Solution:** เทสต์ที่ **บังคับให้ครบวง โดยอ่านค่าจากสิ่งที่ผู้ผลิตสร้างจริง** ไม่ใช่จากตัวแปรที่ป้อนเข้า
+  ```ts
+  const { replace, router } = fakeRouter()
+  await goUnavailable(router, kind)
+  const to = replace.mock.calls[0][0]
+  expect(readUnavailable(to.query[UNAVAILABLE_QUERY])).toBe(kind)   // ← อ่านจาก query ที่ผลิตจริง
+  ```
+  · ⚠️ **ค่าที่มาจาก URL ต้องกรองก่อนใช้ ไม่ใช่ cast** — `?unavailable=<มั่ว>` cast แล้วเอาไปเข้า `Record` จะได้ `undefined` ไปแสดงเป็นข้อความให้ผู้ใช้เห็น ⇒ `readUnavailable` return `null` สำหรับค่าที่ไม่รู้จัก
+  · เพิ่มชนิดใหม่: `Record<UnavailableKind, true>` เป็นด่าน **compile-time** + ลูปเทสต์อ่านจาก object นั้น ⇒ ครอบชนิดใหม่อัตโนมัติ
+  · 📌 **รูปแบบนี้ใช้ได้ทุกที่ที่สองฝั่งสื่อสารผ่านสตริง** — URL query, `localStorage` key, ชื่อ `postMessage`/event, ชื่อ channel ของ `pg_notify` ⇒ **ถ้าคอมไพเลอร์ไม่รู้จักช่องทางนั้น ก็ต้องมีเทสต์ที่เดินผ่านช่องทางนั้นจริง** ไม่ใช่เทสต์สองฝั่งแยกกัน
+- **Date Added:** 2026-09-29
+
+### 🧹 `expect(value, message)` ของ vitest ถูก oxlint ตีเป็น error — และวิธี assert ที่ให้ข้อความ fail ดีกว่า
+- **Context/Problem:** `npm run lint` ล้มด้วย `eslint-plugin-jest(valid-expect): Expect takes at most 1 argument` 2 จุดในสเปกใหม่ ทั้งที่ vitest รองรับ argument ที่สองเป็นข้อความ fail (ของ jest ก็รองรับ) · และ `npm run type-check` **ผ่าน** ⇒ เจอตอนรัน `lint` เท่านั้น
+- **Root Cause:** oxlint เปิด rule ของ `eslint-plugin-jest` ซึ่ง **ไม่ได้แยก vitest ออกจาก jest** ⇒ รูปที่ vitest รองรับถูกมองเป็นความผิด · ด่าน frontend มี 4 ขั้น (`type-check` · `lint` · `test:unit` · `build`) และ **`type-check` ไม่ครอบ `lint`** ⇒ การรันแค่ `type-check` ให้ความรู้สึกว่า "ผ่านแล้ว"
+- **Correct Pattern/Solution:** เปลี่ยนเป็นรูปที่ทั้งคู่พอใจ **และได้ข้อความ fail ที่ดีกว่าเดิม**
+  ```ts
+  // ❌ expect(covered.has(g), `กลุ่ม ${g} ไม่มีเคส`).toBe(true)   ← ข้อความไม่ขึ้นด้วยซ้ำในเทสต์ที่ fail
+  // ✅
+  const missing = ALL_GROUPS.filter((g) => !covered.has(g))
+  expect(missing).toEqual([])        // fail แล้วเห็นทันทีว่า "กลุ่มไหน" หาย
+  ```
+  · 📌 **assert เป็น "รายการที่ขาด" ดีกว่า assert เป็น boolean ในลูป** — boolean บอกแค่ว่ามีอะไรผิด ไม่บอกว่าอันไหน ⇒ ต้องไปไล่เอง · หลักเดียวกับที่ใช้กับ `test_push_outbox` (assert *ตัวนับ* `stats["gone"]` ไม่ใช่แค่ "ไม่ throw")
+  · ⚠️ **แก้ให้ lint ผ่านต้องรักษาความหมายของเทสต์** — ห้ามลบ assert ทิ้งหรือทำให้อ่อนลงเพียงเพื่อให้ผ่าน lint · ถ้าลบไม่ได้จริง ๆ ให้ใช้ `// oxlint-disable-next-line <rule>` **พร้อมเหตุผล** ไม่ใช่ปิดทั้งไฟล์
+  · 📌 **ลำดับ gate ฝั่ง frontend ที่ต้องรันครบ:** `npm run type-check && npm run lint && npm run test:unit && npm run build` — สี่ตัวจับคนละคลาส (`lint` จับได้สิ่งที่ `type-check` ไม่เห็น และกลับกัน)
+- **Date Added:** 2026-09-29
+
+### 🌐 "ไฟล์เป็น UTF-8" ไม่เท่ากับ "เบราว์เซอร์อ่านเป็น UTF-8" — ต้องมี *คำประกาศ* ไม่ใช่แค่ไบต์ที่ถูก
+- **Context/Problem:** รายงาน HTML 3 ไฟล์ใน `~/reports` แสดงข้อความไทยเป็นตัวขยะทั้งหน้า ทั้งที่ **ไบต์ในไฟล์เป็น UTF-8 ถูกต้องทุกไบต์** (`open(f, encoding="utf-8").read()` ผ่าน ไม่มี `U+FFFD` แม้ตัวเดียว)
+- **Root Cause:** การตัดสิน encoding ของเบราว์เซอร์ไล่ตามลำดับ **HTTP header → BOM → `<meta charset>` → เดา** · `reports-browser` (`SimpleHTTPRequestHandler`) ตอบ `Content-type: text/html` **ไม่มี `charset=`** และ 3 ไฟล์นั้น **ไม่มี `<meta charset>`** (และไม่มี `<!doctype>`) ⇒ ตกไปขั้น "เดา" ซึ่งใช้ locale ของเครื่อง (windows-1252) ⇒ **UTF-8 ที่ถูกต้องถูกตีความเป็น Latin-1** · ไฟล์อื่นในโฟลเดอร์เดียวกันมี `<meta charset="utf-8">` จึงรอด ⇒ อาการนี้ **ขึ้นกับไฟล์ ไม่ใช่ขึ้นกับเซิร์ฟเวอร์** และ "ดูที่อื่นก็ปกติดี" จึงไม่ใช่หลักฐานว่าปลอดภัย
+- **Correct Pattern/Solution:** ทุกไฟล์ HTML ที่เสิร์ฟเองต้องประกาศเอง **ครบชุดนี้** (เรียงตามนี้):
+  ```html
+  <!doctype html>
+  <html lang="th">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  ```
+  · ⚠️ **`<meta charset>` ต้องอยู่ใน 1024 byte แรก** (spec ให้ parser prescan เฉพาะช่วงนั้น) ⇒ วางบนสุดเสมอ อย่าไปไว้ท้าย `<head>` หลังคอมเมนต์ยาว ๆ · ตรวจด้วย offset จริง: `open(f,'rb').read().find(b'<meta charset="utf-8">')` ต้อง `< 1024`
+  · ⚠️ **การเติม head ให้ไฟล์เดิมเปลี่ยนพฤติกรรมการ render 2 อย่างที่มองไม่เห็นจากซอร์ส** — `<!doctype html>` พา **quirks mode → standards mode** (box model เปลี่ยน) และ viewport meta เปลี่ยน **มือถือจาก virtual viewport ~980px → ความกว้างจริง** ⇒ **ต้อง render ดูจริง ไม่ใช่แค่ตรวจว่าแท็กครบ**: `document.compatMode === 'CSS1Compat'` + `document.documentElement.scrollWidth <= window.innerWidth` (ห้ามมี scroll แนวนอน) + `document.characterSet === 'UTF-8'` + นับ `input[data-k]` ว่าเท่าเดิม
+  · 📌 **แก้ที่ปลายเหตุ (ไฟล์) หรือที่ต้นเหตุ (`server.py`) ก็ได้ — แต่ต้องรู้ว่ากำลังเลือกอะไร:** การใส่ `charset=utf-8` ใน `Content-type` ของ server แก้ได้ทุกไฟล์รวมของในอนาคต **แต่** ต้อง restart container และ **เงียบ ๆ แก้ให้ไฟล์ที่เผลอเป็น encoding อื่น** ⇒ ทางที่ปลอดภัยคือ **ประกาศที่ไฟล์** (ตัวไฟล์พกความจริงของตัวเองไปทุกที่) แล้วค่อยเสริม header เป็นชั้นสอง
+  · 📌 **ตรวจหมู่ ไม่ใช่ตรวจไฟล์:** กวาดทั้งโฟลเดอร์ด้วย `grep -ci '<meta charset'` ทุกไฟล์ — 3 ไฟล์ที่พังเป็นรุ่นเดียวกัน (สคริปต์สร้างเดียวกันตัดหัวทิ้ง) ⇒ **ไฟล์ที่ "เพื่อนพัง" มักพังด้วยกัน** อย่าซ่อมเฉพาะที่ผู้ใช้ชี้
+- **Date Added:** 2026-09-29

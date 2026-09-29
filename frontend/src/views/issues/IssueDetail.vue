@@ -25,6 +25,8 @@ import {
   type Issue,
   type RequestedDestination,
 } from '@/types/issue'
+import type { ApiError } from '@/services/api'
+import { goUnavailable } from '@/router/unavailable'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { STATUS_BADGE } from '@/constants/status'
@@ -136,6 +138,13 @@ async function load() {
     // 🔔 เปิดเรื่องแล้ว → mark notification ของเรื่องนี้ว่าอ่านแล้ว (badge ลด)
     if (issue.value) void notificationsStore.read({ entity_type: 'issue', entity_id: issue.value.id })
   } catch (e) {
+    // 🚪 404 = เรื่องนี้เปิดดูไม่ได้แล้ว (ถูกลบ หรือถูกสภากดซ่อน) — backend ตอบ 404 เหมือนกัน
+    //    ⚠️ เช็ค **ก่อน** เงื่อนไข `!issue.value` เพราะ 404 เป็นสถานะสุดท้าย —
+    //    refreshing หน้าเดิมที่เพิ่งถูกลบจะไม่มีทางสำเร็จ ⇒ ต้องพาออก ไม่ใช่เก็บหน้าเดิมไว้
+    if (e instanceof Error && (e as ApiError).status === 404) {
+      await goUnavailable(router, 'issue')
+      return
+    }
     // มีข้อมูลเดิมอยู่แล้ว (กำลัง refresh) → เก็บหน้าเดิมไว้ ไม่ฟ้อง error
     if (!issue.value) loadError.value = errMsg(e) || 'เกิดข้อผิดพลาด'
   } finally {

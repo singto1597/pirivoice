@@ -1,0 +1,65 @@
+import type { Router } from 'vue-router'
+
+/**
+ * 🚪 "เนื้อหาที่ลิงก์ชี้ไป เปิดดูไม่ได้แล้ว" — สัญญาระหว่างผู้ผลิตกับผู้บริโภค
+ *
+ * ⚠️ **ทำไมต้องมีโมดูลนี้ ไม่ใช่เขียนข้อความไว้ในแต่ละหน้า:** ค่าคงที่นี้ถูกใช้ 2 ฝั่ง
+ *   (หน้าที่เจอ 404 → หน้าที่แสดงข้อความ) ⇒ ถ้าประกาศซ้ำสองที่ วันที่มีคนแก้ฝั่งเดียว
+ *   จะได้หน้าที่ **เงียบสนิท** — ไม่มี Swal ไม่มี error — ซึ่งแยกไม่ออกว่า
+ *   "ไม่มีอะไรเกิดขึ้น" หรือ "มีบั๊ก" (เป็นความล้มเหลวแบบเดียวกับ `NOTIFY_CHANNEL`
+ *   ที่เทสต์ `M2` ของ backend ต้องมีไว้จับ — บทเรียน §21.6)
+ *
+ * 📌 **"เปิดดูไม่ได้" มีสองทางที่อยู่คนละคอลัมน์** (บทเรียน Task #31):
+ *   - `deleted_at IS NOT NULL` — ถูกลบ
+ *   - `status = 'hidden'`      — สภาฯ กดซ่อน
+ *   ทั้งคู่ทำให้ `GET /api/boards/{id}` · `GET /api/issues/{id}` ตอบ **404** เหมือนกัน
+ *   ⇒ ฝั่ง client ไม่ต้องแยก (และแยกไม่ได้) — ข้อความจึงพูดรวม ๆ ว่า "ถูกซ่อนหรือถูกลบ"
+ *
+ * ⚠️ **ทำไมไม่ทิ้งผู้ใช้ไว้ที่หน้า error:** ทางที่ผู้ใช้มาถึงหน้านั้นเกือบทั้งหมดคือ
+ *   **กด notification** หรือ **กด deep link จาก push** ⇒ เขาไม่ได้ตั้งใจเปิดหน้านี้เอง
+ *   ⇒ การค้างอยู่กับ error ที่กด "ลองใหม่" แล้วได้ 404 เหมือนเดิมคือทางตัน
+ *   ⇒ คำตอบที่ถูกคือ **พากลับไปที่ที่เขาต่อได้** (รายการแจ้งเตือน) แล้วบอกตรง ๆ
+ */
+
+/** ชื่อ query parameter ที่ใช้ส่งต่อ "สาเหตุ" ผ่าน URL */
+export const UNAVAILABLE_QUERY = 'unavailable'
+
+/** ชนิดของเนื้อหาที่เปิดไม่ได้ — เพิ่มชนิดใหม่แล้วต้องเพิ่มข้อความใน `UNAVAILABLE_MESSAGES` */
+export type UnavailableKind = 'board' | 'issue'
+
+const UNAVAILABLE_MESSAGES: Record<UnavailableKind, string> = {
+  board: 'บอร์ดที่ลิงก์ชี้ไปถูกซ่อนหรือถูกลบไปแล้ว',
+  issue: 'เรื่องที่ลิงก์ชี้ไปถูกซ่อนหรือถูกลบไปแล้ว',
+}
+
+/** ป้ายหัวข้อของ Swal — แยกจาก `title` ของ notification ที่ผู้ใช้อาจเพิ่งกดมา */
+export const UNAVAILABLE_TITLE = 'เนื้อหานี้เปิดดูไม่ได้แล้ว'
+
+/**
+ * แปลงค่าดิบจาก `route.query` เป็นชนิดที่รู้จัก — **คืน `null` ถ้าไม่รู้จัก**
+ *
+ * ⚠️ **ต้องกรอง ไม่ใช่ cast** — ค่านี้มาจาก URL ที่ใครก็แก้ได้ (`?unavailable=<อะไรก็ได้>`)
+ *   ⇒ ถ้า cast ตรง ๆ แล้วเอาไปเข้า `Record` จะได้ `undefined` ไปโผล่ใน Swal
+ *   เป็นข้อความ "undefined" ให้ผู้ใช้เห็น · การคืน `null` = "ไม่รู้จัก ก็ไม่ต้องพูดถึง"
+ *   ปลอดภัยกว่า และไม่ต้องมี fallback message ที่ไม่มีใครอ่าน
+ */
+export function readUnavailable(raw: unknown): UnavailableKind | null {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (value === 'board' || value === 'issue') return value
+  return null
+}
+
+export function unavailableMessage(kind: UnavailableKind): string {
+  return UNAVAILABLE_MESSAGES[kind]
+}
+
+/**
+ * พาไปรายการแจ้งเตือนพร้อมป้ายบอกสาเหตุ — ใช้ตอนเจอ 404 จากหน้ารายละเอียด
+ *
+ * ⚠️ ใช้ `replace` **ไม่ใช่ `push`** — ไม่งั้นปุ่ม "ย้อนกลับ" ของเบราว์เซอร์/แอพ
+ *   จะพาผู้ใช้กลับไปที่ลิงก์ที่ตายแล้ว แล้วเด้งกลับมาใหม่ = วนลูปที่ดูเหมือนแอพค้าง
+ *   (บนมือถือที่ไม่มีปุ่ม back ของเบราว์เซอร์ อาการนี้จะยิ่งสับสน)
+ */
+export async function goUnavailable(router: Router, kind: UnavailableKind): Promise<void> {
+  await router.replace({ name: 'notifications', query: { [UNAVAILABLE_QUERY]: kind } })
+}
