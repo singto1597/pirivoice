@@ -589,6 +589,27 @@ async def init_db(pool: asyncpg.Pool):
                         ON student_import_jobs(created_at);
                 """)
 
+                # bookmarks (C2 / migration 021) — "บันทึกไว้อ่านทีหลัง" ของเจ้าของบัญชี
+                # ⚠️ **polymorphic** (entity_type + entity_id) ⇒ **ไม่มี FK ไป issues/piri_boards**
+                #    FK ของ Postgres ผูกกับตารางเดียว ⇒ ถ้าจะบังคับด้วย FK ต้องแยกเป็น 2 คอลัมน์
+                #    nullable ซึ่งทำให้ทุกคิวรีต้องเขียน COALESCE และเพิ่มชนิดใหม่ต้อง ALTER TABLE
+                #    ⇒ ความถูกต้องย้ายไปอยู่ที่ bookmark_service.create_bookmark()
+                #      (ตรวจว่า entity มีจริงและไม่ถูกลบก่อน insert — มีเทสต์ B3/B4 คุมอยู่)
+                # ⚠️ **ไม่มี CHECK บน entity_type โดยเจตนา** — ชุดนี้จะโต (D1 จะเพิ่ม 'event')
+                #    ⇒ validate ที่ชั้น Pydantic (`Literal`) ซึ่งตอบ 422 ให้เองโดยไม่ต้อง migrate
+                #      (ต่างจาก piri_boards.board_type ที่ CHECK ไว้ก่อนแล้ว ⇒ E1 ต้อง DROP CONSTRAINT)
+                # ⚠️ **ไม่มี deleted_at** — เลิกบันทึกคือ DELETE จริง (ไม่ใช่ข้อมูลที่ต้องเก็บประวัติ)
+                #    ⇒ unique index จึงเป็นแบบธรรมดา ไม่ใช่ partial แบบ piri_votes
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS bookmarks (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        entity_type VARCHAR(20) NOT NULL,
+                        entity_id INTEGER NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+
                 # --- 10. ตารางรองรับ dashboard ---
                 # (การนับสถิติสามารถ query ตรงจาก issues ได้ แต่ให้มี view/ตารางสรุปไว้ก่อน)
 
@@ -697,6 +718,25 @@ async def init_db(pool: asyncpg.Pool):
                 --    และ partial ทำให้ index เล็กลงมากเมื่อของที่ processed แล้วสะสม (retention 7 วัน)
                 CREATE INDEX IF NOT EXISTS idx_push_outbox_pending
                     ON push_outbox(id) WHERE processed_at IS NULL;
+                -- bookmarks (C2 / migration 021) — "บันทึกไว้อ่านทีหลัง"
+                --   ⚠️ unique **ต้องมี `entity_type` อยู่ด้วย** — เรื่อง #7 กับบอร์ด #7 คนละอัน
+                --      และ `ON CONFLICT (user_id, entity_type, entity_id)` ใน create_bookmark()
+                --      พึ่ง index นี้อยู่ ⇒ ลบไม่ได้
+                --   ⚠️ ต่างจาก piri_votes ที่ unique เป็น partial (WHERE deleted_at IS NULL)
+                --      เพราะตารางนี้ **ไม่มีการลบแบบ soft** ⇒ unique ธรรมดา
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_bookmarks_user_entity
+                    ON bookmarks(user_id, entity_type, entity_id);
+                -- ตรงกับ ORDER BY ของ list_bookmarks (ล่าสุดก่อน)
+                CREATE INDEX IF NOT EXISTS idx_bookmarks_user_created
+                    ON bookmarks(user_id, created_at DESC);
+                -- ⭐ 2 ตัวนี้ไม่เกี่ยวกับ bookmarks เลย แต่มากับ migration 021 โดยเจตนา:
+                --    ทั้ง C3 (`votes_cast` / `issue_comments_posted`) และ C1 (feed) กรองด้วย
+                --    `user_id` แต่สองคอลัมน์นี้ **ไม่มี index** (ตรวจ init_db L614-643 แล้ว:
+                --    มีแต่ idx_piri_board_comments_user) ⇒ seq scan ทุกครั้งที่เปิดโปรไฟล์/กิจกรรม
+                --    ⇒ ปิดช่องนี้พร้อมกันในรอบเดียว ต้นทุนคือ index เล็ก ๆ บนคอลัมน์เดียว
+                CREATE INDEX IF NOT EXISTS idx_piri_votes_user ON piri_votes(user_id);
+                CREATE INDEX IF NOT EXISTS idx_issue_comments_user ON issue_comments(user_id);
+
                 CREATE INDEX IF NOT EXISTS idx_students_room_no_active
                     ON students(room_id, student_no)
                     WHERE deleted_at IS NULL;

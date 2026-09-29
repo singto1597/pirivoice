@@ -84,6 +84,7 @@ const routeTitles: Record<string, string> = {
   home: 'หน้าแรก',
   dashboard: 'แดชบอร์ด',
   profile: 'โปรไฟล์',
+  'my-activity': 'กิจกรรมของฉัน',
   'profile-edit': 'แก้ไขโปรไฟล์',
   'profile-password': 'เปลี่ยนรหัสผ่าน',
   'new-issue': 'แจ้งเรื่อง',

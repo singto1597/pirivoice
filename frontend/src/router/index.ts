@@ -70,6 +70,13 @@ const router = createRouter({
           component: () => import('@/views/Profile.vue'),
         },
         {
+          // 🧭 กิจกรรมของฉัน + บันทึกไว้ (C1/C2) — ข้อมูลของตัวเองล้วน ⇒ ไม่ต้องมี permission
+          //    (ตัวตนคือสิทธิ์ — backend เอา user_id จาก JWT เท่านั้น)
+          path: 'me',
+          name: 'my-activity',
+          component: () => import('@/views/me/MyActivity.vue'),
+        },
+        {
           path: 'profile/edit',
           name: 'profile-edit',
           component: () => import('@/views/ProfileEdit.vue'),
