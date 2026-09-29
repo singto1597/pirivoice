@@ -26,7 +26,10 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     try {
       await authStore.loadMe()
-      notificationsStore.startPolling() // 🔔 เริ่ม poll badge
+      // 🔔 badge อัปเดตทันที (SSE) + poll 30 วิ เป็นตาข่ายชั้นสอง — ต้องมี **ทั้งคู่**
+      //    (เหตุผลอยู่ในคอมเมนต์หัว stores/notifications.ts — อย่าลบ poll ทิ้ง)
+      notificationsStore.startStream()
+      notificationsStore.startPolling()
     } catch {
       authStore.logout()
       router.push({ name: 'login' })
@@ -35,6 +38,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  // ⚠️ ปิด stream ด้วยเสมอ — ไม่งั้นแท็บเดิมยังรับ event ของผู้ใช้คนก่อนต่อ
+  //    (และถ้าไม่ปิด ตอน logout/login ใหม่จะมีสตรีมซ้อนกันหลายเส้น)
+  notificationsStore.stopStream()
   notificationsStore.stopPolling()
 })
 

@@ -8,6 +8,9 @@ import uuid
 from core.config import settings
 from core.init_db import init_db
 from core.request_context import set_audit_context, clear_audit_context
+# 📡 hub ระดับโมดูล — import ที่นี่ (ไม่ใช่ใน lifespan) เพื่อให้ฝั่ง shutdown
+#    อ้างถึงได้เสมอ แม้บางขั้นตอนใน lifespan จะล้มไปก่อน
+from services.notification_stream import hub
 
 from routers import auth_router
 from routers import issue_router
@@ -50,6 +53,14 @@ async def lifespan(app: FastAPI):
         from core.seed_users import seed_default_users
         await seed_default_users(app.state.db_pool)
 
+        # 📡 เปิด LISTEN สำหรับ SSE (badge อัปเดตทันที) — migration 020
+        #    ⚠️ ต้องเรียก **หลัง** `init_db` เพราะ trigger ที่ยิง `pg_notify` ถูกสร้างที่นั่น
+        #       (จริง ๆ LISTEN ไม่ต้องรอ channel มีอยู่ — แต่รอให้ schema พร้อมก่อนคือลำดับ
+        #        ที่อ่านแล้วไม่ต้องคิดต่อ)
+        #    ⚠️ `start()` **ไม่ raise** ถ้าต่อไม่ได้ โดยเจตนา — ดู docstring ใน notification_stream.py
+        #       (in-app ยังใช้ poll 30 วิได้ ⇒ ไม่ควรล้มทั้งระบบเพราะของที่ทำให้ "เร็วขึ้น")
+        await hub.start(settings.DATABASE_URL)
+
     except Exception as e:
         logger.error(f"❌ Failed to connect to Database: {e}")
         raise e
@@ -57,6 +68,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down... Closing Database Pool.")
+    # ปิด stream ก่อน pool — ผู้รับที่ค้างอยู่จะได้ไม่ตื่นมาใช้ pool ที่ปิดแล้ว
+    await hub.stop()
     await app.state.db_pool.close()
     logger.info("✅ Database Pool Closed.")
 

@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
+import asyncio
 import asyncpg
+import json
+import logging
 
+from core.config import settings
 from core.dependencies import get_db_pool, get_current_user
 from core.exceptions import ValidationError
 from models.notification_schemas import (
@@ -10,7 +15,9 @@ from models.notification_schemas import (
     PushStatusOut, PushSubscribeOut, PushSubscriptionIn,
     PushUnsubscribeIn, PushUnsubscribeOut,
 )
-from services import notification_service, push_service
+from services import notification_service, push_service, notification_stream
+
+logger = logging.getLogger("NOTIF_STREAM")
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -179,4 +186,106 @@ async def push_unsubscribe(
     return PushUnsubscribeOut(
         removed=removed,
         device_count=(await push_service.get_status(pool, uid))["device_count"],
+    )
+
+
+# ============================================================
+# 📡 Notification stream (SSE) — badge อัปเดตทันทีโดยไม่ต้อง poll
+# ------------------------------------------------------------
+# คนละเรื่องกับ Web Push ข้างบน:
+#   push  = "ปิดแอพอยู่ก็ยังเด้ง"      (ผ่าน FCM/APNs — มี Doze/คิวของ OS เป็นพื้นทางกายภาพ)
+#   stream= "เปิดแอพอยู่ badge ขยับทันที" (ผ่าน Postgres LISTEN/NOTIFY)
+# ⇒ ต้องมีทั้งคู่ ไม่ใช่แทนกัน · push แก้ความหน่วงระดับนาที, stream แก้ระดับ 30 วินาที
+#
+# ⚠️ **ยังไม่มี `require_permission`** — เป็นข้อมูลของตัวเองล้วน (`user_id` จาก JWT)
+#    เหมือน `/push/status` และ `/api/me/stats` ⇒ ตัวตนคือสิทธิ์
+# ============================================================
+
+def _sse(event: str | None, data: str) -> str:
+    """ประกอบ 1 SSE frame — **ต้องปิดท้ายด้วยบรรทัดว่าง** ไม่งั้น client ไม่ถือว่า frame จบ
+
+    ⚠️ `data` ห้ามมีอักขระ newline ตรง ๆ (SSE ใช้ newline เป็นตัวแบ่ง field)
+       ⇒ ส่ง JSON ที่ `json.dumps` แบบไม่ indent เท่านั้น (การันตีว่าไม่มี newline)
+    """
+    prefix = f"event: {event}\n" if event else ""
+    return f"{prefix}data: {data}\n\n"
+
+
+@router.get("/stream")
+async def notification_stream_sse(
+    request: Request,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """สตรีมสัญญาณแจ้งเตือนของผู้ใช้คนนี้ (Server-Sent Events)
+
+    **รูปแบบการใช้งาน:** เปิดค้างไว้ แล้วรับ 2 ชนิด event
+      - `snapshot` — **ส่งทันทีเป็นอันแรกเสมอ** มี `{counts, total}` ครบ (ยอด ณ ตอนต่อ)
+      - `poke`     — "มีอะไรใหม่ ไปถามยอดเอง" (ไม่มีข้อมูลอยู่ในตัว — ดูเหตุผลด้านล่าง)
+
+    ⭐ **ทำไมต้องมี snapshot ก่อน:** `EventSource`/fetch ที่ต่อใหม่จะไม่รู้ว่า
+       "พลาดอะไรไประหว่างที่หลุด" · ถ้าไม่มี snapshot ผู้ใช้ที่เน็ตกระตุกจะค้าง
+       อยู่กับยอดเก่าจนกว่า poll รอบถัดไป (คือกลับไปช้า 30 วิเหมือนเดิม — จุดที่ตั้งใจจะแก้)
+       ⇒ ส่งยอดจริงก่อน แล้วค่อยตามด้วยสัญญาณ = ต่อใหม่กี่ครั้งก็กลับมาตรงเสมอ
+
+    ⭐ **ทำไม `poke` ไม่พาข้อความมา:** ดู `services/notification_stream.py` —
+       payload ที่วิ่งผ่าน LISTEN มีแค่ `user_id` ⇒ ฝั่ง client ต้องไปถามยอดจริงจาก DB
+       ⇒ **source of truth เดียว** = `notifications` ไม่มีทางที่ badge จะเพี้ยนจากยอดจริง
+
+    ⚠️ **ไม่คืน 404/400 ที่นี่** — ถ้า hub ต่อ LISTEN ไม่ได้ ระบบยังตอบ stream ปกติ
+       (ได้ snapshot แต่ไม่มี poke) เพราะยังเหลือ poll 30 วิ เป็นตาข่ายชั้นสอง
+       ⇒ stream ที่ "เงียบ" ไม่ได้ทำให้ badge ผิด แค่กลับไปช้าเท่าเดิม
+    """
+    uid = _ensure_user(user_ctx)
+
+    # เช็คเพดาน *ล่วงหน้า* เพื่อตอบ 503 ได้จริง — ตอนอยู่ใน generator จะตอบไม่ได้แล้ว
+    # (การลงทะเบียนจริงเกิดใน generator เพื่อให้ `finally` ถอนผู้ฟังเสมอ)
+    if notification_stream.hub.at_capacity(uid):
+        raise HTTPException(
+            status_code=503,
+            detail="เซิร์ฟเวอร์มีผู้รับสตรีมเต็มแล้ว — ระบบจะอัปเดตให้ทุก 30 วินาทีแทน",
+        )
+
+    async def event_gen():
+        # 🚨 ลงทะเบียน **ใน** generator ไม่ใช่ก่อน return — เพื่อให้ `finally` ทำงาน
+        #    แม้ client ตัดการเชื่อมต่อก่อน byte แรก (ถ้าลงทะเบียนข้างนอกแล้วผู้ใช้หาย
+        #    ไปเฉย ๆ จะเหลือ queue ค้างใน dict ตลอดอายุโปรเซส — leak ที่ไม่มีอาการ)
+        queue = notification_stream.hub.subscribe(uid)
+        try:
+            counts = await notification_service.get_unread_counts(pool, uid)
+            yield _sse("snapshot", json.dumps(counts, ensure_ascii=False))
+
+            while True:
+                try:
+                    await asyncio.wait_for(
+                        queue.get(), timeout=settings.STREAM_HEARTBEAT_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    # ⏱️ heartbeat — comment (`:`) ไม่ trigger event ฝั่ง client
+                    #    จำเป็นเพราะ proxy ตัด connection ที่เงียบ (ดู config.py)
+                    yield ": ping\n\n"
+                    # 🔔 ตาข่ายชั้นสองของ disconnect: Starlette ยกเลิก generator ให้เอง
+                    #    เมื่อ client หาย แต่ path นั้นพึ่ง ASGI server ส่ง `http.disconnect`
+                    #    มาตรงเวลา — เช็คตรงนี้ด้วยจึงปิดช่องนั้น (รอบละ 1 ครั้ง = แทบไม่มีต้นทุน)
+                    if await request.is_disconnected():
+                        logger.debug("📡 client ตัดการเชื่อมต่อ (user=%s)", uid)
+                        return
+                    continue
+                yield _sse("poke", "{}")
+        finally:
+            notification_stream.hub.unsubscribe(uid, queue)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            # ⚠️ `no-transform` **สำคัญกว่า `no-cache`** — ห้าม proxy บีบอัด/แปลง body
+            #    ถ้า Cloudflare gzip สตรีมนี้ มันจะต้องรอ buffer เต็มก่อนส่งต่อ
+            #    ⇒ event มาช้าเป็นก้อน (= อาการเดิมที่กำลังแก้) หรือไม่มาเลยจนสตรีมปิด
+            "Cache-Control": "no-cache, no-transform",
+            # ปิด buffering ของ nginx เผื่อมีคนวาง nginx หน้า backend วันหลัง
+            # (ตอนนี้เส้นทางคือ Cloudflare → Swarm ingress → Traefik → uvicorn ไม่มี nginx)
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
