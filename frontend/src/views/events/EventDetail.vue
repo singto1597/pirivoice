@@ -8,9 +8,10 @@ import {
   getPublicEvent,
   registerForEvent,
 } from '@/services/event'
-import { seatsLabel, type MyRegistration, type PublicEvent } from '@/types/event'
+import { checkInCardState, seatsLabel, type MyRegistration, type PublicEvent } from '@/types/event'
 import type { ApiError } from '@/services/api'
 import { goUnavailable } from '@/router/unavailable'
+import QrCode from '@/components/QrCode.vue'
 
 /**
  * 📅 รายละเอียดกิจกรรม (ฝั่งนักเรียน) + ลงทะเบียน / ถอน
@@ -47,6 +48,21 @@ const canRegister = computed(
     !isRegistered.value &&
     event.value.status !== 'cancelled' &&
     event.value.is_registration_open,
+)
+
+/**
+ * สถานะบัตรเช็คอิน — กติกาทั้งหมดอยู่ใน `checkInCardState()` (ทดสอบแยกได้ที่นั่น)
+ * ตรงนี้มีหน้าที่แค่หยิบ object ที่โหลดมาแล้วยัดเข้าไป
+ */
+const cardState = computed(() => checkInCardState(mine.value, event.value))
+
+/**
+ * โทเคนที่จะวาดเป็นคิวอาร์ — มีค่าเฉพาะตอน `cardState === 'qr'`
+ * ⚠️ ไม่ใช้ `mine?.check_in_token` ตรง ๆ ในเทมเพลต เพราะ TypeScript ที่นั่นไม่รู้จัก
+ *    ความเชื่อมโยงระหว่าง `cardState` กับตัวโทเคน ⇒ ต้องผ่านที่เดียวที่รู้
+ */
+const qrToken = computed(() =>
+  cardState.value === 'qr' ? (mine.value?.check_in_token ?? null) : null,
 )
 
 /**
@@ -149,6 +165,18 @@ function fmtDateTime(iso: string): string {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * เวลาสั้น ๆ (`HH:MM`) — ใช้กับตรา "เช็คอินแล้ว" ซึ่งเกิด **วันงานเสมอ**
+ * ⇒ วันที่ซ้ำกับ `event_date` ที่โชว์อยู่ข้างบนอยู่แล้ว ใส่วันที่ลงไปมีแต่ทำให้อ่านยาก
+ */
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('th-TH', {
+    timeZone: 'Asia/Bangkok',
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -318,6 +346,48 @@ function fmtDateTime(iso: string): string {
         <span class="block mt-0.5 text-[12px] text-amber-700">
           ที่นั่งเต็มชั่วคราว · ถ้ามีคนถอน ระบบจะเลื่อนที่นั่งให้คนแรกในคิวอัตโนมัติ
         </span>
+      </div>
+
+      <!-- ════════ บัตรเช็คอิน (D2) ════════ -->
+      <!--
+        QR = สิ่งที่นักเรียน "ถือ" ไปหน้างาน · ตราเขียว = ผ่านไปแล้ว
+        ⇒ สองสภาพนี้แทนกัน ไม่ใช่ซ้อนกัน (สแกนซ้ำได้แต่ไม่มีประโยชน์ — คนเช็คอินแล้ว
+        ต้องไม่เห็น QR อีก เพราะการแสกนซ้ำไม่ได้ให้อะไรและทำให้เข้าใจผิดว่ายังต้องสแกน)
+      -->
+      <div
+        v-if="cardState !== 'none'"
+        class="mb-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-5 text-center"
+        data-testid="checkin-card"
+      >
+        <template v-if="cardState === 'checked_in'">
+          <p class="text-4xl leading-none">✅</p>
+          <p class="mt-2 text-base font-bold text-emerald-700" data-testid="checked-in-stamp">
+            เช็คอินแล้ว
+          </p>
+          <p v-if="mine?.checked_in_at" class="mt-0.5 text-sm text-stone-500">
+            เมื่อ {{ fmtTime(mine.checked_in_at) }} น.
+          </p>
+        </template>
+
+        <template v-else-if="qrToken">
+          <p class="text-sm font-bold text-stone-800">บัตรเช็คอินของคุณ</p>
+          <p class="mt-0.5 text-[12px] text-stone-500">แสดงคิวอาร์นี้ให้สภาสแกนที่หน้างาน</p>
+          <div class="mt-3 flex justify-center">
+            <QrCode :value="qrToken" :size="200" alt="คิวอาร์เช็คอินกิจกรรมนี้" />
+          </div>
+          <!--
+            รหัสตัวอักษรใต้คิวอาร์ — ปลายทางของข้อความ "ใช้รหัสด้านล่างแทน" ใน `QrCode.vue`
+            ⚠️ ไม่ใช่ความลับ (ไม่มีอะไรเสียหายถ้าคนอื่นเห็น — ตัวกันการปลอมคือลายเซ็น
+               ไม่ใช่การปิดบังรหัส) ⇒ โชว์ตลอด ไม่ใช่ซ่อนรอให้ QR พังก่อน
+          -->
+          <p class="mt-3 text-[11px] text-stone-400">หรืออ่านรหัสนี้ให้สภาพิมพ์</p>
+          <p
+            class="mt-1 select-all break-all font-mono text-[11px] text-stone-600"
+            data-testid="checkin-token"
+          >
+            {{ qrToken }}
+          </p>
+        </template>
       </div>
 
       <!-- ปุ่มหลัก -->

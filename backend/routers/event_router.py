@@ -26,6 +26,9 @@ from core.exceptions import NotFoundError, ForbiddenError, ValidationError
 from models.event_schemas import (
     EventCreateRequest,
     EventUpdateRequest,
+    # D2 — input มาก่อน output เหมือนสองตัวบน
+    CheckInRequest,
+    CheckInResultOut,
     EventOut,
     EventListOut,
     EventPublicOut,
@@ -256,6 +259,36 @@ async def list_registrations(
         page_size=result["page_size"],
         pages=result["pages"],
     )
+
+
+@router.post("/{event_id}/check-in", response_model=CheckInResultOut)
+async def check_in_registration(
+    event_id: int,
+    req: CheckInRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """เช็คอินผู้เข้าร่วม (D2) — **สแกน QR** (`token`) หรือ **กดมือจากรายชื่อ** (`registration_id`)
+
+    ⚠️ **คืน 200 เสมอทั้งการเช็คอินครั้งแรกและการสแกนซ้ำ** — แยกด้วย `already_checked_in`
+       ใน body · สแกนรัว/สแกนสองเครื่องเป็นเรื่องปกติหน้างาน ⇒ การตอบ 4xx จะทำให้สภาอ่านว่า
+       "ระบบพัง" แล้วหันไปจดใส่กระดาษ (ซึ่งคือความล้มเหลวของฟีเจอร์ ไม่ใช่ของผู้ใช้)
+
+    ⚠️ ต้องมีสิทธิ์ `MANAGE_EVENTS` (ตรวจใน service) — **นักเรียนเช็คอินตัวเองไม่ได้**
+       โดยเจตนา: การเช็คอินคือการยืนยันว่า "มีตัวตนอยู่ที่หน้างาน" ซึ่งคนที่อยู่หน้างานยืนยันให้ตัวเอง
+       ไม่ได้ · ถ้าวันหน้าต้องการ "นักเรียนเช็คอินเอง" นั่นคือฟีเจอร์ใหม่ (คนละการตัดสินใจ) ไม่ใช่
+       การผ่อนด่านนี้
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        result = await event_service.check_in_registration(
+            pool, uid, event_id,
+            token=req.token, registration_id=req.registration_id,
+        )
+    except (NotFoundError, ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return CheckInResultOut(**result)
 
 
 @router.patch("/{event_id}", response_model=EventOut)

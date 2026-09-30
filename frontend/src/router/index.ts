@@ -153,6 +153,19 @@ const router = createRouter({
           meta: { requiresAuth: true },
         },
         {
+          // หน้าสแกนเช็คอินหน้างาน (D2) — **สภาเท่านั้น**
+          // ⚠️ ต้องมี `requiresPermission` เหมือน `events/manage` ไม่ใช่แค่ `requiresAuth`:
+          //    ตัว endpoint ตรวจ MANAGE_EVENTS อยู่แล้ว แต่ถ้าไม่กันที่ route นักเรียนที่เดา URL
+          //    จะเปิดหน้ากล้องขึ้นมาได้ แล้วเจอ 403 ทุกครั้งที่สแกน — ดูเหมือนระบบพังทั้งที่
+          //    เป็นเรื่องสิทธิ์ (และไม่มีเหตุผลใดที่นักเรียนต้องเปิดหน้านี้)
+          // ⚠️ 3 ส่วน (`events/:id/check-in`) ไม่ชนกับ `events/:id` (2 ส่วน) ที่อยู่ก่อนหน้า
+          //    ⇒ ลำดับสลับกันได้ ไม่เหมือนกรณี `events/manage` vs `events/:id`
+          path: 'events/:id/check-in',
+          name: 'event-check-in',
+          component: () => import('@/views/events/EventCheckIn.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+        },
+        {
           path: 'playbooks',
           name: 'playbooks',
           component: () => import('@/views/playbooks/PlaybooksCatalog.vue'),

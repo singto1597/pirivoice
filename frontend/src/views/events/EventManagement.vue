@@ -5,6 +5,7 @@ import Swal from 'sweetalert2'
 import PaginationBar from '@/components/PaginationBar.vue'
 import {
   cancelEvent,
+  checkInRegistration,
   createEvent,
   deleteEvent,
   listEvents,
@@ -85,6 +86,20 @@ const regTotal = ref(0)
 const regPage = ref(1)
 const regLoading = ref(false)
 const regError = ref('')
+/**
+ * id ของแถวที่กำลังเช็คอินอยู่ (D2) — **เก็บเป็น id ต่อแถว ไม่ใช่ boolean ของทั้ง modal**
+ *
+ * ⭐ เก็บ id เพื่อให้ **สปินเนอร์ขึ้นที่แถวที่กดเท่านั้น** — ถ้าใช้ boolean ปุ่มทุกแถวจะหมุนพร้อมกัน
+ *    แล้วสภาไม่รู้ว่าแถวไหนกำลังทำงาน (ตอนเลื่อนหารายชื่อในคิวที่ยาว อันนี้สำคัญ)
+ *
+ * ⚠️ **แต่การล็อกเป็นของทั้ง modal โดยเจตนา** (`:disabled="regActingId !== null"`) — *ไม่ใช่*
+ *    การเช็คอินหลายคนพร้อมกัน · เพราะทุกครั้งที่สำเร็จจะ `loadRegistrations()` ใหม่ทั้งชุด
+ *    ⇒ สองคำขอที่ทับกันจะโหลดชนกัน แล้วรายชื่อที่ได้อาจเป็นชุดก่อนการเช็คอินอีกคน
+ *    (ป้ายสถานะกับความจริงไม่ตรงกันชั่วขณะ ซึ่งสภาจะอ่านว่า "กดไม่ติด")
+ *    · ราคาที่จ่ายคือรอ ~200 ms ต่อคน ซึ่งไม่ใช่คอขวดของงานจริง (คอขวดคือคนเดินมาถึงประตู)
+ *    · งานที่ต้องเร็วระดับนั้นคือ **หน้าสแกน** ซึ่งทำงานคนละแบบ (ไม่มีรายชื่อให้โหลดซ้ำ)
+ */
+const regActingId = ref<number | null>(null)
 
 const isEmpty = computed(() => !isLoading.value && !hasError.value && items.value.length === 0)
 
@@ -411,6 +426,52 @@ function closeRegistrations() {
   regTotal.value = 0
 }
 
+/**
+ * เช็คอินจากรายชื่อ (D2) — **ทางสำรองที่ต้องมีเสมอ**
+ *
+ * ใช้เมื่อนักเรียนลืมมือถือ/แบตหมด/กล้องสภาไม่ทำงาน — ซึ่งเกิดทุกงาน และเกิดในวันที่
+ * แก้ไขอะไรไม่ได้ ⇒ ปุ่มนี้คือเหตุผลที่ endpoint รับ `registration_id` ได้ด้วย ไม่ใช่แค่โทเคน
+ *
+ * ⚠️ **`already_checked_in` ไม่ใช่ error** — สแกนซ้ำ/กดซ้ำเป็นเรื่องปกติ ⇒ แสดงเป็นข้อความ
+ *    "เช็คอินไปแล้วเมื่อ HH:MM" ไม่ใช่แจ้งเตือนสีแดง (เหตุผลเดียวกับฝั่งหน้าสแกน)
+ */
+async function handleCheckIn(r: EventRegistration) {
+  if (!regEvent.value || regActingId.value !== null) return
+  regActingId.value = r.id
+  try {
+    const res = await checkInRegistration(regEvent.value.id, { registration_id: r.id })
+    // โหลดรายชื่อใหม่เพื่อให้ป้ายสถานะ/เวลาเป็นค่าที่ server เขียนจริง ไม่ใช่การเดาที่ frontend
+    await loadRegistrations()
+
+    const who = res.user_name ?? `ผู้ใช้ #${res.user_id}`
+    const when = res.checked_in_at ? `เมื่อ ${fmtTime(res.checked_in_at)} น.` : ''
+    // ⚠️ ใช้ `text:` **ไม่ใช่ `html:`** — `who` คือชื่อที่ผู้ใช้ตั้งเองได้ (หน้า ProfileEdit)
+    //    ⇒ ใส่ลง `html` เมื่อไร ชื่ออย่าง `<img src=x onerror=...>` จะรันในเบราว์เซอร์สภา
+    //    · SweetAlert2 ใส่ `text` ด้วย `textContent` จึงปลอดภัยโดยธรรมชาติ
+    if (res.already_checked_in) {
+      await Swal.fire({
+        icon: 'info',
+        title: 'คนนี้เช็คอินไปแล้ว',
+        text: when ? `${who} · ${when} · เวลาเดิม ไม่ได้นับซ้ำ` : who,
+        confirmButtonText: 'เข้าใจแล้ว',
+        confirmButtonColor: '#B91C1C',
+      })
+    } else {
+      await Swal.fire({
+        icon: 'success',
+        title: 'เช็คอินสำเร็จ',
+        text: when ? `${who} · ${when}` : who,
+        timer: 1600,
+        showConfirmButton: false,
+      })
+    }
+  } catch (e) {
+    await Swal.fire({ icon: 'error', title: 'เช็คอินไม่สำเร็จ', text: errText(e) })
+  } finally {
+    regActingId.value = null
+  }
+}
+
 /** วันและเวลาจัดกิจกรรม — timestamptz จึงใช้ `new Date(iso)` ได้ตรง ๆ */
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString('th-TH', {
@@ -418,6 +479,15 @@ function fmtDateTime(iso: string): string {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** เวลาสั้น ๆ (`HH:MM`) สำหรับตรา "เช็คอินแล้ว" — เช็คอินเกิดวันงานเสมอ วันที่จึงซ้ำกับหัวข้อ */
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('th-TH', {
+    timeZone: 'Asia/Bangkok',
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -838,6 +908,16 @@ function capacityText(e: Event): string {
                 <h2 class="text-base font-bold text-stone-900">รายชื่อผู้สมัคร</h2>
                 <p class="truncate text-[12px] text-stone-400">{{ regEvent?.title }}</p>
               </div>
+              <!-- ทางไปหน้าสแกน — อยู่ในหัว modal เพื่อให้เจอตั้งแต่ยังไม่เลื่อนดูรายชื่อ -->
+              <RouterLink
+                v-if="regEvent"
+                :to="`/app/events/${regEvent.id}/check-in`"
+                class="mr-1 shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-bold text-[#B91C1C] transition-colors hover:bg-red-50"
+                data-testid="open-scanner-link"
+                @click="closeRegistrations"
+              >
+                <i class="bi bi-qr-code-scan mr-1"></i>สแกน
+              </RouterLink>
               <button
                 type="button"
                 @click="closeRegistrations"
@@ -878,7 +958,11 @@ function capacityText(e: Event): string {
                     <p class="truncate text-sm font-medium text-stone-800">
                       {{ r.user_name ?? `ผู้ใช้ #${r.user_id}` }}
                     </p>
-                    <p class="text-[11px] text-stone-400">
+                    <!-- เช็คอินแล้ว → โชว์ "เวลาที่มาถึง" แทนเวลาสมัคร ซึ่งเป็นข้อมูลที่สภาใช้จริง -->
+                    <p v-if="r.status === 'checked_in' && r.checked_in_at" class="text-[11px] text-emerald-600">
+                      <i class="bi bi-person-check mr-0.5"></i>เช็คอิน {{ fmtTime(r.checked_in_at) }} น.
+                    </p>
+                    <p v-else class="text-[11px] text-stone-400">
                       {{ fmtDateTime(r.registered_at) }}
                     </p>
                   </div>
@@ -894,6 +978,26 @@ function capacityText(e: Event): string {
                     <i :class="`bi ${REGISTRATION_ICONS[r.status]}`"></i>
                     {{ REGISTRATION_LABELS[r.status] }}
                   </span>
+                  <!--
+                    ปุ่มเช็คอินมือ — เฉพาะแถวที่ "ถือที่นั่งจริงและยังไม่เช็คอิน"
+                    ⚠️ ไม่มีให้คิวสำรอง (ยังไม่มีที่นั่งให้เช็คอิน — backend ตอบ 400) และไม่มีให้
+                       คนที่เช็คอินแล้ว/ถูกยกเลิก ⇒ ซ่อนปุ่มที่เป็นไปไม่ได้ไว้ตั้งแต่ต้น ดีกว่า
+                       ให้กดแล้วเจอ error ที่อธิบายว่าทำไมกดไม่ได้
+                  -->
+                  <button
+                    v-if="r.status === 'registered'"
+                    type="button"
+                    :disabled="regActingId !== null"
+                    class="shrink-0 rounded-lg bg-[#B91C1C] px-2.5 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
+                    :data-testid="`checkin-btn-${r.id}`"
+                    @click="handleCheckIn(r)"
+                  >
+                    <i
+                      :class="regActingId === r.id ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-person-check'"
+                      class="mr-0.5"
+                    ></i>
+                    เช็คอิน
+                  </button>
                 </li>
               </ul>
             </div>

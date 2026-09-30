@@ -145,7 +145,47 @@ export interface MyRegistration {
   status: RegistrationStatus | null
   /** มีค่าเฉพาะตอน `status === 'waitlisted'` — ที่นั่งจริงไม่ต้องบอกลำดับ */
   queue_position: number | null
+  /**
+   * ข้อความสำหรับวาด **บัตรเช็คอิน** (D2) — `null` เมื่อยังไม่มีที่นั่ง
+   *
+   * ⚠️ ใช้ค่านี้เป็น **สวิตช์เดียว** ของ "จะโชว์บัตรไหม" — อย่าเทียบ `status` เองอีกรอบ
+   *    ฝั่ง backend ตัดสินใจแล้วว่าใครได้บัตร (`_seat_token`) และสองที่จะเพี้ยนจากกันทันที
+   *    ที่มีคนแก้กฎ (เช่นเพิ่มสถานะใหม่ที่ก็ควรได้บัตร)
+   */
+  check_in_token: string | null
+  /**
+   * เวลาที่เช็คอิน — มีค่า **ก็ต่อเมื่อ** `status === 'checked_in'`
+   *
+   * ⚠️ อย่าใช้ค่านี้เป็นเงื่อนไขว่า "เช็คอินหรือยัง" — ใช้ `status` · คู่นี้เป็น invariant
+   *    ฝั่ง backend (ถอน/สมัครใหม่จะล้างค่านี้ทิ้ง) ⇒ ถ้ามันหลุดจากกันเมื่อไร นั่นคือบั๊ก
+   *    ที่ต้องรายงาน ไม่ใช่เรื่องที่ UI ต้องเดาแก้
+   */
+  checked_in_at: string | null
 }
+
+/** ผลของการเช็คอินหนึ่งครั้ง (มุมมองสภา) — D2 */
+export interface CheckInResult {
+  registration_id: number
+  event_id: number
+  /** ⚠️ คือ **นักเรียนที่ถูกเช็คอิน** ไม่ใช่สภาที่กด (คนนั้นไม่ปรากฏใน response) */
+  user_id: number
+  user_name: string | null
+  status: RegistrationStatus
+  checked_in_at: string | null
+  /** `true` = คนนี้เช็คอินไปแล้วก่อนหน้านี้ — **ไม่ใช่ error** (สแกนซ้ำเป็นเรื่องปกติ) */
+  already_checked_in: boolean
+  /** ทางที่รายการเข้ามา: `qr` = สแกนบัตร · `manual` = สภากดจากรายชื่อ */
+  method: 'qr' | 'manual'
+}
+
+/**
+ * สิ่งที่ส่งไปตอนเช็คอิน — **อย่างใดอย่างหนึ่งเท่านั้น** (backend บังคับด้วย 422)
+ *
+ * เขียนเป็น union ไม่ใช่ `{ token?: string; registration_id?: number }` โดยเจตนา:
+ * แบบหลังยอมให้ส่ง `{}` ผ่าน type-check ได้ แล้วไปพังที่ 422 ซึ่งเป็นความผิดพลาด
+ * ที่ TypeScript จับให้ได้ตั้งแต่ตอนคอมไพล์ ⇒ ให้มันจับ
+ */
+export type CheckInPayload = { token: string } | { registration_id: number }
 
 /** หนึ่งแถวในรายชื่อผู้สมัคร (มุมมองสภา) */
 export interface EventRegistration {
@@ -227,4 +267,35 @@ export function seatsLabel(seatsRemaining: number | null): string | null {
 /** ลิงก์ไปหน้ารายละเอียด — ที่เดียวที่รู้ว่า path คืออะไร (ใช้ทั้งการ์ดและหลังกดลงทะเบียน) */
 export function eventPath(eventId: number): string {
   return `/app/events/${eventId}`
+}
+
+/**
+ * สถานะของ **บัตรเช็คอิน** ที่จะแสดงในหน้า detail (D2)
+ *
+ * | ค่า | หน้าจอ |
+ * |---|---|
+ * | `qr` | วาดคิวอาร์ + รหัสตัวอักษร |
+ * | `checked_in` | ตรา "เช็คอินแล้ว HH:MM" — **ไม่มีคิวอาร์** |
+ * | `none` | ไม่มีบล็อกบัตรเลย |
+ *
+ * ⚠️ **`checked_in` ต้องไม่โชว์คิวอาร์** — การสแกนซ้ำไม่ได้ให้อะไร (backend ตอบ
+ *    `already_checked_in` แล้วไม่เขียนทับเวลาเดิม) และการเห็นคิวอาร์ค้างอยู่ทำให้เข้าใจผิด
+ *    ว่ายังต้องไปสแกนอีก ⇒ สองสภาพนี้ **แทนกัน ไม่ใช่ซ้อนกัน**
+ *
+ * ⚠️ **`check_in_token` เป็นตัวตัดสินหลักว่า "มีบัตรไหม"** ไม่ใช่การเทียบ `status` เอง
+ *    เพราะฝั่ง backend เป็นคนออกบัตร (`_seat_token`) ⇒ ที่นี่ไม่ต้องรู้กฎนั้นซ้ำ
+ *    ส่วนเงื่อนไข `event.status === 'cancelled'` เป็นเรื่อง **การแสดงผลล้วน ๆ**:
+ *    กิจกรรมที่ถูกยกเลิกแล้วไม่ควรเหลือบัตรค้างให้ผู้ใช้งง ทั้งที่ป้ายแดง "ถูกยกเลิก"
+ *    อยู่ข้างบนอยู่แล้ว (ตัว endpoint ยังยอมให้สภาเช็คอินย้อนหลังได้ตามเดิม)
+ *
+ * แยกออกมาเป็นฟังก์ชันบริสุทธิ์เพราะเป็น "ตารางความจริง" 4 ช่องที่พลาดง่าย
+ * และซ่อนอยู่ในเทมเพลตจะทดสอบไม่ได้ (โปรเจกต์นี้ไม่ mount component ในเทสต์)
+ */
+export function checkInCardState(
+  mine: Pick<MyRegistration, 'check_in_token' | 'status'> | null,
+  event: Pick<PublicEvent, 'status'> | null,
+): 'none' | 'qr' | 'checked_in' {
+  if (!mine?.check_in_token) return 'none'
+  if (event?.status === 'cancelled') return 'none'
+  return mine.status === 'checked_in' ? 'checked_in' : 'qr'
 }

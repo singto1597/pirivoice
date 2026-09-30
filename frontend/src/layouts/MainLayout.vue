@@ -103,6 +103,7 @@ const routeTitles: Record<string, string> = {
   events: 'กิจกรรม',
   'event-detail': 'รายละเอียดกิจกรรม',
   'event-management': 'จัดการกิจกรรม',
+  'event-check-in': 'สแกนเช็คอิน',
   playbooks: 'P.R. Playbooks',
   'playbook-reader': 'อ่านหนังสือ',
   notifications: 'การแจ้งเตือน',

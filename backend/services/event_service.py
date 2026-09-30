@@ -39,6 +39,7 @@ from typing import Optional
 
 import asyncpg
 
+from core import check_in_token
 from core.exceptions import NotFoundError, ValidationError
 from core.logger import AuditLogger
 from core.rbac import require_permission_anywhere
@@ -176,6 +177,21 @@ def _public_row(row) -> dict:
     if data.get("my_registration_status") == "cancelled":
         data["my_registration_status"] = None
     return data
+
+
+def _seat_token(event_id: int, registration_id: int, status: str) -> Optional[str]:
+    """บัตรเช็คอินของแถวนี้ — `None` สำหรับคนที่ยังไม่ถือที่นั่ง
+
+    ⭐ **ที่เดียวที่นิยาม "ใครมีสิทธิ์ได้บัตร"** — ทั้ง `get_my_registration` และ `register_event`
+       เรียกตัวนี้ ⇒ สองเส้นทางไม่มีทางตีความไม่ตรงกัน (ถ้าต่างคนต่างเขียน `if status in (...)`
+       เอง วันหน้าที่เพิ่มสถานะใหม่จะมีเส้นทางหนึ่งลืม = บัตรโผล่/หายไม่ตรงกันโดยไม่มีใครรู้)
+
+    ⚠️ `waitlisted` **ไม่ได้บัตร** — ยังไม่มีที่นั่งให้เช็คอิน · ถ้าให้ไป สภาที่สแกนจะเจอ
+       "อยู่ในคิวสำรอง" ซึ่งควรรู้ตั้งแต่ยังไม่ยื่นบัตร (ผู้ใช้จะยื่นบัตรที่ตัวเองมีอยู่แล้ว)
+    """
+    if status not in ("registered", "checked_in"):
+        return None
+    return check_in_token.make(event_id, registration_id)
 
 
 def _assert_deadline_not_after_event(event_date, registration_deadline) -> None:
@@ -420,15 +436,16 @@ async def get_my_registration(pool: asyncpg.Pool, user_id: int, event_id: int) -
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, status, registered_at
+            SELECT id, status, registered_at, checked_in_at
             FROM event_registrations
             WHERE event_id = $1 AND user_id = $2
             """,
             event_id, user_id,
         )
         if not row or row["status"] == "cancelled":
-            return {"registered": False, "registration_id": None,
-                    "status": None, "queue_position": None}
+            return {"registered": False, "registration_id": None, "status": None,
+                    "queue_position": None, "check_in_token": None,
+                    "checked_in_at": None}
 
         queue_position = None
         if row["status"] == "waitlisted":
@@ -446,6 +463,8 @@ async def get_my_registration(pool: asyncpg.Pool, user_id: int, event_id: int) -
         "registration_id": row["id"],
         "status": row["status"],
         "queue_position": queue_position,
+        "check_in_token": _seat_token(event_id, row["id"], row["status"]),
+        "checked_in_at": row["checked_in_at"],
     }
 
 
@@ -904,7 +923,7 @@ async def register_event(pool: asyncpg.Pool, user_id: int, event_id: int) -> tup
                     """
                     UPDATE event_registrations
                     SET status = $3, registered_at = NOW(), cancelled_at = NULL,
-                        updated_at = NOW()
+                        checked_in_at = NULL, updated_at = NOW()
                     WHERE id = $1 AND user_id = $2
                     RETURNING id
                     """,
@@ -946,6 +965,11 @@ async def register_event(pool: asyncpg.Pool, user_id: int, event_id: int) -> tup
                     "registration_id": rows["id"],
                     "status": new_status,
                     "queue_position": queue_position,
+                    "check_in_token": _seat_token(event_id, rows["id"], new_status),
+                    # สมัครใหม่ = ยังไม่เคยเช็คอินในรอบนี้ · UPDATE ข้างบนล้าง `checked_in_at`
+                    # ของรอบก่อนทิ้งไปแล้ว ⇒ ค่าที่คืนตรงกับของจริงใน DB เสมอ
+                    # (ไม่คืน `None` ลอย ๆ ขณะที่ DB ยังมีค่าเก่าค้าง — สองที่นั้นจะเถียงกัน)
+                    "checked_in_at": None,
                 }
             else:
                 payload = {
@@ -953,6 +977,11 @@ async def register_event(pool: asyncpg.Pool, user_id: int, event_id: int) -> tup
                     "registration_id": rows["id"],
                     "status": new_status,
                     "queue_position": None,
+                    "check_in_token": _seat_token(event_id, rows["id"], new_status),
+                    # สมัครใหม่ = ยังไม่เคยเช็คอินในรอบนี้ · UPDATE ข้างบนล้าง `checked_in_at`
+                    # ของรอบก่อนทิ้งไปแล้ว ⇒ ค่าที่คืนตรงกับของจริงใน DB เสมอ
+                    # (ไม่คืน `None` ลอย ๆ ขณะที่ DB ยังมีค่าเก่าค้าง — สองที่นั้นจะเถียงกัน)
+                    "checked_in_at": None,
                 }
             return created, payload
 
@@ -964,16 +993,20 @@ async def _my_registration_conn(conn, event_id: int, user_id: int) -> dict:
        จากใน transaction ที่ถือ connection อยู่จะ **ขอ connection ที่สอง** ซึ่ง pool
        อาจไม่มีให้ (และถ้ามีก็เป็น snapshot คนละอันกับที่กำลังแก้)
     """
+    # ⚠️ อ่าน `id` มาด้วยเพื่อออกบัตรเช็คอิน — บัตรผูกกับ *แถวการลงทะเบียน* ไม่ใช่ (กิจกรรม, คน)
+    #    แต่ในทางปฏิบัติสองอย่างนี้เทียบเท่ากันเพราะ unique index `uq_event_registrations_event_user`
+    #    ⇒ แถวเดิมถูกใช้ซ้ำเสมอเมื่อสมัครใหม่ (ไม่มีการออก id ใหม่ให้คนเดิม)
     row = await conn.fetchrow(
         """
-        SELECT id, status, registered_at FROM event_registrations
+        SELECT id, status, registered_at, checked_in_at FROM event_registrations
         WHERE event_id = $1 AND user_id = $2
         """,
         event_id, user_id,
     )
     if not row or row["status"] == "cancelled":
-        return {"registered": False, "registration_id": None,
-                "status": None, "queue_position": None}
+        return {"registered": False, "registration_id": None, "status": None,
+                "queue_position": None, "check_in_token": None,
+                "checked_in_at": None}
 
     queue_position = None
     if row["status"] == "waitlisted":
@@ -990,6 +1023,8 @@ async def _my_registration_conn(conn, event_id: int, user_id: int) -> dict:
         "registration_id": row["id"],
         "status": row["status"],
         "queue_position": queue_position,
+        "check_in_token": _seat_token(event_id, row["id"], row["status"]),
+        "checked_in_at": row["checked_in_at"],
     }
 
 
@@ -1020,7 +1055,7 @@ async def cancel_registration(pool: asyncpg.Pool, user_id: int, event_id: int) -
 
             mine = await conn.fetchrow(
                 """
-                SELECT id, status FROM event_registrations
+                SELECT id, status, checked_in_at FROM event_registrations
                 WHERE event_id = $1 AND user_id = $2
                 FOR UPDATE
                 """,
@@ -1034,7 +1069,8 @@ async def cancel_registration(pool: asyncpg.Pool, user_id: int, event_id: int) -
             await conn.execute(
                 """
                 UPDATE event_registrations
-                SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+                SET status = 'cancelled', cancelled_at = NOW(),
+                    checked_in_at = NULL, updated_at = NOW()
                 WHERE id = $1
                 """,
                 mine["id"],
@@ -1048,8 +1084,11 @@ async def cancel_registration(pool: asyncpg.Pool, user_id: int, event_id: int) -
                 user_id=user_id,
                 entity_type="event",
                 entity_id=event_id,
-                old_values={"status": mine["status"]},
-                new_values={"status": "cancelled"},
+                # ⭐ เก็บ `checked_in_at` ลง old_values ด้วย — การถอน **ล้างเวลาที่เช็คอิน**
+                #    (ดู invariant ที่ `check_in_registration`) ⇒ ถ้าไม่เก็บตรงนี้ หลักฐานว่า
+                #    "คนนี้เคยมาถึงกี่โมง" จะหายไปจากทั้งตารางและ log
+                old_values={"status": mine["status"], "checked_in_at": mine["checked_in_at"]},
+                new_values={"status": "cancelled", "checked_in_at": None},
             )
 
             # ── เลื่อนคิว — เฉพาะเมื่อที่นั่งจริงว่างลง ──────────────────────────────
@@ -1094,5 +1133,160 @@ async def cancel_registration(pool: asyncpg.Pool, user_id: int, event_id: int) -
                 "registration_id": None,
                 "status": None,
                 "queue_position": None,
+                "check_in_token": None,
+                "checked_in_at": None,
             }
             return promoted_user_id, payload
+
+
+# ============================================================
+# 🎟️ เช็คอินหน้างาน (D2) — ต้องมีสิทธิ์ MANAGE_EVENTS
+# ============================================================
+
+async def check_in_registration(
+    pool: asyncpg.Pool,
+    user_id: int,
+    event_id: int,
+    *,
+    token: Optional[str] = None,
+    registration_id: Optional[int] = None,
+) -> dict:
+    """
+    เช็คอินผู้เข้าร่วม — รับได้สองทาง: **สแกนบัตร QR** (`token`) หรือ **กดมือ** (`registration_id`)
+
+    คืน payload เดียวกันทั้งสองทาง · `user_id` ที่รับมาคือ **สภาที่ทำรายการ (ผู้กระทำ)**
+    ไม่ใช่นักเรียนที่ถูกเช็คอิน (คนนั้นอยู่ใน `payload["user_id"]`)
+
+    ⭐ **สแกนซ้ำต้องไม่เป็น error และต้องไม่ทับเวลาที่เช็คอินจริงครั้งแรก**
+       `checked_in_at` = "เวลาที่คนนี้มาถึง" ไม่ใช่ "เวลาที่สแกนล่าสุด" ⇒ ถ้าเขียนทับ
+       หลักฐานการมาถึงจะเพี้ยนทุกครั้งที่มีคนเผลอสแกนรัว (ซึ่งเกิดตลอดหน้างาน) และ
+       คำถาม "มากี่โมง" จะตอบไม่ได้อีกเลย
+
+    ⚠️ **ไม่ล็อกแถวกิจกรรม (`FOR UPDATE` บน `events`) ต่างจาก `register_event`** — การเช็คอิน
+       **ไม่แตะจำนวนที่นั่ง** (`registered → checked_in` ยังนับเป็นคนถือที่นั่งเท่าเดิม — ดู
+       `_STATS_JOIN`) ⇒ ไม่มีอะไรให้แย่งกับคนที่กำลังสมัคร/ถอน · ล็อกแค่แถวการลงทะเบียนก็พอ
+       (การล็อกเกินจำเป็นทำให้สภาในสนามสแกนช้าเวลาคนต่อคิว)
+
+    ⚠️ **ไม่ยิงแจ้งเตือน** — นักเรียนยืนอยู่ตรงหน้าสภาอยู่แล้ว (เหตุผลเดียวกับ `restore_event`)
+
+    ⭐ **invariant ของตารางนี้: `checked_in_at IS NOT NULL` ⟺ `status = 'checked_in'`**
+       ⇒ การถอน (`cancel_registration`) และการสมัครใหม่บนแถวเดิม (`register_event`) **ล้างค่านี้ทิ้ง**
+       เพราะเวลานั้นเป็นของ *รอบการลงทะเบียนที่จบไปแล้ว* ไม่ใช่ของรอบใหม่ — ถ้าปล่อยค้าง
+       แถวสถานะ `registered` จะมีเวลาที่เช็คอินติดมาด้วย แล้วคำถาม "คนนี้เช็คอินหรือยัง"
+       จะตอบด้วยสองวิธีที่ให้คำตอบต่างกัน (ดูจาก `status` หรือดูจาก `checked_in_at`)
+       · หลักฐานไม่หาย: ค่าเดิมถูกเก็บลง `old_values` ของ audit ทั้งสองเส้นทาง
+    """
+    async with pool.acquire() as conn:
+        await require_permission_anywhere(conn, user_id, "MANAGE_EVENTS")
+
+        method = "qr" if token is not None else "manual"
+        if method == "qr":
+            parsed = check_in_token.parse(token)
+            if not parsed:
+                raise ValidationError("รหัสเช็คอินไม่ถูกต้อง")
+            token_event_id, registration_id = parsed
+            # ⚠️ **ด่านนี้ไม่ใช่กำแพงความปลอดภัย — เป็นข้อความที่ทำให้สภาหน้างานรู้ว่าเกิดอะไรขึ้น**
+            #
+            # 🧪 พิสูจน์ด้วย mutation แล้ว (ปิดบรรทัดนี้ → `test_check_in_token_of_other_event_is_rejected`
+            #    ตก): บัตรของงาน A ยิงไปที่งาน B **ไม่ได้อยู่ดี** เพราะคิวรีข้างล่างกรอง
+            #    `AND r.event_id = $2` ⇒ `registration_id` (SERIAL ร่วมกันทุกกิจกรรม) ไปไม่ถึงแถว
+            #    ของอีกงานหนึ่งได้เลย · ที่เปลี่ยนไปคือ **ข้อความ**: ปิดแล้วได้ 404
+            #    "ไม่พบการลงทะเบียนนี้ในกิจกรรมนี้" แทนที่จะเป็น 400 "รหัสนี้เป็นของกิจกรรมอื่น"
+            #
+            # ⇒ ตอนประตูงาน ที่มีเด็กยื่นบัตรผิดงาน 404 ชี้ว่า "ระบบหาข้อมูลไม่เจอ" ซึ่งทำให้สภา
+            #    ไปไล่หาปัญหาที่อื่น (เน็ต? ยังไม่กดยืนยัน?) แทนที่จะรู้ทันทีว่าหยิบบัตรผิดใบ
+            #    — เก็บไว้เพราะราคาคือ 2 บรรทัด และสิ่งที่ซื้อมาคือคำวินิจฉัยที่ถูกตั้งแต่ครั้งแรก
+            if token_event_id != event_id:
+                raise ValidationError("รหัสนี้เป็นของกิจกรรมอื่น")
+
+        async with conn.transaction():
+            # ⚠️ กิจกรรมที่ถูกลบต้อง 404 — ให้ตรงกับ `list_registrations` ที่ 404 เหมือนกัน
+            #    (ถ้าที่นี่ผ่าน สภาจะเช็คอินคนในกิจกรรมที่ไม่มีอยู่ในระบบได้ = ข้อมูลผี)
+            # ⭐ แต่กิจกรรมที่ **ยกเลิก** (`cancelled`) เช็คอินได้ — เป็นการตัดสินใจโดยเจตนา:
+            #    การยกเลิกในระบบกับการที่งานยังจัดจริง เป็นเรื่องที่เกิดขึ้นได้ (สภาแก้ไม่ทัน)
+            #    และการ "ห้าม" จะทำให้สภาหน้างานทำอะไรไม่ได้เลยในวันที่สายเกินแก้
+            #    ⇒ ปล่อยให้เช็คอินได้ ประวัติยังอยู่ครบ และไม่มีที่ไหนพังเพราะมัน
+            exists = await conn.fetchval(
+                "SELECT 1 FROM events WHERE id = $1 AND deleted_at IS NULL", event_id
+            )
+            if not exists:
+                raise NotFoundError("ไม่พบกิจกรรมนี้")
+
+            row = await conn.fetchrow(
+                """
+                SELECT r.id, r.event_id, r.user_id, r.status, r.checked_in_at,
+                       u.full_name AS user_name
+                FROM event_registrations r
+                LEFT JOIN users u ON u.id = r.user_id
+                WHERE r.id = $1 AND r.event_id = $2
+                FOR UPDATE OF r
+                """,
+                registration_id, event_id,
+            )
+            if not row:
+                raise NotFoundError("ไม่พบการลงทะเบียนนี้ในกิจกรรมนี้")
+
+            # ⚠️ ข้อความแยกกันสองแบบโดยเจตนา — คนละสถานการณ์และคนละทางแก้:
+            #    · ยกเลิกแล้ว = "ใบนี้ตายแล้ว" (ควรตรวจว่ามาสแกนผิดงานหรือเปล่า)
+            #    · คิวสำรอง  = "ยังไม่ได้ที่นั่ง" (ต้องไปดูว่ามีคนไม่มาให้เลื่อนคิวหรือไม่)
+            #    ถ้ารวมเป็นข้อความเดียว สภาหน้างานจะไม่รู้ว่าควรทำอะไรต่อ
+            if row["status"] == "cancelled":
+                raise ValidationError("การลงทะเบียนนี้ถูกยกเลิกแล้ว")
+            if row["status"] == "waitlisted":
+                raise ValidationError("คนนี้อยู่ในคิวสำรอง ยังไม่ได้ที่นั่ง")
+
+            already_checked_in = row["status"] == "checked_in"
+            if already_checked_in:
+                checked_in_at = row["checked_in_at"]
+            else:
+                # เงื่อนไข `AND status = 'registered'` อยู่ใน WHERE ไม่ใช่ `if` ใน Python
+                # (แบบเดียวกับ `publish_event`) ⇒ แม้มีคนสแกนพร้อมกันสองเครื่องจากสอง replica
+                # การเขียนทับกันก็เป็นไปไม่ได้ในระดับ DB
+                checked_in_at = await conn.fetchval(
+                    """
+                    UPDATE event_registrations
+                    SET status = 'checked_in', checked_in_at = NOW(), updated_at = NOW()
+                    WHERE id = $1 AND status = 'registered'
+                    RETURNING checked_in_at
+                    """,
+                    row["id"],
+                )
+                if checked_in_at is None:
+                    # ป้องกันไว้เฉย ๆ — แถวถูกล็อกอยู่ (FOR UPDATE) ⇒ มาถึงตรงนี้ไม่ได้จริง
+                    raise ValidationError("สถานะเปลี่ยนไปแล้ว กรุณาสแกนใหม่")
+
+            await AuditLogger("event_service").log(
+                conn=conn,
+                action="CHECK_IN_EVENT",
+                actor_identifier=str(user_id),
+                client_source="web",
+                # ผู้กระทำ = สภาที่สแกน ⇒ เก็บในคอลัมน์ `user_id` (ตามสัญญาของ AuditLogger)
+                user_id=user_id,
+                entity_type="event",
+                entity_id=event_id,
+                old_values={
+                    "status": row["status"],
+                    "checked_in_at": row["checked_in_at"],
+                },
+                new_values={
+                    "status": "checked_in",
+                    "checked_in_at": checked_in_at,
+                    # ⭐ `method` = หลักฐานที่โทเคนซื้อมา: `qr` พิสูจน์ได้ว่าเป็นบัตรที่ระบบออกให้
+                    #    ส่วน `manual` คือสภากดเอง — สองอย่างนี้ต่างกันจริงในทางปฏิบัติ
+                    "method": method,
+                    "registration_id": row["id"],
+                    "attendee_user_id": row["user_id"],
+                    "already_checked_in": already_checked_in,
+                },
+            )
+
+    return {
+        "registration_id": row["id"],
+        "event_id": event_id,
+        "user_id": row["user_id"],
+        "user_name": row["user_name"],
+        "status": "checked_in",
+        "checked_in_at": checked_in_at,
+        "already_checked_in": already_checked_in,
+        "method": method,
+    }

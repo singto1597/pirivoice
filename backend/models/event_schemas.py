@@ -18,7 +18,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ต้องตรงกับ CHECK constraint `chk_events_status` ใน migration 025 / init_db
 EventStatus = Literal["draft", "published", "cancelled"]
@@ -293,8 +293,62 @@ class MyRegistrationOut(BaseModel):
 
     แยกจาก `EventPublicOut.my_registration_status` เพราะสองอันตอบคำถามต่างกัน:
     อันนั้นตอบ "ฉันสมัครหรือยัง" ในลิสต์ · อันนี้ตอบ "ได้คิวที่เท่าไร" ในหน้า detail
+
+    ⭐ `check_in_token` (D2) = ข้อความที่จะวาดเป็น **บัตรเช็คอิน** — ส่งมา **เฉพาะเมื่อถือที่นั่งจริง**
+    (`registered`/`checked_in`) · คนที่อยู่ในคิวสำรองได้ `None` เพราะยังไม่มีที่นั่งให้เช็คอิน
+    ⇒ ฝั่ง UI ใช้ค่านี้เป็นสวิตช์ของ "บัตร" ไปด้วยในตัว ไม่ต้องเทียบ `status` เองอีกรอบ
+
+    ⚠️ ไม่ใช่ความลับระดับรหัสผ่าน (มันฝัง `event_id`/`registration_id` ตรง ๆ) — สิ่งที่กันการปลอม
+       คือลายเซ็น ไม่ใช่การปิดบังตัวเลข (ดู `core/check_in_token.py`)
     """
     registered: bool
     registration_id: Optional[int] = None
     status: Optional[str] = None
     queue_position: Optional[int] = None
+    check_in_token: Optional[str] = None
+    # ⭐ เวลาที่เช็คอิน (D2) — ส่งมาเพราะนักเรียนต้องเห็นเองได้ว่า "มากี่โมง"
+    #    ไม่ต้องไปถามสภา · และมันคือ **เวลาที่มาถึงจริง** ซึ่งไม่ถูกเขียนทับตอนสแกนซ้ำ
+    checked_in_at: Optional[datetime] = None
+
+
+class CheckInRequest(BaseModel):
+    """คำขอเช็คอิน — **ต้องส่งมาอย่างใดอย่างหนึ่งพอดี** ไม่ใช่อย่างละนิดหรือทั้งคู่
+
+    | โหมด | ส่งอะไร | ใครใช้ |
+    |---|---|---|
+    | `qr` | `token` (จาก QR ที่นักเรียนถือ) | สภาสแกนบัตร |
+    | `manual` | `registration_id` | สภากดจากรายชื่อผู้สมัคร (กล้องพัง/นักเรียนลืมมือถือ) |
+
+    ⚠️ **ต้องมีโหมด manual ตั้งแต่รอบแรก** — กล้องคือสิ่งที่พังได้ทุกวัน (ไม่ให้สิทธิ์ ·
+       ไม่มีกล้อง · แบตหมด · มือถือรุ่นเก่า) และวันที่กล้องพังคือ **วันงาน** ซึ่งแก้ไขทีหลังไม่ได้
+       ⇒ "สแกน QR" เป็นทางที่ *สะดวก* ไม่ใช่ทางที่ *ต้องใช้*
+    """
+    token: Optional[str] = Field(None, max_length=200)
+    registration_id: Optional[int] = Field(None, ge=1)
+
+    @model_validator(mode="after")
+    def _exactly_one(self):
+        given = [v for v in (self.token, self.registration_id) if v is not None]
+        if len(given) != 1:
+            raise ValueError("ต้องส่ง token หรือ registration_id อย่างใดอย่างหนึ่งเท่านั้น")
+        return self
+
+
+class CheckInResultOut(BaseModel):
+    """ผลการเช็คอิน — หน้าจอสภาต้องเห็น **ชื่อคน** เพื่อยืนยันด้วยตาก่อนปล่อยเข้า
+
+    ⭐ `already_checked_in` = "คนนี้เช็คอินไปแล้วก่อนหน้านี้" ⇒ **ไม่ใช่ error** (สแกนซ้ำเป็นเรื่อง
+    ปกติมาก: บัตรเปิดค้างไว้แล้วสแกนรัว · สแกนสองเครื่องพร้อมกัน) ⇒ ตอบ **200 ทั้งคู่** แล้วให้ UI
+    แสดง "เช็คอินแล้วเมื่อ HH:MM" ต่างหาก — ถ้าตอบ 4xx ผู้สภาในสนามจะอ่านว่า "ระบบพัง"
+
+    ⭐ `method` = `qr` หรือ `manual` — ค่าที่ service ตัดสินจาก *ทางที่คำขอเข้ามา* และถูกเขียนลง
+    audit log ด้วย ⇒ ย้อนหลังได้ว่าแถวไหนเกิดจากการสแกนจริง (ดู `core/check_in_token.py`)
+    """
+    registration_id: int
+    event_id: int
+    user_id: int
+    user_name: Optional[str] = None
+    status: str
+    checked_in_at: Optional[datetime] = None
+    already_checked_in: bool = False
+    method: str

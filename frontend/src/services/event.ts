@@ -1,5 +1,7 @@
 import api from './api'
 import type {
+  CheckInPayload,
+  CheckInResult,
   Event,
   EventCreate,
   EventListResponse,
@@ -128,4 +130,18 @@ export async function listRegistrations(
       offset: offset ?? 0,
     },
   })) as EventRegistrationListResponse
+}
+
+/**
+ * เช็คอินผู้เข้าร่วม (D2) — สแกนบัตร (`token`) หรือกดมือ (`registration_id`)
+ *
+ * ⚠️ **สแกนซ้ำไม่ error** — ได้ 200 พร้อม `already_checked_in: true` เสมอ
+ *    ⇒ ผู้เรียกต้องเช็คค่านี้ถ้าต้องการข้อความที่ต่างกัน ไม่ใช่ดูแค่ว่าคำขอสำเร็จ
+ *    (เหตุผลเดียวกับ `registerForEvent` ที่ต้องดู `status` ไม่ใช่ดูแค่ success)
+ */
+export async function checkInRegistration(
+  eventId: number,
+  payload: CheckInPayload,
+): Promise<CheckInResult> {
+  return (await api.post(`/api/events/${eventId}/check-in`, payload)) as CheckInResult
 }
