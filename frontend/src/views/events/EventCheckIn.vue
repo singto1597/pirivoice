@@ -252,10 +252,10 @@ function resetBanner() {
       >
         <i class="bi bi-arrow-left mr-1"></i>กลับไปหน้ากิจกรรม
       </RouterLink>
-      <p class="mt-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+      <p class="mt-2 text-[11px] font-bold uppercase tracking-widest text-brand">
         <i class="bi bi-qr-code-scan mr-1"></i> Check-in
       </p>
-      <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 leading-tight">
+      <h1 class="text-xl sm:text-2xl font-bold text-stone-900 leading-tight">
         สแกนเช็คอิน
       </h1>
       <p v-if="event" class="text-sm text-stone-500 mt-1">{{ event.title }}</p>
@@ -305,7 +305,7 @@ function resetBanner() {
       class="mb-4 rounded-2xl bg-red-50 border border-red-200 px-4 py-3"
       data-testid="checkin-error"
     >
-      <p class="text-sm font-bold text-red-700">
+      <p class="text-sm font-bold text-brand">
         <i class="bi bi-x-octagon-fill mr-1"></i>เช็คอินไม่สำเร็จ
       </p>
       <p class="mt-0.5 text-sm text-red-600">{{ errorText }}</p>
@@ -381,13 +381,13 @@ function resetBanner() {
           autocapitalize="off"
           spellcheck="false"
           placeholder="PIRI-EVT1:..."
-          class="flex-1 px-3.5 py-2.5 rounded-xl border border-stone-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/30 focus:border-[#B91C1C]"
+          class="flex-1 px-3.5 py-2.5 rounded-xl border border-stone-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           data-testid="manual-token-input"
         />
         <button
           type="submit"
           :disabled="busy || !manualToken"
-          class="px-5 py-2.5 bg-[#B91C1C] text-white rounded-xl font-bold hover:bg-[#991B1B] disabled:opacity-50 transition-colors"
+          class="px-5 py-2.5 bg-brand text-white rounded-xl font-bold hover:bg-brand-strong disabled:opacity-50 transition-colors"
           data-testid="manual-submit-btn"
         >
           <i :class="busy ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check2'" class="mr-1"></i>
@@ -399,7 +399,7 @@ function resetBanner() {
     <!-- ทางสำรองอีกชั้น: เช็คอินจากรายชื่อ (ไม่ต้องมีรหัสเลย) -->
     <p class="mt-4 text-[12px] text-stone-400 text-center">
       ถ้านักเรียนลืมมือถือ — เช็คอินจาก<b>รายชื่อผู้สมัคร</b>ได้ที่
-      <RouterLink to="/app/events/manage" class="text-[#B91C1C] hover:underline">หน้าจัดการกิจกรรม</RouterLink>
+      <RouterLink to="/app/events/manage" class="text-brand hover:underline">หน้าจัดการกิจกรรม</RouterLink>
     </p>
   </div>
 </template>

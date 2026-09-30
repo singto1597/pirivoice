@@ -132,10 +132,10 @@ async function handleSubmit() {
   <div class="max-w-2xl mx-auto">
     <!-- Editorial page header -->
     <div class="mb-8">
-      <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+      <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
         <i class="bi bi-pencil-square text-[13px]"></i> Student Voice
       </p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">แจ้งเรื่อง</h1>
+      <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">แจ้งเรื่อง</h1>
       <p class="mt-2 text-sm text-stone-500">เรื่องจะถูกส่งต่อไปยังหัวหน้าห้อง + รองฝ่าย เพื่อดำเนินการ</p>
     </div>
 
@@ -151,8 +151,8 @@ async function handleSubmit() {
           @click="mainCategory = key as MainCategory; category = ''"
           class="p-3 sm:p-4 min-h-[88px] sm:min-h-0 rounded-xl border-2 text-center transition flex flex-col items-center justify-center"
           :class="mainCategory === key
-            ? 'border-[#B91C1C] bg-red-50 text-red-700'
-            : 'border-stone-200 hover:border-[#B91C1C]'"
+            ? 'border-brand bg-red-50 text-brand'
+            : 'border-stone-200 hover:border-brand'"
         >
           <div class="text-xl sm:text-2xl mb-1">
             <i v-if="key === 'suggestion'" class="bi bi-lightbulb"></i>
@@ -175,8 +175,8 @@ async function handleSubmit() {
           @click="category = c"
           class="px-4 py-2 rounded-full border text-sm transition"
           :class="category === c
-            ? 'bg-[#B91C1C] text-white border-[#B91C1C]'
-            : 'border-stone-300 hover:border-[#B91C1C]'"
+            ? 'bg-brand text-white border-brand'
+            : 'border-stone-300 hover:border-brand'"
         >
           {{ MAIN_CATEGORIES[mainCategory as MainCategory].subcategories[c] }}
         </button>
@@ -195,12 +195,12 @@ async function handleSubmit() {
           @click="requestedDestination = opt.value"
           class="p-3 sm:p-4 rounded-xl border-2 text-left transition flex flex-col"
           :class="requestedDestination === opt.value
-            ? 'border-[#B91C1C] bg-red-50'
-            : 'border-stone-200 hover:border-[#B91C1C]'"
+            ? 'border-brand bg-red-50'
+            : 'border-stone-200 hover:border-brand'"
         >
           <div class="flex items-center gap-2 mb-1">
-            <i :class="[opt.icon, 'text-lg', requestedDestination === opt.value ? 'text-[#B91C1C]' : 'text-stone-400']"></i>
-            <span class="text-sm font-semibold" :class="requestedDestination === opt.value ? 'text-red-700' : 'text-stone-700'">{{ opt.label }}</span>
+            <i :class="[opt.icon, 'text-lg', requestedDestination === opt.value ? 'text-brand' : 'text-stone-400']"></i>
+            <span class="text-sm font-semibold" :class="requestedDestination === opt.value ? 'text-brand' : 'text-stone-700'">{{ opt.label }}</span>
           </div>
           <p class="text-xs text-stone-500 leading-snug">{{ opt.desc }}</p>
         </button>
@@ -244,8 +244,8 @@ async function handleSubmit() {
             @click="startLevel = lv"
             class="px-3 py-1.5 rounded-full border text-sm transition"
             :class="startLevel === lv
-              ? 'bg-[#B91C1C] text-white border-[#B91C1C]'
-              : 'border-stone-300 hover:border-[#B91C1C]'"
+              ? 'bg-brand text-white border-brand'
+              : 'border-stone-300 hover:border-brand'"
           >
             {{ LEVEL_LABELS[lv as keyof typeof LEVEL_LABELS] }}
           </button>
@@ -255,14 +255,14 @@ async function handleSubmit() {
 
       <label class="flex items-center gap-2 text-sm text-stone-700 cursor-pointer select-none">
         <input v-model="isAnonymous" type="checkbox"
-          class="w-4 h-4 rounded bg-white border-stone-300 accent-[#B91C1C]" />
+          class="w-4 h-4 rounded bg-white border-stone-300 accent-brand" />
         <span>ซ่อนชื่อฉัน (แจ้งแบบไม่ระบุชื่อ)</span>
       </label>
       <button
         type="submit"
         :disabled="isLoading"
         data-testid="issue-submit"
-        class="w-full py-3 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] disabled:opacity-50 disabled:pointer-events-none font-semibold"
+        class="w-full py-3 bg-brand text-white rounded-xl hover:bg-brand-strong disabled:opacity-50 disabled:pointer-events-none font-semibold"
       >
         {{ isLoading ? 'กำลังส่ง...' : 'ส่งเรื่อง' }}
       </button>

@@ -3,6 +3,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
+import { BRAND } from '@/constants/brand';
 import { getMyProfile, type MyProfile } from '@/services/profile';
 import {
   getNotificationPreferences,
@@ -64,14 +65,14 @@ async function onInstall() {
         icon: 'success',
         title: 'ติดตั้งแล้ว',
         text: 'เปิด PIRIvoice ได้จากไอคอนบนหน้าจอเลย',
-        confirmButtonColor: '#b91c1c',
+        confirmButtonColor: BRAND,
       });
     } else if (outcome === 'unavailable') {
       await Swal.fire({
         icon: 'info',
         title: 'เครื่องนี้ติดตั้งอัตโนมัติไม่ได้',
         text: 'เปิดด้วย Chrome แล้วเลือก "ติดตั้งแอป" จากเมนู ⋮ มุมขวาบน',
-        confirmButtonColor: '#b91c1c',
+        confirmButtonColor: BRAND,
       });
     }
   } finally {
@@ -172,7 +173,7 @@ async function toggleGroup(group: NotificationGroup) {
       showCancelButton: true,
       confirmButtonText: 'ปิดการแจ้งเตือน',
       cancelButtonText: 'ยกเลิก',
-      confirmButtonColor: '#B91C1C',
+      confirmButtonColor: BRAND,
     });
     if (!res.isConfirmed) return;
   }
@@ -292,7 +293,7 @@ onMounted(loadStats);
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -310,15 +311,15 @@ onMounted(loadStats);
             <div class="flex items-start gap-3 sm:gap-4">
               <!-- avatar: มี -mt เท่านั้น เพื่อให้ทับ cover มุมซ้าย (ไม่ดึงชื่อขึ้นด้วย) -->
               <div class="-mt-10 shrink-0 sm:-mt-14">
-                <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#B91C1C] text-2xl font-bold text-white ring-2 ring-stone-200 sm:h-24 sm:w-24 sm:rounded-3xl sm:text-4xl">
+                <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-2xl font-bold text-white ring-2 ring-stone-200 sm:h-24 sm:w-24 sm:rounded-3xl sm:text-4xl">
                   {{ avatarChar }}
                 </div>
               </div>
               <!-- ชื่อ + ตำแหน่ง: pt ชัดเจน → อยู่ใต้ cover บนพื้นขาว อ่านง่ายเสมอ -->
               <div class="min-w-0 flex-1 pt-3 sm:pt-5">
-                <h1 class="text-2xl font-bold tracking-tight text-stone-900 break-words leading-snug sm:text-3xl">{{ fullName }}</h1>
+                <h1 class="text-2xl font-bold text-stone-900 break-words leading-snug sm:text-3xl">{{ fullName }}</h1>
                 <div class="flex flex-wrap gap-1.5 mt-2.5">
-                  <span class="px-2.5 py-1 bg-[#B91C1C]/10 text-[#B91C1C] text-xs font-semibold rounded-full">
+                  <span class="px-2.5 py-1 bg-brand/10 text-brand text-xs font-semibold rounded-full">
                     <i class="bi bi-mortarboard mr-1"></i>{{ roleLabel }}
                   </span>
                   <span v-if="profile.staff_level" class="px-2.5 py-1 bg-stone-100 text-stone-600 text-xs font-semibold rounded-full">
@@ -347,16 +348,16 @@ onMounted(loadStats);
           <transition name="fade-up">
             <div v-if="menuOpen" class="absolute right-0 top-11 z-50 w-56 rounded-2xl border border-stone-200 bg-white py-2 shadow-lg shadow-stone-900/5">
               <div class="mb-1 border-b border-stone-100 px-4 py-1.5">
-                <p class="text-[10px] font-bold text-stone-400 uppercase tracking-widest">การจัดการบัญชี</p>
+                <p class="text-[10px] font-bold text-stone-400">การจัดการบัญชี</p>
               </div>
-              <button @click="goEdit" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 hover:text-[#B91C1C]">
+              <button @click="goEdit" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 hover:text-brand">
                 <i class="bi bi-pencil-square text-lg"></i> แก้ไขโปรไฟล์
               </button>
-              <button @click="goPassword" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 hover:text-[#B91C1C]">
+              <button @click="goPassword" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 hover:text-brand">
                 <i class="bi bi-shield-lock text-lg"></i> เปลี่ยนรหัสผ่าน
               </button>
               <div class="my-1 h-px bg-stone-200"></div>
-              <button @click="logout" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-bold text-[#B91C1C] transition-colors hover:bg-[#B91C1C]/5 hover:text-[#991B1B]">
+              <button @click="logout" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-bold text-brand transition-colors hover:bg-brand/5 hover:text-brand-strong">
                 <i class="bi bi-box-arrow-right text-lg"></i> ออกจากระบบ
               </button>
             </div>
@@ -454,8 +455,8 @@ onMounted(loadStats);
               :aria-label="`${isOn(g.value) ? 'ปิด' : 'เปิด'}การแจ้งเตือน ${g.label}`"
               :disabled="savingGroup === g.value"
               @click="toggleGroup(g.value)"
-              class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 disabled:opacity-50"
-              :class="isOn(g.value) ? 'bg-[#B91C1C]' : 'bg-stone-300'"
+              class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
+              :class="isOn(g.value) ? 'bg-brand' : 'bg-stone-300'"
             >
               <span
                 class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none"
@@ -536,7 +537,7 @@ onMounted(loadStats);
             type="button"
             :disabled="installing"
             @click="onInstall"
-            class="shrink-0 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-60"
+            class="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-60"
           >
             <i v-if="installing" class="bi bi-arrow-repeat animate-spin"></i>
             <span v-else>ติดตั้งเลย</span>
@@ -555,7 +556,7 @@ onMounted(loadStats);
       <!-- ===== 🧭 กิจกรรมของฉัน + บันทึกไว้ (C1/C2) ===== -->
       <button
         type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-6 text-left transition-colors hover:bg-stone-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 sm:p-8"
+        class="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-6 text-left transition-colors hover:bg-stone-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 sm:p-8"
         @click="goActivity"
       >
         <div class="flex min-w-0 items-center gap-3">

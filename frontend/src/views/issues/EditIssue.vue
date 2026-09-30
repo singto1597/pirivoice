@@ -156,7 +156,7 @@ async function handleSubmit() {
       <p class="text-stone-600 px-6">{{ loadError }}</p>
       <button
         type="button"
-        class="mt-4 rounded-lg bg-[#B91C1C] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#991B1B]"
+        class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
         @click="loadIssue"
       >
         ลองอีกครั้ง
@@ -166,10 +166,10 @@ async function handleSubmit() {
     <template v-else>
       <!-- Editorial page header -->
       <div class="mb-8">
-        <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+        <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
           <i class="bi bi-pencil-square text-[13px]"></i> Edit Issue
         </p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">แก้ไขเรื่อง</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">แก้ไขเรื่อง</h1>
         <p class="mt-2 text-sm text-stone-500">แก้ไขข้อมูลเรื่องที่แจ้งไปแล้ว (เฉพาะผู้แจ้ง)</p>
       </div>
 
@@ -185,8 +185,8 @@ async function handleSubmit() {
             class="p-3 sm:p-4 min-h-[88px] sm:min-h-0 rounded-xl border-2 text-center transition flex flex-col items-center justify-center"
             :class="
               mainCategory === key
-                ? 'border-[#B91C1C] bg-red-50 text-red-700'
-                : 'border-stone-200 hover:border-[#B91C1C]'
+                ? 'border-brand bg-red-50 text-brand'
+                : 'border-stone-200 hover:border-brand'
             "
           >
             <div class="text-xl sm:text-2xl mb-1">
@@ -213,8 +213,8 @@ async function handleSubmit() {
             class="px-4 py-2 rounded-full border text-sm transition"
             :class="
               category === c
-                ? 'bg-[#B91C1C] text-white border-[#B91C1C]'
-                : 'border-stone-300 hover:border-[#B91C1C]'
+                ? 'bg-brand text-white border-brand'
+                : 'border-stone-300 hover:border-brand'
             "
           >
             {{ MAIN_CATEGORIES[mainCategory as MainCategory].subcategories[c] }}
@@ -248,7 +248,7 @@ async function handleSubmit() {
           <input
             v-model="isAnonymous"
             type="checkbox"
-            class="w-4 h-4 rounded bg-white border-stone-300 accent-[#B91C1C]"
+            class="w-4 h-4 rounded bg-white border-stone-300 accent-brand"
           />
           <span>ซ่อนชื่อฉัน (แจ้งแบบไม่ระบุชื่อ)</span>
         </label>
@@ -264,7 +264,7 @@ async function handleSubmit() {
           <button
             type="submit"
             :disabled="isSaving"
-            class="flex-1 py-3 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] disabled:opacity-50 disabled:pointer-events-none font-semibold"
+            class="flex-1 py-3 bg-brand text-white rounded-xl hover:bg-brand-strong disabled:opacity-50 disabled:pointer-events-none font-semibold"
           >
             {{ isSaving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข' }}
           </button>

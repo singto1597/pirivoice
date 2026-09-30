@@ -128,7 +128,7 @@ const quickActions = computed<QuickAction[]>(() => {
   });
   acts.push({
     key: 'new', label: 'แจ้งเรื่องใหม่', desc: 'ส่งเสียงของคุณ', icon: 'bi-plus-circle',
-    to: '/app/issues/new', badge: 0, accent: 'bg-[#B91C1C] text-white', featured: true,
+    to: '/app/issues/new', badge: 0, accent: 'bg-brand text-white', featured: true,
   });
   return acts;
 });
@@ -268,8 +268,8 @@ const hasActiveIssues = computed(() => {
 
 // ⚠️ ประกาศไม่ถูกตัดด้วยจำนวน (ห้าม slice) — ดูคอมเมนต์ใน template
 const annIconColor: Record<string, string> = {
-  urgent: 'bg-[#B91C1C]',
-  high: 'bg-[#991B1B]',
+  urgent: 'bg-brand',
+  high: 'bg-brand-strong',
   normal: 'bg-stone-300',
 };
 </script>
@@ -285,12 +285,12 @@ const annIconColor: Record<string, string> = {
         <!-- ทักทาย -->
         <div class="min-w-0">
           <div class="flex items-center gap-4">
-            <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#B91C1C] text-lg font-bold text-white sm:h-16 sm:w-16">
+            <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand text-lg font-bold text-white sm:h-16 sm:w-16">
               {{ avatarChar }}
             </span>
             <div>
-              <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">{{ greeting }} 👋</p>
-              <h1 class="mt-1 truncate text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">
+              <p class="text-[11px] font-bold text-brand">{{ greeting }} 👋</p>
+              <h1 class="mt-1 truncate text-2xl font-bold text-stone-900 sm:text-3xl">
                 {{ displayName }}
               </h1>
               <p class="mt-0.5 text-xs font-semibold text-stone-500">
@@ -299,7 +299,7 @@ const annIconColor: Record<string, string> = {
             </div>
           </div>
           <p class="mt-4 flex items-center gap-1.5 text-xs font-medium text-stone-500 sm:text-sm">
-            <i class="bi bi-calendar3 text-[#B91C1C]"></i>
+            <i class="bi bi-calendar3 text-brand"></i>
             {{ dateLabel }}
           </p>
         </div>
@@ -308,7 +308,7 @@ const annIconColor: Record<string, string> = {
         <div class="flex flex-col gap-2.5">
           <RouterLink
             to="/app/issues/new"
-            class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#991B1B] active:scale-[0.97] sm:text-base"
+            class="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-strong active:scale-[0.97] sm:text-base"
           >
             <i class="bi bi-plus-lg text-lg"></i>
             แจ้งเรื่อง / ความคิดเห็น
@@ -360,7 +360,7 @@ const annIconColor: Record<string, string> = {
           <i class="bi bi-megaphone"></i>
         </span>
         <div class="min-w-0 space-y-2">
-          <p class="text-xs font-bold uppercase tracking-wider text-stone-500">ประกาศโรงเรียน</p>
+          <p class="text-xs font-bold text-stone-500">ประกาศโรงเรียน</p>
           <div v-for="a in announcements" :key="a.id" class="flex items-start gap-2.5">
             <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="annIconColor[a.priority] || 'bg-stone-300'"></span>
             <p class="text-sm font-medium leading-relaxed text-stone-700">{{ a.message }}</p>
@@ -387,7 +387,7 @@ const annIconColor: Record<string, string> = {
           </div>
           <span
             v-if="a.badge > 0"
-            class="absolute right-3 top-3 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#B91C1C] px-1.5 text-[10px] font-bold text-white"
+            class="absolute right-3 top-3 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand px-1.5 text-[10px] font-bold text-white"
           >
             {{ a.badge > 99 ? '99+' : a.badge }}
           </span>
@@ -404,13 +404,13 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-stack text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">สรุปเรื่องของฉัน</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">สรุปเรื่องของฉัน</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">ติดตามสถานะเรื่องที่คุณแจ้งไว้</p>
           </div>
         </div>
         <RouterLink
           to="/app/issues/mine"
-          class="hidden shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100 sm:flex"
+          class="hidden shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-brand transition-colors hover:bg-stone-100 sm:flex"
         >
           ดูทั้งหมด <i class="bi bi-arrow-right"></i>
         </RouterLink>
@@ -446,7 +446,7 @@ const annIconColor: Record<string, string> = {
           </div>
           <RouterLink
             to="/app/issues/new"
-            class="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#991B1B] active:scale-[0.97]"
+            class="inline-flex items-center gap-2 rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-strong active:scale-[0.97]"
           >
             <i class="bi bi-plus-lg"></i> แจ้งเรื่องแรกเลย
           </RouterLink>
@@ -458,26 +458,26 @@ const annIconColor: Record<string, string> = {
         <!-- ตัวเลขหลัก (ledger) -->
         <div class="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-4">
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">แจ้งไปทั้งหมด</p>
+            <p class="text-[10px] font-bold text-stone-500">แจ้งไปทั้งหมด</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="summary.total_issues">0</p>
           </div>
 
           <div class="bg-white p-4 sm:p-5">
-            <p class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+            <p class="flex items-center gap-1.5 text-[10px] font-bold text-stone-500">
               <span class="h-1.5 w-1.5 rounded-full bg-stone-400"></span> รอรับเรื่อง
             </p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="statusMap['pending'] ?? 0">0</p>
           </div>
 
           <div class="bg-white p-4 sm:p-5">
-            <p class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">
-              <span class="h-1.5 w-1.5 rounded-full bg-[#B91C1C]"></span> กำลังดำเนินการ
+            <p class="flex items-center gap-1.5 text-[10px] font-bold text-stone-500">
+              <span class="h-1.5 w-1.5 rounded-full bg-brand"></span> กำลังดำเนินการ
             </p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="statusMap['in_progress'] ?? 0">0</p>
           </div>
 
           <div class="bg-white p-4 sm:p-5">
-            <p class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+            <p class="flex items-center gap-1.5 text-[10px] font-bold text-stone-500">
               <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> เสร็จแล้ว
             </p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="statusMap['resolved'] ?? 0">0</p>
@@ -489,7 +489,7 @@ const annIconColor: Record<string, string> = {
           <RouterLink
             v-if="(statusMap['escalated'] ?? 0) > 0"
             :to="{ name: 'my-issues', query: { status: 'escalated' } }"
-            class="inline-flex items-center gap-1.5 rounded-full bg-[#B91C1C]/10 px-3 py-1.5 text-[11px] font-bold text-[#B91C1C] ring-1 ring-[#B91C1C]/20 transition-colors hover:bg-[#B91C1C]/15"
+            class="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-3 py-1.5 text-[11px] font-bold text-brand ring-1 ring-brand/20 transition-colors hover:bg-brand/15"
           >
             <i class="bi bi-arrow-up-circle text-xs"></i> ส่งต่อระดับบน {{ statusMap['escalated'] }}
           </RouterLink>
@@ -516,7 +516,7 @@ const annIconColor: Record<string, string> = {
           </RouterLink>
           <RouterLink
             to="/app/issues/mine"
-            class="ml-auto inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100 sm:hidden"
+            class="ml-auto inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-brand transition-colors hover:bg-stone-100 sm:hidden"
           >
             ดูทั้งหมด <i class="bi bi-arrow-right"></i>
           </RouterLink>
@@ -524,7 +524,7 @@ const annIconColor: Record<string, string> = {
 
         <!-- ล่าสุด 2 เรื่อง -->
         <div v-if="summary.recent.length > 0" class="mt-4 border-t border-stone-200 pt-4">
-          <p class="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-500">
+          <p class="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-stone-500">
             <i class="bi bi-clock-history"></i> เรื่องล่าสุด
           </p>
           <div class="space-y-1">
@@ -538,7 +538,7 @@ const annIconColor: Record<string, string> = {
                 <i :class="['bi', it.requested_destination === 'vote' ? 'bi-bar-chart' : it.requested_destination === 'talk' ? 'bi-chat-dots' : 'bi-file-earmark-text']"></i>
               </span>
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-[#B91C1C]">{{ it.title }}</span>
+                <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-brand">{{ it.title }}</span>
                 <span class="text-[11px] font-medium text-stone-400">{{ formatDate(it.created_at) }}</span>
               </span>
               <span
@@ -573,23 +573,23 @@ const annIconColor: Record<string, string> = {
     <section v-if="!homeError && canReceive" class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
       <div class="flex items-center justify-between gap-3 px-6 pb-1 pt-6">
         <div class="flex items-center gap-3">
-          <span class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-[#B91C1C] text-white">
+          <span class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white">
             <i class="bi bi-reply-all text-lg"></i>
             <span
               v-if="unreadCount('issue_received') > 0"
-              class="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-[#B91C1C] ring-1 ring-stone-200"
+              class="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-brand ring-1 ring-stone-200"
             >
               {{ unreadCount('issue_received') > 99 ? '99+' : unreadCount('issue_received') }}
             </span>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">รอฉันตอบ</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">รอฉันตอบ</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">เรื่องที่ค้างอยู่ที่คุณและยังไม่ปิด</p>
           </div>
         </div>
         <RouterLink
           to="/app/issues/received"
-          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100"
+          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-brand transition-colors hover:bg-stone-100"
         >
           คิวทั้งหมด <i class="bi bi-arrow-right"></i>
         </RouterLink>
@@ -615,12 +615,12 @@ const annIconColor: Record<string, string> = {
           >
             <span
               class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-              :class="it.priority === 'urgent' ? 'bg-[#991B1B] text-white' : it.priority === 'high' ? 'bg-[#B91C1C]/10 text-[#B91C1C]' : 'bg-stone-100 text-stone-500'"
+              :class="it.priority === 'urgent' ? 'bg-brand-strong text-white' : it.priority === 'high' ? 'bg-brand/10 text-brand' : 'bg-stone-100 text-stone-500'"
             >
               <i class="bi bi-exclamation-lg"></i>
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-[#B91C1C]">{{ it.title }}</span>
+              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-brand">{{ it.title }}</span>
               <span class="flex items-center gap-1.5 text-[11px] font-medium text-stone-400">
                 <i class="bi bi-geo-alt"></i> {{ it.room_name || '—' }}
                 <span class="text-stone-300">•</span> {{ formatDate(it.created_at) }}
@@ -636,7 +636,7 @@ const annIconColor: Record<string, string> = {
           </RouterLink>
 
           <p v-if="pendingRestLabel" class="pt-2 text-center text-[11px] font-semibold text-stone-400">
-            {{ pendingRestLabel }} — <RouterLink to="/app/issues/received" class="text-[#B91C1C] hover:underline">ดูในคิวทั้งหมด</RouterLink>
+            {{ pendingRestLabel }} — <RouterLink to="/app/issues/received" class="text-brand hover:underline">ดูในคิวทั้งหมด</RouterLink>
           </p>
         </div>
       </div>
@@ -656,13 +656,13 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-bar-chart-steps text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">โหวตที่ยังไม่โหวต</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">โหวตที่ยังไม่โหวต</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">บอร์ดที่ยังเปิดอยู่ และคุณยังไม่ได้ออกเสียง</p>
           </div>
         </div>
         <RouterLink
           to="/app/boards"
-          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100"
+          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-brand transition-colors hover:bg-stone-100"
         >
           PIRI Boards <i class="bi bi-arrow-right"></i>
         </RouterLink>
@@ -679,11 +679,11 @@ const annIconColor: Record<string, string> = {
             :to="{ name: 'board-detail', params: { id: b.id } }"
             class="group flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors hover:bg-stone-50"
           >
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#B91C1C]/10 text-[#B91C1C]">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
               <i class="bi bi-hand-thumbs-up"></i>
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-[#B91C1C]">{{ b.title }}</span>
+              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-brand">{{ b.title }}</span>
               <span class="flex items-center gap-1.5 text-[11px] font-medium text-stone-400">
                 <i class="bi bi-people"></i> {{ voteCountLabel(b.vote_count) }}
                 <span class="text-stone-300">•</span> {{ formatDate(b.created_at) }}
@@ -696,7 +696,7 @@ const annIconColor: Record<string, string> = {
           </RouterLink>
 
           <p v-if="unvotedRestLabel" class="pt-2 text-center text-[11px] font-semibold text-stone-400">
-            {{ unvotedRestLabel }} — <RouterLink to="/app/boards" class="text-[#B91C1C] hover:underline">ดูใน PIRI Boards</RouterLink>
+            {{ unvotedRestLabel }} — <RouterLink to="/app/boards" class="text-brand hover:underline">ดูใน PIRI Boards</RouterLink>
           </p>
         </div>
       </div>
@@ -722,7 +722,7 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-hourglass-split text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">กิจกรรมใกล้ปิดรับ</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">กิจกรรมใกล้ปิดรับ</h2>
             <!-- ⚠️ ใช้ "ยังไม่ปิดรับ" ไม่ใช่ "ยังสมัครได้อยู่" — กิจกรรมที่เต็มแล้วก็อยู่ในบล็อกนี้
                  (สมัครได้แต่จะได้คิวสำรอง) ⇒ คำเดิมจะขัดกับป้าย "เต็มแล้ว" ในแถวเดียวกัน -->
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">ยังไม่ปิดรับ — เหลือเวลาอีกไม่มาก</p>
@@ -730,7 +730,7 @@ const annIconColor: Record<string, string> = {
         </div>
         <RouterLink
           to="/app/events"
-          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100"
+          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-brand transition-colors hover:bg-stone-100"
         >
           กิจกรรมทั้งหมด <i class="bi bi-arrow-right"></i>
         </RouterLink>
@@ -751,7 +751,7 @@ const annIconColor: Record<string, string> = {
               <i class="bi bi-calendar-event"></i>
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-[#B91C1C]">{{ ev.title }}</span>
+              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-brand">{{ ev.title }}</span>
               <span class="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-stone-400">
                 <!-- ป้ายเวลาปิดรับ — หัวใจของการ์ดนี้ จึงใช้สี amber ให้ต่างจากบรรทัดอื่น -->
                 <span class="font-bold text-amber-700">{{ closingLabel(ev.closes_at) }}</span>
@@ -777,7 +777,7 @@ const annIconColor: Record<string, string> = {
             </span>
             <span
               v-else
-              class="hidden shrink-0 rounded-full bg-[#B91C1C]/10 px-2.5 py-1 text-[10px] font-bold text-[#B91C1C] sm:inline"
+              class="hidden shrink-0 rounded-full bg-brand/10 px-2.5 py-1 text-[10px] font-bold text-brand sm:inline"
             >
               ดูรายละเอียด
             </span>
@@ -785,7 +785,7 @@ const annIconColor: Record<string, string> = {
           </RouterLink>
 
           <p v-if="closingSoonRestLabel" class="pt-2 text-center text-[11px] font-semibold text-stone-400">
-            {{ closingSoonRestLabel }} — <RouterLink to="/app/events" class="text-[#B91C1C] hover:underline">ดูกิจกรรมทั้งหมด</RouterLink>
+            {{ closingSoonRestLabel }} — <RouterLink to="/app/events" class="text-brand hover:underline">ดูกิจกรรมทั้งหมด</RouterLink>
           </p>
         </div>
       </div>
@@ -799,13 +799,13 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-flag-fill text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">คิวจัดการรายงาน</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">คิวจัดการรายงาน</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">คอมเมนต์ที่ถูกรายงานว่าน่าไม่เหมาะสม</p>
           </div>
         </div>
         <RouterLink
           to="/app/boards/reports"
-          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100"
+          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-brand transition-colors hover:bg-stone-100"
         >
           ไปจัดการ <i class="bi bi-arrow-right"></i>
         </RouterLink>
@@ -836,10 +836,10 @@ const annIconColor: Record<string, string> = {
               <i class="bi bi-flag text-sm"></i>
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-[#B91C1C]">{{ r.board_title }}</span>
+              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-brand">{{ r.board_title }}</span>
               <span class="mt-0.5 block truncate text-[11px] text-stone-400">“{{ r.comment_body }}”</span>
             </span>
-            <span v-if="reportsTotal > 3" class="shrink-0 rounded-full bg-[#B91C1C] px-2 py-0.5 text-[10px] font-bold text-white">+{{ reportsTotal - 3 }}</span>
+            <span v-if="reportsTotal > 3" class="shrink-0 rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-white">+{{ reportsTotal - 3 }}</span>
           </RouterLink>
         </div>
       </div>
@@ -850,17 +850,17 @@ const annIconColor: Record<string, string> = {
       <div class="px-6 py-5">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
-            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#B91C1C] text-white">
+            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white">
               <i class="bi bi-graph-up text-lg"></i>
             </span>
             <div>
-              <h2 class="text-sm font-bold tracking-tight text-stone-900 sm:text-base">ภาพรวม {{
+              <h2 class="text-sm font-bold text-stone-900 sm:text-base">ภาพรวม {{
                 dash?.scope_label ? `ระดับ ${dash.scope_label}` : 'ทั้งโรงเรียน'
               }}</h2>
               <p class="text-[11px] font-medium text-stone-400">จากแดชบอร์ด — ข้อมูลอัปเดตเรียลไทม์</p>
             </div>
           </div>
-          <RouterLink to="/app/dashboard" class="hidden shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100 sm:flex">
+          <RouterLink to="/app/dashboard" class="hidden shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-brand transition-colors hover:bg-stone-100 sm:flex">
             เปิดแดชบอร์ด <i class="bi bi-arrow-right"></i>
           </RouterLink>
         </div>
@@ -878,19 +878,19 @@ const annIconColor: Record<string, string> = {
         </div>
         <div v-else-if="dash" class="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-4">
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">เรื่องทั้งหมด</p>
+            <p class="text-[10px] font-bold text-stone-500">เรื่องทั้งหมด</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900">{{ dash.total_issues }}</p>
           </div>
-          <div class="bg-[#B91C1C]/5 p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-[#B91C1C]">ค้าง/เลยกำหนด</p>
-            <p class="mt-1 font-display text-2xl font-bold leading-none text-[#991B1B]">{{ dash.overdue }}</p>
+          <div class="bg-brand/5 p-4 sm:p-5">
+            <p class="text-[10px] font-bold text-brand">ค้าง/เลยกำหนด</p>
+            <p class="mt-1 font-display text-2xl font-bold leading-none text-brand-strong">{{ dash.overdue }}</p>
           </div>
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">กำลังดำเนินการ</p>
+            <p class="text-[10px] font-bold text-stone-500">กำลังดำเนินการ</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900">{{ dash.in_progress }}</p>
           </div>
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">เสร็จแล้ว</p>
+            <p class="text-[10px] font-bold text-stone-500">เสร็จแล้ว</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900">{{ dash.resolved }}</p>
           </div>
         </div>

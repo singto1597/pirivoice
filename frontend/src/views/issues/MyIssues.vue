@@ -59,10 +59,10 @@ function onPageChange(n: number) {
     <!-- Editorial page header -->
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+        <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
           <i class="bi bi-file-earmark-text text-[13px]"></i> My Reports
         </p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">เรื่องของฉัน</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">เรื่องของฉัน</h1>
         <p class="mt-2 text-sm text-stone-500">ติดตามสถานะเรื่องที่คุณแจ้ง</p>
       </div>
       <RouterLink to="/app/issues/new" class="btn-gradient text-sm shrink-0">
@@ -120,7 +120,7 @@ function onPageChange(n: number) {
       <p class="text-stone-600">{{ error }}</p>
       <button
         type="button"
-        class="mt-4 rounded-lg bg-[#B91C1C] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#991B1B]"
+        class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
         @click="load"
       >
         ลองอีกครั้ง
@@ -134,7 +134,7 @@ function onPageChange(n: number) {
     >
       <div class="text-4xl mb-2 text-stone-300"><i class="bi bi-inbox"></i></div>
       <p class="text-stone-600">ยังไม่มีเรื่องที่คุณแจ้ง</p>
-      <RouterLink to="/app/issues/new" class="inline-block mt-3 text-[#B91C1C] hover:underline font-medium">แจ้งเรื่องแรกของคุณ <i class="bi bi-arrow-right"></i></RouterLink>
+      <RouterLink to="/app/issues/new" class="inline-block mt-3 text-brand hover:underline font-medium">แจ้งเรื่องแรกของคุณ <i class="bi bi-arrow-right"></i></RouterLink>
     </div>
 
     <!-- Ledger-style list -->

@@ -274,7 +274,7 @@ const sparkDot = computed(() => {
 const heroAnnouncement = computed(() => announcements.value[0] ?? null);
 
 function priorityDot(p: AnnouncementPriority) {
-  if (p === 'urgent') return 'bg-[#B91C1C] animate-pulse';
+  if (p === 'urgent') return 'bg-brand animate-pulse';
   if (p === 'high') return 'bg-[#D97706]';
   return 'bg-stone-400';
 }
@@ -326,7 +326,7 @@ watch([stats, isLoadingStats], () => {
 </script>
 
 <template>
-  <div class="piri-landing relative min-h-screen overflow-x-clip bg-[#FAFAF9] text-stone-900 selection:bg-[#B91C1C]/15 selection:text-[#B91C1C]">
+  <div class="piri-landing relative min-h-screen overflow-x-clip bg-[#FAFAF9] text-stone-900 selection:bg-brand/15 selection:text-brand">
     
     <!-- ============================================= -->
     <!-- 🏛️ 1. Header Navigation -->
@@ -345,7 +345,7 @@ watch([stats, isLoadingStats], () => {
             <img src="/logos/council-logo.png" alt="ตราสภานักเรียน" class="h-[38px] w-auto object-contain drop-shadow-sm transition-transform group-hover:scale-105" />
           </div>
           <div class="flex flex-col items-start leading-none text-left">
-            <span class="text-[17px] font-bold tracking-tight text-stone-900">PIRI<span class="text-[#B91C1C]">voice</span></span>
+            <span class="text-[17px] font-bold tracking-tight text-stone-900">PIRI<span class="text-brand">voice</span></span>
             <span class="mt-1 hidden text-[11px] font-medium tracking-wide text-stone-500 sm:block">สภานักเรียน โรงเรียนพิริยาลัยจังหวัดแพร่</span>
           </div>
         </button>
@@ -358,14 +358,14 @@ watch([stats, isLoadingStats], () => {
             @click="scrollToId(link.id)"
           >
             {{ link.label }}
-            <span class="absolute -bottom-1 left-0 right-0 h-[2px] origin-left scale-x-0 bg-[#B91C1C] transition-transform duration-300 group-hover:scale-x-100 rounded-full"></span>
+            <span class="absolute -bottom-1 left-0 right-0 h-[2px] origin-left scale-x-0 bg-brand transition-transform duration-300 group-hover:scale-x-100 rounded-full"></span>
           </button>
         </div>
 
         <!-- CTA -->
         <button
           type="button"
-          class="inline-flex items-center gap-2.5 rounded-lg bg-stone-900 px-5 py-2.5 text-[13.5px] font-semibold text-white shadow-sm transition-all hover:bg-[#B91C1C] hover:shadow-md active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2"
+          class="inline-flex items-center gap-2.5 rounded-lg bg-stone-900 px-5 py-2.5 text-[13.5px] font-semibold text-white shadow-sm transition-all hover:bg-brand hover:shadow-md active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
           @click="goLogin"
         >
           เข้าสู่ระบบ
@@ -408,14 +408,14 @@ watch([stats, isLoadingStats], () => {
                 <span class="mb-4 block text-xl font-semibold text-stone-500 sm:text-2xl">ศูนย์กลางรับฟังเสียงนักเรียน</span>
                 <span class="block text-[2.75rem] font-bold sm:text-6xl lg:text-[4.2rem]">
                   <span class="block">
-                    ทุกเสียง<span class="text-[#B91C1C]">มีความหมาย</span>
+                    ทุกเสียง<span class="text-brand">มีความหมาย</span>
                   </span>
                   <span class="block">
-                    ทุกเสียง<span class="text-[#B91C1C]">พาพิริยาลัย</span>
+                    ทุกเสียง<span class="text-brand">พาพิริยาลัย</span>
                   </span>
                   <span class="relative inline-block">
                     ก้าวไปด้วยกัน
-                    <span class="absolute -bottom-2 left-0 right-0 h-3 bg-[#B91C1C]/10 -skew-x-12"></span>
+                    <span class="absolute -bottom-2 left-0 right-0 h-3 bg-brand/10 -skew-x-12"></span>
                   </span>
                 </span>
               </h1>
@@ -428,7 +428,7 @@ watch([stats, isLoadingStats], () => {
               <div class="mt-10 flex flex-wrap items-center gap-4">
                 <button
                   type="button"
-                  class="inline-flex items-center gap-2.5 rounded-xl bg-[#B91C1C] px-7 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-[#B91C1C]/25 transition-all hover:bg-[#991B1B] hover:shadow-xl hover:-translate-y-0.5 active:scale-95"
+                  class="inline-flex items-center gap-2.5 rounded-xl bg-brand px-7 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-brand/25 transition-all hover:bg-brand-strong hover:shadow-xl hover:-translate-y-0.5 active:scale-95"
                   @click="goLogin"
                 >
                   <i class="bi bi-pencil-square text-lg"></i>
@@ -493,12 +493,12 @@ watch([stats, isLoadingStats], () => {
               <!-- Graphic 3: The Rubber Stamp (Total Issues) -->
               <div
                 v-if="!isLoadingStats && stats"
-                class="settle absolute bottom-6 left-[30%] z-30 flex h-32 w-32 flex-col items-center justify-center rounded-full border-[3px] border-[#B91C1C] bg-transparent text-center mix-blend-multiply"
+                class="settle absolute bottom-6 left-[30%] z-30 flex h-32 w-32 flex-col items-center justify-center rounded-full border-[3px] border-brand bg-transparent text-center mix-blend-multiply"
                 style="--rot: -15deg; animation-delay: 0.5s;"
               >
-                <div class="absolute inset-1.5 rounded-full border-[1.5px] border-[#B91C1C]/60"></div>
-                <span class="text-3xl font-black tabular-nums text-[#B91C1C]">{{ formatStatValue(stats.total_issues) }}</span>
-                <span class="mt-0.5 text-[10.5px] font-bold tracking-wide text-[#B91C1C] leading-tight">เรื่องที่แจ้ง<br>เข้ามา</span>
+                <div class="absolute inset-1.5 rounded-full border-[1.5px] border-brand/60"></div>
+                <span class="text-3xl font-black tabular-nums text-brand">{{ formatStatValue(stats.total_issues) }}</span>
+                <span class="mt-0.5 text-[10.5px] font-bold tracking-wide text-brand leading-tight">เรื่องที่แจ้ง<br>เข้ามา</span>
               </div>
             </div>
 
@@ -532,7 +532,7 @@ watch([stats, isLoadingStats], () => {
                   <template v-for="a in announcements" :key="a.id">
                     <span class="mx-6 flex items-center gap-2.5">
                       <span class="h-1.5 w-1.5 rounded-full" :class="priorityDot(a.priority)"></span>
-                      <a v-if="a.link" :href="a.link" target="_blank" rel="noopener" tabindex="-1" class="text-[14.5px] font-medium text-stone-600 transition-colors hover:text-[#B91C1C]">
+                      <a v-if="a.link" :href="a.link" target="_blank" rel="noopener" tabindex="-1" class="text-[14.5px] font-medium text-stone-600 transition-colors hover:text-brand">
                         {{ a.message }} <i class="bi bi-arrow-up-right text-[10px] ml-0.5 opacity-50"></i>
                       </a>
                       <span v-else class="text-[14.5px] font-medium text-stone-600">{{ a.message }}</span>
@@ -622,7 +622,7 @@ watch([stats, isLoadingStats], () => {
                   </svg>
                   <!-- The live dot indicator -->
                   <span
-                    class="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#B91C1C] ring-4 ring-white shadow-sm"
+                    class="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand ring-4 ring-white shadow-sm"
                     :style="{ left: sparkDot.left + '%', top: sparkDot.top + '%' }"
                   ></span>
                 </div>
@@ -647,7 +647,7 @@ watch([stats, isLoadingStats], () => {
         <div class="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
           
           <div class="mb-16 max-w-2xl">
-            <h2 class="text-[12px] font-bold uppercase tracking-widest text-[#B91C1C] mb-2">Escalation Protocol</h2>
+            <h2 class="text-[12px] font-bold uppercase tracking-widest text-brand mb-2">Escalation Protocol</h2>
             <h3 class="text-3xl font-bold tracking-tight text-stone-900 sm:text-4xl">กลไกการส่งต่ออย่างเป็นระบบ</h3>
             <p class="mt-4 text-[16px] leading-relaxed text-stone-600">ทุกเสียงถูกออกแบบให้มีผู้ดูแลที่ชัดเจน ระบบจะทำการยกระดับเรื่องขึ้นไปตามสายงานโดยอัตโนมัติ เพื่อให้มั่นใจว่าจะไม่ถูกเพิกเฉย</p>
           </div>
@@ -659,7 +659,7 @@ watch([stats, isLoadingStats], () => {
             <div class="flex flex-col gap-12">
               <div v-for="(step, i) in workflowSteps" :key="step.title" class="group relative flex gap-6 sm:gap-8">
                 <!-- Step Number (Stamp) -->
-                <div class="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-stone-200 bg-white text-[18px] font-bold text-stone-400 transition-colors duration-300 group-hover:border-[#B91C1C] group-hover:text-[#B91C1C] sm:h-14 sm:w-14 sm:text-[20px]">
+                <div class="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-stone-200 bg-white text-[18px] font-bold text-stone-400 transition-colors duration-300 group-hover:border-brand group-hover:text-brand sm:h-14 sm:w-14 sm:text-[20px]">
                   {{ toThaiNumerals(i + 1) }}
                 </div>
                 <!-- Content -->
@@ -716,7 +716,7 @@ watch([stats, isLoadingStats], () => {
               <div class="grid md:grid-cols-2">
                 <!-- Left: Issue -->
                 <div class="border-b border-stone-100 p-6 sm:p-8 md:border-b-0 md:border-r">
-                  <p class="mb-4 text-[12px] font-bold uppercase tracking-widest text-[#B91C1C]">ประเด็นที่รับแจ้ง</p>
+                  <p class="mb-4 text-[12px] font-bold uppercase tracking-widest text-brand">ประเด็นที่รับแจ้ง</p>
                   <p class="text-[18px] font-bold leading-snug text-stone-900">“{{ featuredCase.title }}”</p>
                   <div class="mt-6 inline-flex items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-[12.5px] font-medium text-stone-600">
                     <i class="bi bi-person-fill text-stone-400"></i> แจ้งโดย {{ featuredCase.reporter_mask }}
@@ -756,7 +756,7 @@ watch([stats, isLoadingStats], () => {
                     {{ reporterInitial(c.reporter_mask) }}
                   </div>
                   <div class="min-w-0 flex-1 pt-0.5">
-                    <p class="line-clamp-2 text-[14px] font-bold leading-snug text-stone-800 group-hover:text-[#B91C1C] transition-colors">{{ c.title }}</p>
+                    <p class="line-clamp-2 text-[14px] font-bold leading-snug text-stone-800 group-hover:text-brand transition-colors">{{ c.title }}</p>
                     <p class="mt-1.5 truncate text-[12px] font-medium text-stone-500">{{ c.department_in_charge }}</p>
                   </div>
                 </div>
@@ -789,7 +789,7 @@ watch([stats, isLoadingStats], () => {
                 มากกว่าการแจ้งเรื่อง<br>
                 <span class="relative inline-block text-stone-100">
                   คือพื้นที่ของทุกความเห็น
-                  <span class="absolute -bottom-1 left-0 right-0 h-2 bg-[#B91C1C]/60 -skew-x-12"></span>
+                  <span class="absolute -bottom-1 left-0 right-0 h-2 bg-brand/60 -skew-x-12"></span>
                 </span>
               </h2>
               <p class="mt-6 text-[16px] leading-relaxed text-stone-400">
@@ -845,7 +845,7 @@ watch([stats, isLoadingStats], () => {
           </p>
           <button
             type="button"
-            class="mt-10 inline-flex items-center gap-2.5 rounded-xl bg-[#B91C1C] px-9 py-4 text-[16px] font-bold text-white shadow-lg shadow-[#B91C1C]/20 transition-all hover:bg-[#991B1B] hover:shadow-xl hover:-translate-y-0.5 active:scale-95"
+            class="mt-10 inline-flex items-center gap-2.5 rounded-xl bg-brand px-9 py-4 text-[16px] font-bold text-white shadow-lg shadow-brand/20 transition-all hover:bg-brand-strong hover:shadow-xl hover:-translate-y-0.5 active:scale-95"
             @click="goLogin"
           >
             ล็อกอินเข้าระบบ

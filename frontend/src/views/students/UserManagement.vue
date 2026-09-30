@@ -281,11 +281,11 @@ const editMeta = computed(() => {
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
         <p
-          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]"
+          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand"
         >
           <i class="bi bi-person-gear text-[13px]"></i> User Management
         </p>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
+        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
           จัดการสมาชิก
         </h1>
         <p class="mt-2 text-sm text-stone-500">
@@ -295,7 +295,7 @@ const editMeta = computed(() => {
       <button
         type="button"
         @click="openAdd"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] hover:shadow-lg active:scale-[0.97]"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
       >
         <i class="bi bi-person-plus-fill"></i> เพิ่มผู้ใช้งาน
       </button>
@@ -323,7 +323,7 @@ const editMeta = computed(() => {
         class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors"
         :class="
           groupFilter === g.key
-            ? 'bg-[#B91C1C] text-white shadow-sm'
+            ? 'bg-brand text-white shadow-sm'
             : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-100'
         "
       >
@@ -343,7 +343,7 @@ const editMeta = computed(() => {
         v-model="search"
         type="text"
         placeholder="ค้นหา รหัสนักเรียน / ชื่อ / นามสกุล..."
-        class="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20 sm:max-w-sm"
+        class="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 sm:max-w-sm"
       />
     </div>
 
@@ -374,7 +374,7 @@ const editMeta = computed(() => {
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -418,7 +418,7 @@ const editMeta = computed(() => {
                   :class="
                     s.class_role === 'student'
                       ? 'bg-stone-100 text-stone-600'
-                      : 'bg-[#B91C1C]/10 text-[#B91C1C]'
+                      : 'bg-brand/10 text-brand'
                   "
                 >
                   {{ roleLabel(s.class_role) }}
@@ -435,7 +435,7 @@ const editMeta = computed(() => {
             <button
               type="button"
               @click="openEdit(s)"
-              class="shrink-0 rounded-xl p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-[#B91C1C]"
+              class="shrink-0 rounded-xl p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-brand"
               :title="'แก้ไข: ' + (s.first_name || '')"
             >
               <i class="bi bi-pencil-square text-lg"></i>
@@ -448,20 +448,20 @@ const editMeta = computed(() => {
           <table class="w-full text-sm">
             <thead class="bg-stone-50 text-stone-500">
               <tr>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   รหัสนักเรียน
                 </th>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   ชื่อ-นามสกุล
                 </th>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   ห้อง
                 </th>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   ตำแหน่ง / หน้าที่
                 </th>
                 <th
-                  class="px-4 py-3 text-right font-semibold uppercase tracking-wider text-[11px]"
+                  class="px-4 py-3 text-right font-semibold text-[11px]"
                 ></th>
               </tr>
             </thead>
@@ -483,7 +483,7 @@ const editMeta = computed(() => {
                       :class="
                         s.class_role === 'student'
                           ? 'bg-stone-100 text-stone-600'
-                          : 'bg-[#B91C1C]/10 text-[#B91C1C]'
+                          : 'bg-brand/10 text-brand'
                       "
                     >
                       {{ roleLabel(s.class_role) }}
@@ -501,7 +501,7 @@ const editMeta = computed(() => {
                   <button
                     type="button"
                     @click="openEdit(s)"
-                    class="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#B91C1C] transition-colors hover:bg-[#B91C1C]/10"
+                    class="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/10"
                   >
                     <i class="bi bi-pencil-square mr-1"></i> แก้ไข
                   </button>
@@ -558,7 +558,7 @@ const editMeta = computed(() => {
                     v-model="form.username"
                     type="text"
                     placeholder="เช่น 12345"
-                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                   />
                 </div>
                 <div>
@@ -572,7 +572,7 @@ const editMeta = computed(() => {
                     v-model="form.password"
                     type="text"
                     placeholder="ปล่อยว่างได้"
-                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                   />
                 </div>
                 <div>
@@ -600,7 +600,7 @@ const editMeta = computed(() => {
                     <input
                       v-model="form.first_name"
                       type="text"
-                      class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                      class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                     />
                   </div>
                   <div>
@@ -608,7 +608,7 @@ const editMeta = computed(() => {
                     <input
                       v-model="form.last_name"
                       type="text"
-                      class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                      class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                     />
                   </div>
                 </div>
@@ -619,14 +619,14 @@ const editMeta = computed(() => {
                   <input
                     v-model="form.nickname"
                     type="text"
-                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/20"
+                    class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                   />
                 </div>
                 <div>
                   <label class="mb-1 block text-xs font-semibold text-stone-500">ห้อง *</label>
                   <select
                     v-model="form.room_code"
-                    class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C]"
+                    class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand"
                   >
                     <option value="">— เลือกห้อง —</option>
                     <option v-for="r in addableRooms" :key="r.id" :value="r.room_code">
@@ -640,7 +640,7 @@ const editMeta = computed(() => {
                 <label class="mb-1 block text-xs font-semibold text-stone-500">ตำแหน่ง</label>
                 <select
                   v-model="form.class_role"
-                  class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#B91C1C]"
+                  class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand"
                 >
                   <option v-for="r in settableRoles" :key="r" :value="r">{{ roleLabel(r) }}</option>
                 </select>
@@ -660,7 +660,7 @@ const editMeta = computed(() => {
                     class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[13px] font-medium transition-colors"
                     :class="
                       form.responsibilities.includes(opt.value)
-                        ? 'border-[#B91C1C] bg-[#B91C1C]/5 text-[#B91C1C]'
+                        ? 'border-brand bg-brand/5 text-brand'
                         : 'border-stone-200 text-stone-600 hover:bg-stone-50'
                     "
                   >
@@ -703,7 +703,7 @@ const editMeta = computed(() => {
                 type="button"
                 @click="submitForm"
                 :disabled="saving"
-                class="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] disabled:opacity-60"
+                class="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong disabled:opacity-60"
               >
                 <span
                   v-if="saving"

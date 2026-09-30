@@ -9,8 +9,8 @@
 
 export const STATUS_DOT: Record<string, string> = {
   pending: 'bg-stone-400',
-  in_progress: 'bg-[#B91C1C]',
-  escalated: 'bg-[#991B1B]',
+  in_progress: 'bg-brand',
+  escalated: 'bg-brand-strong',
   resolved: 'bg-emerald-500',
   cancelled: 'bg-stone-300',
   rejected: 'bg-stone-500',
@@ -18,8 +18,8 @@ export const STATUS_DOT: Record<string, string> = {
 
 export const STATUS_BAR: Record<string, string> = {
   pending: 'bg-stone-300',
-  in_progress: 'bg-[#B91C1C]',
-  escalated: 'bg-[#991B1B]',
+  in_progress: 'bg-brand',
+  escalated: 'bg-brand-strong',
   resolved: 'bg-emerald-500',
   cancelled: 'bg-stone-200',
   rejected: 'bg-stone-300',
@@ -27,8 +27,8 @@ export const STATUS_BAR: Record<string, string> = {
 
 export const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-stone-100 text-stone-600',
-  in_progress: 'bg-[#B91C1C]/10 text-[#B91C1C]',
-  escalated: 'bg-[#B91C1C] text-white',
+  in_progress: 'bg-brand/10 text-brand',
+  escalated: 'bg-brand text-white',
   resolved: 'bg-emerald-100 text-emerald-700',
   cancelled: 'bg-stone-200 text-stone-500',
   rejected: 'bg-stone-100 text-stone-500',

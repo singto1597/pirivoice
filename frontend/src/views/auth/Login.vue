@@ -78,7 +78,7 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col overflow-x-clip bg-[#FAFAF9] font-sans text-stone-900 selection:bg-[#B91C1C]/15 selection:text-[#B91C1C]">
+  <div class="relative flex min-h-screen flex-col overflow-x-clip bg-[#FAFAF9] font-sans text-stone-900 selection:bg-brand/15 selection:text-brand">
     <!-- เส้นกริดจุด "กระดาษ" (เดียวกับ Landing hero) -->
     <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(#e7e5e4_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
 
@@ -91,7 +91,7 @@ async function handleLogin() {
           <img src="/logos/council-logo.png" alt="ตราสภานักเรียน" class="h-10 w-auto object-contain" />
         </div>
         <router-link to="/" class="flex flex-col items-start leading-none">
-          <span class="text-lg font-bold tracking-tight text-stone-900">PIRI<span class="text-[#B91C1C]">voice</span></span>
+          <span class="text-lg font-bold tracking-tight text-stone-900">PIRI<span class="text-brand">voice</span></span>
           <span class="mt-1 hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400 sm:block">Student Council</span>
         </router-link>
       </div>
@@ -105,22 +105,22 @@ async function handleLogin() {
       <div class="w-full max-w-[420px] animate-slide-up-fade">
         <div class="rounded-3xl border border-stone-200 bg-white p-8 sm:p-10">
           <div class="mb-8 text-center">
-            <p class="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">Student Council · PIRIvoice</p>
-            <h2 class="text-3xl font-bold tracking-tight text-stone-900">เข้าสู่ระบบ</h2>
+            <p class="mb-3 text-[11px] font-bold uppercase tracking-widest text-brand">Student Council · PIRIvoice</p>
+            <h2 class="text-3xl font-bold text-stone-900">เข้าสู่ระบบ</h2>
             <p class="mt-2 text-sm text-stone-500">ลงชื่อเข้าใช้ด้วยรหัสนักเรียน / บุคลากร</p>
           </div>
 
           <form @submit.prevent="handleLogin" class="space-y-5">
             <!-- กลุ่มรหัสนักเรียน -->
             <div class="group">
-              <label class="mb-1.5 block text-sm font-semibold text-stone-700 transition-colors group-focus-within:text-[#B91C1C]">รหัสนักเรียน</label>
+              <label class="mb-1.5 block text-sm font-semibold text-stone-700 transition-colors group-focus-within:text-brand">รหัสนักเรียน</label>
               <div class="relative">
-                <i class="bi bi-person absolute left-4 top-1/2 -translate-y-1/2 text-lg text-stone-400 transition-colors group-focus-within:text-[#B91C1C]"></i>
+                <i class="bi bi-person absolute left-4 top-1/2 -translate-y-1/2 text-lg text-stone-400 transition-colors group-focus-within:text-brand"></i>
                 <input
                   v-model="username"
                   type="text"
                   autocomplete="username"
-                  class="w-full rounded-xl border border-stone-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition-colors focus:border-[#B91C1C] focus:ring-[3px] focus:ring-[#B91C1C]/20 sm:text-base"
+                  class="w-full rounded-xl border border-stone-200 bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition-colors focus:border-brand focus:ring-[3px] focus:ring-brand/20 sm:text-base"
                   placeholder="เช่น 41001"
                   :disabled="isLoading"
                 />
@@ -129,14 +129,14 @@ async function handleLogin() {
 
             <!-- กลุ่มรหัสผ่าน -->
             <div class="group">
-              <label class="mb-1.5 block text-sm font-semibold text-stone-700 transition-colors group-focus-within:text-[#B91C1C]">รหัสผ่าน</label>
+              <label class="mb-1.5 block text-sm font-semibold text-stone-700 transition-colors group-focus-within:text-brand">รหัสผ่าน</label>
               <div class="relative">
-                <i class="bi bi-lock absolute left-4 top-1/2 -translate-y-1/2 text-lg text-stone-400 transition-colors group-focus-within:text-[#B91C1C]"></i>
+                <i class="bi bi-lock absolute left-4 top-1/2 -translate-y-1/2 text-lg text-stone-400 transition-colors group-focus-within:text-brand"></i>
                 <input
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
                   autocomplete="current-password"
-                  class="w-full rounded-xl border border-stone-200 bg-white py-3.5 pl-11 pr-12 text-sm outline-none transition-colors focus:border-[#B91C1C] focus:ring-[3px] focus:ring-[#B91C1C]/20 sm:text-base"
+                  class="w-full rounded-xl border border-stone-200 bg-white py-3.5 pl-11 pr-12 text-sm outline-none transition-colors focus:border-brand focus:ring-[3px] focus:ring-brand/20 sm:text-base"
                   placeholder="••••••••"
                   :disabled="isLoading"
                 />
@@ -155,7 +155,7 @@ async function handleLogin() {
             <button
               type="submit"
               :disabled="isLoading"
-              class="mt-4 flex w-full items-center justify-center rounded-xl bg-[#B91C1C] py-3.5 text-base font-bold text-white transition-colors hover:bg-[#991B1B] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+              class="mt-4 flex w-full items-center justify-center rounded-xl bg-brand py-3.5 text-base font-bold text-white transition-colors hover:bg-brand-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
             >
               <i v-if="!isLoading" class="bi bi-arrow-right-circle mr-2 text-lg"></i>
               <i v-else class="bi bi-arrow-repeat mr-2 animate-spin text-lg"></i>
@@ -164,13 +164,13 @@ async function handleLogin() {
           </form>
 
           <!-- Note box: รหัสผ่านเริ่มต้น -->
-          <div class="mt-6 border-l-2 border-l-[#B91C1C] border border-stone-200 bg-stone-50 p-4">
+          <div class="mt-6 border-l-2 border-l-brand border border-stone-200 bg-stone-50 p-4">
             <div class="flex items-start gap-3">
-              <i class="bi bi-info-circle-fill mt-0.5 text-[#B91C1C]"></i>
+              <i class="bi bi-info-circle-fill mt-0.5 text-brand"></i>
               <p class="text-[12px] leading-relaxed text-stone-600">
                 <strong class="mb-0.5 block font-bold text-stone-800">รหัสผ่านเริ่มต้น</strong>
                 สำหรับนักเรียนและบุคลากร รหัสผ่านตั้งต้นคือ
-                <code class="rounded border border-stone-200 bg-white px-1.5 py-0.5 font-mono text-[#B91C1C]">รหัสนักเรียน/บุคลากร</code>
+                <code class="rounded border border-stone-200 bg-white px-1.5 py-0.5 font-mono text-brand">รหัสนักเรียน/บุคลากร</code>
                 ของท่าน
               </p>
             </div>
@@ -194,7 +194,7 @@ async function handleLogin() {
               href="https://www.singto1597.xyz/"
               target="_blank"
               rel="noopener noreferrer"
-              class="rounded-md border border-stone-200 bg-stone-100 px-2.5 py-1 font-semibold text-stone-600 transition-colors hover:border-[#B91C1C]/40 hover:bg-[#B91C1C]/5 hover:text-[#B91C1C]"
+              class="rounded-md border border-stone-200 bg-stone-100 px-2.5 py-1 font-semibold text-stone-600 transition-colors hover:border-brand/40 hover:bg-brand/5 hover:text-brand"
             >
               นายพัฒนพล สุธรรม
             </a>

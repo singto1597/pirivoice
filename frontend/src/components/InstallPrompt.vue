@@ -18,6 +18,7 @@
  */
 import { ref } from 'vue'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 import {
   applyUpdate,
   dismissInstall,
@@ -40,7 +41,7 @@ async function onInstall() {
         icon: 'success',
         title: 'ติดตั้งแล้ว',
         text: 'เปิด PIRIvoice ได้จากไอคอนบนหน้าจอเลย',
-        confirmButtonColor: '#b91c1c',
+        confirmButtonColor: BRAND,
       })
     }
     // 'dismissed' = ผู้ใช้ปิดหน้าต่างของเบราว์เซอร์เอง — ไม่ต้องแจ้งอะไร
@@ -60,7 +61,7 @@ async function onInstall() {
       <div
         class="pointer-events-auto mx-auto flex w-full max-w-[440px] items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-lg shadow-stone-900/5"
       >
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#B91C1C]/10 text-[#B91C1C]">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
           <i class="bi bi-arrow-repeat text-lg"></i>
         </span>
         <div class="min-w-0 flex-1">
@@ -69,7 +70,7 @@ async function onInstall() {
         </div>
         <button
           type="button"
-          class="shrink-0 rounded-xl bg-[#B91C1C] px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#991B1B]"
+          class="shrink-0 rounded-xl bg-brand px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-strong"
           @click="applyUpdate"
         >
           อัปเดต
@@ -86,7 +87,7 @@ async function onInstall() {
       <div
         class="pointer-events-auto mx-auto flex w-full max-w-[440px] items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-lg shadow-stone-900/5"
       >
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#B91C1C] text-white">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-white">
           <i class="bi bi-phone text-lg"></i>
         </span>
         <div class="min-w-0 flex-1">
@@ -96,7 +97,7 @@ async function onInstall() {
         <button
           type="button"
           :disabled="isWorking"
-          class="shrink-0 rounded-xl bg-[#B91C1C] px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-60"
+          class="shrink-0 rounded-xl bg-brand px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-60"
           @click="onInstall"
         >
           <i v-if="isWorking" class="bi bi-arrow-repeat animate-spin"></i>
@@ -129,7 +130,7 @@ async function onInstall() {
       <div
         class="pointer-events-auto mx-auto flex w-full max-w-[440px] items-start gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-lg shadow-stone-900/5"
       >
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#B91C1C] text-white">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-white">
           <i class="bi bi-phone text-lg"></i>
         </span>
         <div class="min-w-0 flex-1">
@@ -160,9 +161,11 @@ async function onInstall() {
 <style scoped>
 /* ⚠️ ใช้ class + media query ไม่ใช่ inline style — เพราะ inline style ชนะ
    `lg:` utility เสมอ (เขียน `lg:bottom-6` ไว้ด้วยกันแล้วจะไม่มีผลเงียบ ๆ)
-   มือถือ: ลอยเหนือ bottom tab bar · จอใหญ่: tab bar ซ่อน ⇒ ชิดขอบล่างได้ */
+   มือถือ: ลอยเหนือ bottom tab bar · จอใหญ่: tab bar ซ่อน ⇒ ชิดขอบล่างได้
+   📐 วัดใหม่หลังเปลี่ยนแถบล่าง (R0): แถบสูง 3.5rem (เดิมเป็นแคปซูลลอย ~4.6rem)
+   ⇒ 3.5rem + ช่องไฟ 1rem = 4.5rem — ให้ช่องไฟเท่ากับที่ FAB ใช้ (ดู `AppFab.vue`) */
 .banner-anchor {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.6rem);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 4.5rem);
 }
 @media (min-width: 1024px) {
   .banner-anchor {

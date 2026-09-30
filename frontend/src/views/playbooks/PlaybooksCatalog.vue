@@ -15,7 +15,7 @@ const isCoverBroken = (id: string) => failedCovers.value.has(id)
   <div>
     <!-- Editorial header -->
     <div class="mb-6">
-      <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1.5">
+      <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
         <i class="bi bi-journal-bookmark-fill mr-1"></i> Student Handbook
       </p>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">P.R. Playbooks</h1>
@@ -44,7 +44,7 @@ const isCoverBroken = (id: string) => failedCovers.value.has(id)
             <p class="text-xs font-semibold mt-2">ยังไม่พร้อมใช้งาน</p>
           </div>
           <!-- ป้ายเล่มที่ -->
-          <span class="absolute top-3 left-3 px-2 py-1 rounded-full bg-[#B91C1C] text-white text-[11px] font-bold">
+          <span class="absolute top-3 left-3 px-2 py-1 rounded-full bg-brand text-white text-[11px] font-bold">
             เล่มที่ {{ playbookVolume(pb.id) }}
           </span>
         </div>
@@ -58,7 +58,7 @@ const isCoverBroken = (id: string) => failedCovers.value.has(id)
             <span class="text-xs text-stone-400 flex items-center gap-1.5">
               <i class="bi bi-file-earmark-text"></i> {{ pb.totalPages }} หน้า
             </span>
-            <span class="inline-flex items-center gap-1.5 text-xs font-bold text-[#B91C1C]">
+            <span class="inline-flex items-center gap-1.5 text-xs font-bold text-brand">
               อ่านเล่มนี้ <i class="bi bi-arrow-right"></i>
             </span>
           </div>

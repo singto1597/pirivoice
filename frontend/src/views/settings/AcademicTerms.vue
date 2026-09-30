@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import Swal from 'sweetalert2'
+import { BRAND, WARN } from '@/constants/brand'
 import {
   listTerms,
   createTerm,
@@ -209,7 +210,7 @@ async function doSetCurrent(t: AcademicTerm) {
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'ใช้ภาคนี้',
-    confirmButtonColor: '#B91C1C',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ยกเลิก',
   })
   if (!res.isConfirmed) return
@@ -242,7 +243,7 @@ async function doDelete(t: AcademicTerm) {
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: 'ลบภาคเรียน',
-    confirmButtonColor: '#b91c1c',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ยกเลิก',
   })
   if (!res.isConfirmed) return
@@ -272,7 +273,7 @@ async function doRestore(t: AcademicTerm) {
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'กู้คืน',
-    confirmButtonColor: '#B45309',
+    confirmButtonColor: WARN,
     cancelButtonText: 'ยกเลิก',
   })
   if (!res.isConfirmed) return
@@ -306,11 +307,11 @@ function coversToday(t: AcademicTerm): boolean {
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
         <p
-          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]"
+          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand"
         >
           <i class="bi bi-calendar3-range text-[13px]"></i> Academic Terms
         </p>
-        <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">
+        <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">
           จัดการภาคเรียน
         </h1>
         <p class="mt-2 text-sm text-stone-500">
@@ -321,7 +322,7 @@ function coversToday(t: AcademicTerm): boolean {
       <button
         type="button"
         @click="openAdd"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] hover:shadow-lg active:scale-[0.97]"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
       >
         <i class="bi bi-plus-lg"></i> เพิ่มภาคเรียน
       </button>
@@ -359,11 +360,11 @@ function coversToday(t: AcademicTerm): boolean {
     <!-- Error -->
     <div v-else-if="hasError" class="rounded-2xl bg-red-50 px-5 py-6 text-center ring-1 ring-red-100">
       <i class="bi bi-exclamation-triangle-fill mb-2 block text-2xl text-red-500"></i>
-      <p class="text-sm font-semibold text-red-700">โหลดภาคเรียนไม่สำเร็จ</p>
+      <p class="text-sm font-semibold text-brand">โหลดภาคเรียนไม่สำเร็จ</p>
       <button
         type="button"
         @click="load"
-        class="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100"
+        class="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-brand ring-1 ring-red-200 hover:bg-red-100"
       >
         ลองใหม่
       </button>
@@ -396,7 +397,7 @@ function coversToday(t: AcademicTerm): boolean {
           t.deleted_at
             ? 'bg-stone-50/60 ring-stone-200'
             : t.is_current
-              ? 'ring-[#B91C1C]/30'
+              ? 'ring-brand/30'
               : 'ring-stone-100'
         "
       >
@@ -408,9 +409,9 @@ function coversToday(t: AcademicTerm): boolean {
             <div class="mb-2 flex flex-wrap items-center gap-2">
               <span
                 v-if="t.is_current"
-                class="inline-flex items-center gap-1.5 rounded-full bg-[#B91C1C]/10 px-2.5 py-1 text-[11px] font-bold text-[#B91C1C]"
+                class="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-bold text-brand"
               >
-                <span class="h-1.5 w-1.5 rounded-full bg-[#B91C1C]"></span> กำลังใช้อยู่
+                <span class="h-1.5 w-1.5 rounded-full bg-brand"></span> กำลังใช้อยู่
               </span>
               <span
                 v-if="t.deleted_at"
@@ -460,7 +461,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="actingId === t.id"
                 @click="doSetCurrent(t)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
               >
                 <i :class="busy(t, 'current') ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check2-circle'"></i>
                 ใช้เป็นภาคปัจจุบัน
@@ -530,7 +531,7 @@ function coversToday(t: AcademicTerm): boolean {
             <div class="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <div>
                 <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-name">
-                  ชื่อภาคเรียน <span class="text-[#B91C1C]">*</span>
+                  ชื่อภาคเรียน <span class="text-brand">*</span>
                 </label>
                 <input
                   id="term-name"
@@ -538,31 +539,31 @@ function coversToday(t: AcademicTerm): boolean {
                   type="text"
                   maxlength="50"
                   placeholder="เช่น ภาคเรียนที่ 1/2569"
-                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                 />
               </div>
 
               <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-start">
-                    วันเริ่มต้น <span class="text-[#B91C1C]">*</span>
+                    วันเริ่มต้น <span class="text-brand">*</span>
                   </label>
                   <input
                     id="term-start"
                     v-model="form.start_date"
                     type="date"
-                    class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                    class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                   />
                 </div>
                 <div>
                   <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-end">
-                    วันสิ้นสุด <span class="text-[#B91C1C]">*</span>
+                    วันสิ้นสุด <span class="text-brand">*</span>
                   </label>
                   <input
                     id="term-end"
                     v-model="form.end_date"
                     type="date"
-                    class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                    class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                   />
                 </div>
               </div>
@@ -579,7 +580,7 @@ function coversToday(t: AcademicTerm): boolean {
                 <input
                   v-model="form.is_current"
                   type="checkbox"
-                  class="mt-0.5 h-4 w-4 shrink-0 accent-[#B91C1C]"
+                  class="mt-0.5 h-4 w-4 shrink-0 accent-brand"
                 />
                 <span class="min-w-0">
                   <span class="block text-[13px] font-bold text-stone-700">ใช้เป็นภาคปัจจุบัน</span>
@@ -590,7 +591,7 @@ function coversToday(t: AcademicTerm): boolean {
               </label>
 
               <!-- error จาก server (เก็บไว้ในฟอร์ม ไม่ปิด modal) -->
-              <div v-if="saveError" class="rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700 ring-1 ring-red-100">
+              <div v-if="saveError" class="rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] text-brand ring-1 ring-red-100">
                 <i class="bi bi-exclamation-circle mr-1"></i>{{ saveError }}
               </div>
             </div>
@@ -610,7 +611,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="saving || !!formError"
                 @click="save"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
               >
                 <i :class="saving ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check-lg'"></i>
                 {{ modalMode === 'add' ? 'เพิ่มภาคเรียน' : 'บันทึก' }}

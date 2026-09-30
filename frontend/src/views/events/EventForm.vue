@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 // ⚠️ v14 ส่งออกเป็น **named export** — `import VueDatePicker from …` (default) จะได้
 //    TS2613 "has no default export" ⇒ อย่าเปลี่ยนกลับเป็น default ตามเอกสารเวอร์ชันเก่า
 import { VueDatePicker } from '@vuepic/vue-datepicker'
@@ -276,7 +277,7 @@ async function offerDraftRestore() {
     showCancelButton: true,
     confirmButtonText: 'กู้คืน',
     cancelButtonText: 'ไม่ต้อง',
-    confirmButtonColor: '#B91C1C',
+    confirmButtonColor: BRAND,
   })
   if (res.isConfirmed) {
     form.value = d.form
@@ -326,7 +327,7 @@ onBeforeRouteLeave(async (to) => {
     showCancelButton: true,
     confirmButtonText: 'ออกจากหน้านี้',
     cancelButtonText: 'อยู่ต่อ',
-    confirmButtonColor: '#B91C1C',
+    confirmButtonColor: BRAND,
     // ⚠️ ไม่ใส่ `reverseButtons` — ปุ่มยืนยันคือ "ทิ้งข้อมูล" ต้องไม่ถูกวางที่ตำแหน่งที่นิ้วกดเล่น
   })
   if (res.isConfirmed) {
@@ -406,7 +407,7 @@ async function save() {
 }
 
 const inputCls =
-  'mt-1 w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm bg-white transition focus:ring-2 focus:ring-[#B91C1C]/25 focus:border-[#B91C1C]'
+  'mt-1 w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm bg-white transition focus:ring-2 focus:ring-brand/25 focus:border-brand'
 </script>
 
 <template>
@@ -433,7 +434,7 @@ const inputCls =
       <button
         type="button"
         @click="goBack"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-left"></i> กลับหน้าจัดการกิจกรรม
       </button>
@@ -450,7 +451,7 @@ const inputCls =
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -463,15 +464,15 @@ const inputCls =
           type="button"
           @click="goBack"
           aria-label="กลับหน้าจัดการกิจกรรม"
-          class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-[#B91C1C]/30 hover:bg-[#B91C1C]/5 hover:text-[#B91C1C]"
+          class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand"
         >
           <i class="bi bi-arrow-left text-lg"></i>
         </button>
         <div class="min-w-0">
-          <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-brand">
             <i class="bi bi-calendar-event mr-1"></i> Events
           </p>
-          <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">
+          <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">
             {{ isEdit ? 'แก้ไขกิจกรรม' : 'สร้างกิจกรรม' }}
           </h1>
           <p v-if="isEdit && event" class="mt-1 truncate text-sm text-stone-500">
@@ -518,7 +519,7 @@ const inputCls =
       <div class="space-y-5 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
         <div>
           <label for="ev-title" class="block text-xs font-semibold text-stone-700">
-            ชื่อกิจกรรม <span class="text-[#B91C1C]">*</span>
+            ชื่อกิจกรรม <span class="text-brand">*</span>
           </label>
           <input
             id="ev-title"
@@ -544,7 +545,7 @@ const inputCls =
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label for="ev-date" class="block text-xs font-semibold text-stone-700">
-              วันและเวลาจัด <span class="text-[#B91C1C]">*</span>
+              วันและเวลาจัด <span class="text-brand">*</span>
             </label>
             <VueDatePicker
               id="ev-date"
@@ -658,7 +659,7 @@ const inputCls =
           type="submit"
           :disabled="saving || isDeleted || !!formError"
           data-testid="save-event"
-          class="flex-1 rounded-xl bg-[#B91C1C] px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] hover:shadow-lg active:scale-[0.99] disabled:opacity-50"
+          class="flex-1 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.99] disabled:opacity-50"
         >
           <i :class="saving ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check-lg'" class="mr-1"></i>
           {{ saving ? 'กำลังบันทึก...' : 'บันทึก' }}

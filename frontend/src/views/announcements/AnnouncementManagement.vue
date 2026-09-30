@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import Swal from 'sweetalert2'
+import { BRAND, WARN } from '@/constants/brand'
 import PaginationBar from '@/components/PaginationBar.vue'
 import {
   listAnnouncements,
@@ -33,8 +34,8 @@ const PRIORITY_OPTIONS: { value: AnnouncementPriority; label: string; hint: stri
 
 const PRIORITY_STYLE: Record<AnnouncementPriority, { dot: string; badge: string; label: string }> = {
   urgent: {
-    dot: 'bg-[#B91C1C] animate-pulse',
-    badge: 'bg-[#B91C1C]/10 text-[#B91C1C] ring-1 ring-[#B91C1C]/20',
+    dot: 'bg-brand animate-pulse',
+    badge: 'bg-brand/10 text-brand ring-1 ring-brand/20',
     label: 'ด่วนมาก',
   },
   high: {
@@ -206,7 +207,7 @@ async function confirmDelete(a: Announcement) {
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: 'ลบประกาศ',
-    confirmButtonColor: '#b91c1c',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ยกเลิก',
   })
   if (!isConfirmed) return
@@ -240,7 +241,7 @@ async function doRestore(a: Announcement) {
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'กู้คืน',
-    confirmButtonColor: '#B91C1C',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ยกเลิก',
   })
   if (!isConfirmed) return
@@ -268,7 +269,7 @@ async function confirmRetire(a: Announcement) {
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'ปลดระวาง',
-    confirmButtonColor: '#B45309',
+    confirmButtonColor: WARN,
     cancelButtonText: 'ยกเลิก',
   })
   if (!isConfirmed) return
@@ -302,7 +303,7 @@ async function doUnretire(a: Announcement) {
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'นำกลับมาใช้',
-    confirmButtonColor: '#B45309',
+    confirmButtonColor: WARN,
     cancelButtonText: 'ยกเลิก',
   })
   if (!isConfirmed) return
@@ -348,11 +349,11 @@ const hasAnyItems = computed(() => items.value.length > 0)
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
         <p
-          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]"
+          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand"
         >
           <i class="bi bi-megaphone-fill text-[13px]"></i> Announcement Management
         </p>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
+        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
           จัดการประกาศ
         </h1>
         <p class="mt-2 text-sm text-stone-500">
@@ -362,7 +363,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
       <button
         type="button"
         @click="openAdd"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] hover:shadow-lg active:scale-[0.97]"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
       >
         <i class="bi bi-plus-lg"></i> เพิ่มประกาศ
       </button>
@@ -403,11 +404,11 @@ const hasAnyItems = computed(() => items.value.length > 0)
       class="rounded-2xl bg-red-50 px-5 py-6 text-center ring-1 ring-red-100"
     >
       <i class="bi bi-exclamation-triangle-fill mb-2 block text-2xl text-red-500"></i>
-      <p class="text-sm font-semibold text-red-700">โหลดประกาศไม่สำเร็จ</p>
+      <p class="text-sm font-semibold text-brand">โหลดประกาศไม่สำเร็จ</p>
       <button
         type="button"
         @click="load"
-        class="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100"
+        class="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-brand ring-1 ring-red-200 hover:bg-red-100"
       >
         ลองใหม่
       </button>
@@ -499,7 +500,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
               :href="a.link"
               target="_blank"
               rel="noopener noreferrer"
-              class="mt-2 inline-flex max-w-full items-center gap-1.5 truncate text-[13px] font-semibold text-[#B91C1C] hover:underline"
+              class="mt-2 inline-flex max-w-full items-center gap-1.5 truncate text-[13px] font-semibold text-brand hover:underline"
             >
               <i class="bi bi-link-45deg"></i> {{ a.link }}
             </a>
@@ -568,11 +569,11 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="confirmDelete(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-[#B91C1C] ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-brand ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'delete')"
-                  class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#B91C1C]/30 border-t-[#B91C1C]"
+                  class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand/30 border-t-brand"
                 ></span>
                 <i v-else class="bi bi-trash3"></i> ลบ
               </button>
@@ -603,11 +604,11 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="confirmDelete(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-[#B91C1C] ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-brand ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'delete')"
-                  class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#B91C1C]/30 border-t-[#B91C1C]"
+                  class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand/30 border-t-brand"
                 ></span>
                 <i v-else class="bi bi-trash3"></i> ลบ
               </button>
@@ -660,7 +661,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
             <div class="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <div>
                 <label class="mb-1 block text-xs font-semibold text-stone-500" for="ann-message">
-                  ข้อความประกาศ <span class="text-[#B91C1C]">*</span>
+                  ข้อความประกาศ <span class="text-brand">*</span>
                 </label>
                 <textarea
                   id="ann-message"
@@ -668,7 +669,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                   rows="4"
                   maxlength="1000"
                   placeholder="เช่น เข้าแถวหน้าชั้นเรียน เพราะฝนตก วันที่ 30 ก.ย."
-                  class="w-full resize-none rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                  class="w-full resize-none rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                 ></textarea>
                 <p class="mt-1 text-right text-[11px] text-stone-400">
                   {{ form.message.length }}/1000
@@ -686,7 +687,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                     class="flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors"
                     :class="
                       form.priority === opt.value
-                        ? 'border-[#B91C1C] bg-[#B91C1C]/5'
+                        ? 'border-brand bg-brand/5'
                         : 'border-stone-200 hover:bg-stone-50'
                     "
                   >
@@ -697,7 +698,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                     <span class="min-w-0">
                       <span
                         class="block text-[13px] font-bold"
-                        :class="form.priority === opt.value ? 'text-[#B91C1C]' : 'text-stone-700'"
+                        :class="form.priority === opt.value ? 'text-brand' : 'text-stone-700'"
                       >
                         {{ opt.label }}
                       </span>
@@ -719,7 +720,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                   type="url"
                   maxlength="500"
                   placeholder="https://..."
-                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                  class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                 />
                 <p class="mt-1 text-[11px] text-stone-400">
                   ต้องขึ้นต้นด้วย http:// หรือ https:// เท่านั้น — เว้นว่าง = ไม่มีลิงก์
@@ -748,7 +749,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 @click="submitForm"
                 :disabled="!canSubmit"
-                class="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] disabled:opacity-60"
+                class="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong disabled:opacity-60"
               >
                 <span
                   v-if="saving"

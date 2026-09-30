@@ -289,11 +289,11 @@ async function load() {
     <!-- Editorial page header -->
     <div class="mb-6">
       <p
-        class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]"
+        class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand"
       >
         <i class="bi bi-inbox text-[13px]"></i> Inbox &amp; My Level
       </p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">
+      <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">
         เรื่องที่รับ / ระดับฉัน
       </h1>
       <p class="mt-2 text-sm text-stone-500">เรื่องที่รอคุณและทีมรับผิดชอบดำเนินการ</p>
@@ -306,7 +306,7 @@ async function load() {
       class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-stone-200 bg-white px-4 py-3"
     >
       <span class="flex items-center gap-1.5 text-xs font-bold text-stone-700">
-        <i :class="['bi', respFilterOn ? 'bi-funnel-fill' : 'bi-funnel', 'text-[#B91C1C]']"></i>
+        <i :class="['bi', respFilterOn ? 'bi-funnel-fill' : 'bi-funnel', 'text-brand']"></i>
         กรองตามหน้าที่ของฉัน
       </span>
 
@@ -315,14 +315,14 @@ async function load() {
         <span
           v-for="code in myResponsibilities"
           :key="code"
-          class="rounded-full bg-[#B91C1C]/10 px-2.5 py-0.5 text-xs font-medium text-[#B91C1C]"
+          class="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand"
         >
           {{ categoryLabel(code) }}
         </span>
         <button
           type="button"
           @click="toggleResponsibilityFilter(false)"
-          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-semibold text-stone-600 transition-colors hover:bg-stone-100 hover:text-[#B91C1C]"
+          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-semibold text-stone-600 transition-colors hover:bg-stone-100 hover:text-brand"
         >
           <i class="bi bi-x-lg text-[11px]"></i> แสดงทั้งหมดในระดับของฉัน
         </button>
@@ -333,7 +333,7 @@ async function load() {
         v-else
         type="button"
         @click="toggleResponsibilityFilter(true)"
-        class="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#B91C1C]/10 px-3 py-1.5 text-xs font-semibold text-[#B91C1C] transition-colors hover:bg-[#B91C1C]/20"
+        class="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20"
       >
         <i class="bi bi-funnel-fill text-[11px]"></i> กรองเฉพาะเรื่องในหน้าที่ของฉัน
       </button>
@@ -421,12 +421,12 @@ async function load() {
                   type="checkbox"
                   :checked="levelSelections.includes(lv)"
                   @change="toggleLevel(lv)"
-                  class="h-4 w-4 rounded border-stone-300 text-[#B91C1C] accent-[#B91C1C]"
+                  class="h-4 w-4 rounded border-stone-300 text-brand accent-brand"
                 />
                 <span>{{ LEVEL_LABELS[lv] }}</span>
                 <span
                   v-if="lv === myLevel"
-                  class="rounded-full bg-[#B91C1C]/10 px-1.5 py-px text-[10px] font-semibold text-[#B91C1C]"
+                  class="rounded-full bg-brand/10 px-1.5 py-px text-[10px] font-semibold text-brand"
                 >
                   ระดับฉัน
                 </span>
@@ -469,7 +469,7 @@ async function load() {
       <p class="text-stone-600">{{ error }}</p>
       <button
         type="button"
-        class="mt-4 rounded-lg bg-[#B91C1C] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#991B1B]"
+        class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
         @click="load"
       >
         ลองอีกครั้ง
@@ -545,7 +545,7 @@ async function load() {
           <button
             v-if="canApprove(i)"
             @click.stop.prevent="openApprove(i)"
-            class="px-3 py-1.5 bg-[#B91C1C] text-white text-xs font-medium rounded-lg hover:bg-[#991B1B] whitespace-nowrap"
+            class="px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-strong whitespace-nowrap"
           >
             <i class="bi bi-people-fill mr-1"></i> อนุมัติเผยแพร่
           </button>

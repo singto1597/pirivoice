@@ -211,7 +211,7 @@ async function onRepair() {
         <button
           type="button"
           :disabled="toggling || busy"
-          class="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#991B1B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 disabled:opacity-50"
+          class="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
           @click="onRepair"
         >
           เปิดใหม่บนเครื่องนี้
@@ -247,8 +247,8 @@ async function onRepair() {
         :aria-checked="pushSubscribed"
         :aria-label="pushSubscribed ? 'ปิดการแจ้งเตือนบนเครื่องนี้' : 'เปิดการแจ้งเตือนบนเครื่องนี้'"
         :disabled="toggling || busy"
-        class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 disabled:opacity-50"
-        :class="pushSubscribed ? 'bg-[#B91C1C]' : 'bg-stone-300'"
+        class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
+        :class="pushSubscribed ? 'bg-brand' : 'bg-stone-300'"
         @click="onToggle"
       >
         <span

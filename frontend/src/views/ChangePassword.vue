@@ -71,7 +71,7 @@ async function submit() {
 
 const goBack = () => router.push({ name: 'profile' });
 
-const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm mt-1 bg-white transition focus:ring-2 focus:ring-[#B91C1C]/25 focus:border-[#B91C1C]';
+const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm mt-1 bg-white transition focus:ring-2 focus:ring-brand/25 focus:border-brand';
 </script>
 
 <template>
@@ -79,22 +79,22 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
     <form @submit.prevent="submit" class="space-y-4">
       <!-- Header -->
       <div class="flex items-start gap-3">
-        <button type="button" @click="goBack" aria-label="กลับไปหน้าโปรไฟล์" class="w-9 h-9 rounded-xl bg-white border border-stone-200 text-stone-500 hover:text-[#B91C1C] hover:border-[#B91C1C]/30 hover:bg-[#B91C1C]/5 flex items-center justify-center transition shrink-0 mt-1">
+        <button type="button" @click="goBack" aria-label="กลับไปหน้าโปรไฟล์" class="w-9 h-9 rounded-xl bg-white border border-stone-200 text-stone-500 hover:text-brand hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center transition shrink-0 mt-1">
           <i class="bi bi-arrow-left text-lg"></i>
         </button>
         <div>
-          <p class="text-[11px] font-bold uppercase tracking-widest text-stone-400 mb-1">การจัดการบัญชี</p>
-          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight"><i class="bi bi-shield-lock mr-1 text-[#B91C1C]"></i> เปลี่ยนรหัสผ่าน</h1>
+          <p class="text-[11px] font-bold text-stone-400 mb-1">การจัดการบัญชี</p>
+          <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight"><i class="bi bi-shield-lock mr-1 text-brand"></i> เปลี่ยนรหัสผ่าน</h1>
           <p class="text-sm text-stone-500 mt-1">ตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>
         </div>
       </div>
 
       <!-- บังคับเปลี่ยนครั้งแรก -->
-      <div v-if="isForced" class="flex gap-3 rounded-2xl border border-[#B91C1C]/20 bg-[#B91C1C]/10 p-4 text-sm text-[#B91C1C]">
+      <div v-if="isForced" class="flex gap-3 rounded-2xl border border-brand/20 bg-brand/10 p-4 text-sm text-brand">
         <i class="bi bi-shield-exclamation text-xl shrink-0"></i>
         <div>
           <p class="font-bold">บัญชีนี้เป็นบัญชีเริ่มต้นของระบบ</p>
-          <p class="text-[#B91C1C]/70 mt-0.5">กรุณาเปลี่ยนรหัสผ่านก่อนใช้งาน เพื่อป้องกันผู้อื่นเข้าถึง</p>
+          <p class="text-brand/70 mt-0.5">กรุณาเปลี่ยนรหัสผ่านก่อนใช้งาน เพื่อป้องกันผู้อื่นเข้าถึง</p>
         </div>
       </div>
 
@@ -118,7 +118,7 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
       <button
         type="submit"
         :disabled="isSaving"
-        class="w-full py-3 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] disabled:opacity-50 font-semibold transition-colors"
+        class="w-full py-3 bg-brand text-white rounded-xl hover:bg-brand-strong disabled:opacity-50 font-semibold transition-colors"
       >
         <i class="bi bi-key mr-1"></i> {{ isSaving ? 'กำลังเปลี่ยน...' : 'เปลี่ยนรหัสผ่าน' }}
       </button>

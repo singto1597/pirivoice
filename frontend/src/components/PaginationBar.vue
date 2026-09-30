@@ -58,8 +58,8 @@ function go(n: number) {
         class="min-w-9 h-9 px-2 flex items-center justify-center rounded-xl text-sm font-medium transition"
         :class="
           it === page
-            ? 'bg-[#B91C1C] text-white'
-            : 'border border-stone-200 text-stone-600 hover:border-[#B91C1C] hover:text-[#B91C1C]'
+            ? 'bg-brand text-white'
+            : 'border border-stone-200 text-stone-600 hover:border-brand hover:text-brand'
         "
       >
         {{ it }}

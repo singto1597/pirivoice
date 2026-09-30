@@ -36,7 +36,7 @@ function onChildClick() {
     <!-- หัวข้อหลัก: คลิก → หน้าหนังสือ, กด chevron → ขยาย/ย่อเมนู -->
     <div
       class="flex items-center rounded-xl transition-all"
-      :class="parentActive() ? 'bg-stone-100 text-[#B91C1C] border border-stone-200' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-900'"
+      :class="parentActive() ? 'bg-stone-100 text-brand border border-stone-200' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-900'"
     >
       <RouterLink to="/app/playbooks" class="flex-1 flex items-center px-3.5 py-3 text-sm font-semibold min-w-0">
         <i class="bi bi-journal-bookmark-fill text-lg mr-3"></i>
@@ -58,7 +58,7 @@ function onChildClick() {
       <div
         v-if="isOpen"
         class="mt-1 ml-4 pl-3 border-l-2 space-y-0.5"
-        :class="parentActive() ? 'border-[#B91C1C]' : 'border-stone-100'"
+        :class="parentActive() ? 'border-brand' : 'border-stone-100'"
       >
         <RouterLink
           v-for="pb in PLAYBOOKS"
@@ -66,9 +66,9 @@ function onChildClick() {
           :to="{ name: 'playbook-reader', params: { id: pb.id } }"
           @click="onChildClick"
           class="flex items-center px-3 py-2 text-[13px] font-medium rounded-lg transition-colors"
-          :class="isChildActive(pb.id) ? 'bg-stone-100 text-[#B91C1C]' : 'text-stone-500 hover:bg-stone-100 hover:text-stone-900'"
+          :class="isChildActive(pb.id) ? 'bg-stone-100 text-brand' : 'text-stone-500 hover:bg-stone-100 hover:text-stone-900'"
         >
-          <i class="bi bi-book-half text-sm mr-2.5" :class="isChildActive(pb.id) ? 'text-[#B91C1C]' : 'text-stone-400'"></i>
+          <i class="bi bi-book-half text-sm mr-2.5" :class="isChildActive(pb.id) ? 'text-brand' : 'text-stone-400'"></i>
           <span class="truncate">{{ pb.title }}</span>
         </RouterLink>
       </div>

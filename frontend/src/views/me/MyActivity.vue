@@ -148,10 +148,10 @@ function metaClass(a: ActivityItem): string {
   <div>
     <!-- Editorial page header -->
     <div class="mb-6">
-      <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+      <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
         <i class="bi bi-clock-history text-[13px]"></i> My Activity
       </p>
-      <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">กิจกรรมของฉัน</h1>
+      <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">กิจกรรมของฉัน</h1>
       <p class="mt-2 text-sm text-stone-500">ทุกอย่างที่คุณเคยแจ้ง โหวต และแสดงความคิดเห็น</p>
     </div>
 
@@ -162,7 +162,7 @@ function metaClass(a: ActivityItem): string {
         :aria-pressed="tab === 'activity'"
         class="rounded-xl border px-4 py-2 text-sm font-bold transition-all"
         :class="tab === 'activity'
-          ? 'border-[#B91C1C] bg-[#B91C1C] text-white'
+          ? 'border-brand bg-brand text-white'
           : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
         @click="switchTab('activity')"
       >
@@ -173,7 +173,7 @@ function metaClass(a: ActivityItem): string {
         :aria-pressed="tab === 'bookmarks'"
         class="rounded-xl border px-4 py-2 text-sm font-bold transition-all"
         :class="tab === 'bookmarks'
-          ? 'border-[#B91C1C] bg-[#B91C1C] text-white'
+          ? 'border-brand bg-brand text-white'
           : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
         @click="switchTab('bookmarks')"
       >
@@ -192,7 +192,7 @@ function metaClass(a: ActivityItem): string {
           :aria-pressed="actType === t.value"
           class="rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-all"
           :class="actType === t.value
-            ? 'border-[#B91C1C] bg-[#B91C1C] text-white'
+            ? 'border-brand bg-brand text-white'
             : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
           @click="pickActivityType(t.value)"
         >
@@ -200,7 +200,7 @@ function metaClass(a: ActivityItem): string {
           <span
             v-if="t.value && (actCounts[t.value] ?? 0) > 0"
             class="ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold"
-            :class="actType === t.value ? 'bg-white/25' : 'bg-[#B91C1C]/10 text-[#B91C1C]'"
+            :class="actType === t.value ? 'bg-white/25' : 'bg-brand/10 text-brand'"
           >
             {{ actCounts[t.value] ?? 0 }}
           </span>
@@ -230,7 +230,7 @@ function metaClass(a: ActivityItem): string {
         <p class="text-stone-600">{{ actError }}</p>
         <button
           type="button"
-          class="mt-4 rounded-lg bg-[#B91C1C] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#991B1B]"
+          class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
           @click="loadActivity"
         >
           ลองอีกครั้ง
@@ -249,7 +249,7 @@ function metaClass(a: ActivityItem): string {
         <RouterLink
           v-if="!actType"
           to="/app/issues/new"
-          class="mt-3 inline-block font-medium text-[#B91C1C] hover:underline"
+          class="mt-3 inline-block font-medium text-brand hover:underline"
         >
           เริ่มจากการแจ้งเรื่องแรก <i class="bi bi-arrow-right"></i>
         </RouterLink>
@@ -275,7 +275,7 @@ function metaClass(a: ActivityItem): string {
           </div>
           <div class="min-w-0 flex-1">
             <div class="mb-1 flex flex-wrap items-center gap-2">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+              <span class="text-[11px] font-bold text-stone-400">
                 {{ ACTIVITY_VERBS[a.activity_type] }}
               </span>
               <span
@@ -318,7 +318,7 @@ function metaClass(a: ActivityItem): string {
           :aria-pressed="bmEntityType === ''"
           class="rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-all"
           :class="bmEntityType === ''
-            ? 'border-[#B91C1C] bg-[#B91C1C] text-white'
+            ? 'border-brand bg-brand text-white'
             : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
           @click="pickEntityType('')"
         >
@@ -331,7 +331,7 @@ function metaClass(a: ActivityItem): string {
           :aria-pressed="bmEntityType === key"
           class="rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-all"
           :class="bmEntityType === key
-            ? 'border-[#B91C1C] bg-[#B91C1C] text-white'
+            ? 'border-brand bg-brand text-white'
             : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
           @click="pickEntityType(key)"
         >
@@ -360,7 +360,7 @@ function metaClass(a: ActivityItem): string {
         <p class="text-stone-600">{{ bmError }}</p>
         <button
           type="button"
-          class="mt-4 rounded-lg bg-[#B91C1C] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#991B1B]"
+          class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
           @click="loadBookmarks"
         >
           ลองอีกครั้ง

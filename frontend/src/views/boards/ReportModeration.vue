@@ -2,6 +2,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import Swal from 'sweetalert2'
+import { BRAND, NEUTRAL } from '@/constants/brand'
 import { listReports, resolveReport } from '@/services/board'
 import {
   REPORT_REASON_LABELS,
@@ -45,7 +46,7 @@ const STATUS_TABS: Array<{ value: '' | ReportStatus; label: string; icon: string
 
 // ป้ายสถานะ (สีจำกัด: open → cardinal, resolved → emerald, dismissed → stone)
 function reportStatusBadge(s: ReportStatus): string {
-  if (s === 'open') return 'bg-[#B91C1C]/10 text-[#B91C1C]'
+  if (s === 'open') return 'bg-brand/10 text-brand'
   if (s === 'resolved') return 'bg-emerald-100 text-emerald-700'
   return 'bg-stone-200 text-stone-500'
 }
@@ -125,7 +126,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
     inputAttributes: { maxlength: '500' },
     showCancelButton: true,
     confirmButtonText: isHide ? 'ซ่อนคอมเมนต์' : 'ปัดตก',
-    confirmButtonColor: isHide ? '#b91c1c' : '#78716c',
+    confirmButtonColor: isHide ? BRAND : NEUTRAL,
     cancelButtonText: 'ยกเลิก',
   })
   if (!isConfirmed) return
@@ -154,10 +155,10 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
     <!-- Editorial header -->
     <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
       <div>
-        <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1.5">
+        <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
           <i class="bi bi-flag-fill mr-1"></i> Moderation Queue
         </p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">จัดการรายงาน</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">จัดการรายงาน</h1>
         <p class="text-sm text-stone-500 mt-1.5">คอมเมนต์ที่นักเรียนแจ้งความไม่เหมาะสม — สภานักเรียน/แอดมินตรวจสอบ</p>
       </div>
     </div>
@@ -178,7 +179,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
             type="button"
             @click="switchStatus(t.value)"
             class="px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5"
-            :class="statusFilter === t.value ? 'bg-white border border-stone-200 text-[#B91C1C]' : 'text-stone-500 hover:text-stone-700'"
+            :class="statusFilter === t.value ? 'bg-white border border-stone-200 text-brand' : 'text-stone-500 hover:text-stone-700'"
           >
             <i :class="t.icon"></i> {{ t.label }}
           </button>
@@ -196,7 +197,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
             v-model="q"
             type="search"
             placeholder="ค้นหา: ชื่อบอร์ด / คอมเมนต์..."
-            class="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-[#B91C1C]"
+            class="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-brand"
           />
         </div>
 
@@ -223,7 +224,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
         <button
           type="button"
           @click="load"
-          class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#991B1B] transition-colors"
+          class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-strong transition-colors"
         >
           <i class="bi bi-arrow-clockwise"></i> ลองอีกครั้ง
         </button>
@@ -242,12 +243,12 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
           :key="r.id"
           :data-testid="'report-card-' + r.id"
           class="page-card p-4 border-l-4"
-          :class="r.status === 'open' ? 'border-l-[#B91C1C]' : r.status === 'resolved' ? 'border-l-emerald-500' : 'border-l-stone-200'"
+          :class="r.status === 'open' ? 'border-l-brand' : r.status === 'resolved' ? 'border-l-emerald-500' : 'border-l-stone-200'"
         >
           <div class="flex flex-wrap items-center gap-2 mb-2">
             <RouterLink
               :to="{ name: 'board-detail', params: { id: r.board_id } }"
-              class="text-xs font-semibold text-stone-600 hover:text-[#B91C1C] hover:underline flex items-center gap-1"
+              class="text-xs font-semibold text-stone-600 hover:text-brand hover:underline flex items-center gap-1"
             >
               <i class="bi bi-chat-dots"></i> {{ r.board_title }}
             </RouterLink>
@@ -285,7 +286,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
                 :disabled="actingId === r.id"
                 data-testid="hide-btn"
                 @click="handleResolve(r, 'hide')"
-                class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#B91C1C] text-white hover:bg-[#991B1B] disabled:opacity-40"
+                class="px-3 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-strong disabled:opacity-40"
               >
                 <i class="bi bi-eye-slash mr-1"></i> ซ่อนคอมเมนต์
               </button>
