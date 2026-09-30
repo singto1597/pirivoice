@@ -32,7 +32,10 @@ const mocks = vi.hoisted(() => ({
    * เปลี่ยนตาม segment ที่เปิดอยู่จริง
    */
   route: { current: { name: 'home', path: '/app/home', meta: {} } as Record<string, unknown> },
-  resolve: vi.fn<(to: RouteLocationRaw) => { path: string }>(() => ({ path: '/' })),
+  // `meta` เป็น optional เพราะเทสต์ส่วนใหญ่ไม่ต้องใช้ — เฉพาะเทสต์ "คู่ segment" ที่ต้องส่ง
+  resolve: vi.fn<(to: RouteLocationRaw) => { path: string; meta?: Record<string, unknown> }>(() => ({
+    path: '/',
+  })),
 }))
 
 vi.mock('vue-router', async (importOriginal) => {
@@ -170,23 +173,26 @@ const MENU_TODAY: Fixture[] = [
     from: 'MainLayout:198 เรื่องที่รับ / ระดับฉัน',
   },
   { name: 'board-reports', reach: 'menu', gate: 'council', from: 'MainLayout:206 จัดการรายงาน' },
-  {
-    name: 'users',
-    reach: 'menu',
-    gate: { permission: 'MANAGE_STUDENTS' },
-    from: 'MainLayout:215 จัดการสมาชิก',
-  },
+  // 👥 R1 · สามแถวเดิม ("จัดการสมาชิก" + "นักเรียน" + "นำเข้า Excel") ยุบเป็น
+  //    **แถว "สมาชิก" แถวเดียว** → `students` ซึ่งมี segment นักเรียน/เจ้าหน้าที่
+  //    ⇒ `users` กลายเป็น segment, `import-students` กลายเป็น FAB ของหน้านั้น
   {
     name: 'students',
     reach: 'menu',
     gate: { permission: 'MANAGE_STUDENTS' },
-    from: 'MainLayout:216 นักเรียน',
+    from: 'R1 · แถว "สมาชิก" แถวเดียว (รวม MainLayout:215+216)',
+  },
+  {
+    name: 'users',
+    reach: 'segment',
+    gate: { permission: 'MANAGE_STUDENTS' },
+    from: 'R1 · segment "เจ้าหน้าที่" ของหน้า สมาชิก (เดิม MainLayout:215)',
   },
   {
     name: 'import-students',
-    reach: 'menu',
+    reach: 'fab',
     gate: { permission: 'MANAGE_STUDENTS' },
-    from: 'MainLayout:217 นำเข้า Excel',
+    from: 'R1 · FAB `member` ของหน้า สมาชิก (เดิม MainLayout:217)',
   },
   {
     name: 'announcements',
@@ -330,6 +336,60 @@ describe('R0.0 · registry ครอบเมนูของวันนี้�
 
     expect(inGroups).toContain('notifications')
     expect(inMenu).not.toContain('notifications')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R1 · คู่ segment — แถวเมนูแถวเดียว สว่างทั้งสอง segment', () => {
+  /** ให้ `resolve()` ตอบตามชื่อ route จริง แทนที่จะตอบ `{ path: '/' }` ให้ทุกอัน */
+  function resolveByPath(map: Record<string, { path: string; meta?: Record<string, unknown> }>) {
+    mocks.resolve.mockImplementation((to) => {
+      if (typeof to === 'object' && to !== null && 'name' in to && typeof to.name === 'string') {
+        return map[to.name] ?? { path: '/' }
+      }
+      return { path: '/' }
+    })
+  }
+
+  it('🔴 เปิด segment "เจ้าหน้าที่" (`/app/users`) แล้วแถว "สมาชิก" ต้องยังสว่าง', () => {
+    // 🚨 failure ที่เทสนี้กัน: "สมาชิก" เป็นแถวเดียวที่ชี้ `students` แต่ผู้ใช้ที่กด
+    //    segment "เจ้าหน้าที่" ไปอยู่ที่ path `/app/users` ⇒ การเทียบ path ตรง ๆ
+    //    ตัดสินว่า "ไม่ใช่แถวนี้" ⇒ **เมนูไม่มีอะไรสว่างเลยทั้งที่อยู่ในหน้านั้น**
+    //    (ผู้ใช้ไม่เห็น error — แค่รู้สึกว่าหลงทาง)
+    signIn({ permissions: ['MANAGE_STUDENTS'] })
+    resolveByPath({
+      students: { path: '/app/students', meta: { segmentGroup: 'members' } },
+    })
+    mocks.route.current = reactive({
+      name: 'users',
+      path: '/app/users',
+      meta: { segmentGroup: 'members' },
+    })
+
+    const nav = useNavItems()
+    const members = nav.menuGroups.value.flatMap((g) => g.items).find((i) => i.key === 'members')
+
+    expect(members).toBeDefined()
+    expect(members && nav.isActive(members)).toBe(true)
+  })
+
+  it('segment คนละกลุ่มกันต้องไม่สว่างข้ามกัน', () => {
+    // ⚠️ กันการ "แก้เกิน" — ถ้าเทียบแค่ว่า "มี segmentGroup" โดยไม่เทียบว่าตัวเดียวกัน
+    //    แถว "สมาชิก" จะสว่างตอนอยู่หน้า "เรื่องของฉัน" ด้วย
+    signIn({ permissions: ['MANAGE_STUDENTS', 'RECEIVE_ISSUES'] })
+    resolveByPath({
+      students: { path: '/app/students', meta: { segmentGroup: 'members' } },
+    })
+    mocks.route.current = reactive({
+      name: 'my-issues',
+      path: '/app/issues/mine',
+      meta: { segmentGroup: 'issues' },
+    })
+
+    const nav = useNavItems()
+    const members = nav.menuGroups.value.flatMap((g) => g.items).find((i) => i.key === 'members')
+
+    expect(members && nav.isActive(members)).toBe(false)
   })
 })
 

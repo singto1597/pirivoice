@@ -3,7 +3,6 @@ import { RouterLink } from 'vue-router'
 import IconButton from '@/components/ui/IconButton.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import { useAppChrome } from '@/composables/useAppChrome'
-import { useIdentity } from '@/composables/useIdentity'
 import { BADGE_CAP } from '@/composables/useNavItems'
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -20,7 +19,6 @@ import { useNotificationsStore } from '@/stores/notifications'
  * (บน `/app/home` เดิมปิดเลเยอร์พื้นทั้งหมด ⇒ ตัวหนังสือชนเนื้อหา)
  */
 const chrome = useAppChrome()
-const identity = useIdentity()
 const notifications = useNotificationsStore()
 </script>
 
@@ -93,22 +91,19 @@ const notifications = useNotificationsStore()
       </IconButton>
 
       <!--
-        ⚠️ avatar ยังอยู่ที่หัวแถบใน R0 เพราะหน้า "เพิ่มเติม" (ที่เก็บทางเข้าโปรไฟล์)
-           ยังไม่เปิด — จะย้ายออกใน R1 พร้อมกับหน้า More ⇒ ห้ามลบก่อนหน้านั้น
-           ไม่งั้นโปรไฟล์จะไม่มีทางเข้าเลย
+        🔴 **ไม่มี avatar ที่หัวแถบตั้งแต่ R1** — เป็นการ *ย้าย* ไม่ใช่การตัดออก:
+           ทางเข้าโปรไฟล์ย้ายไปอยู่ที่แท็บ "เพิ่มเติม" › กลุ่ม "บัญชี" (และในการ์ดตัวตน
+           บนสุดของหน้านั้น) ซึ่งเป็นที่ที่ผู้ใช้เห็นชื่อ+ตำแหน่งเต็มก่อนกดเข้าไป
 
-        📐 `h-11 w-11` (44dp) ไม่ใช่ `h-9` (36dp) — วัดบน staging จริงแล้ว 36dp **เล็กกว่า
-           เกณฑ์แตะ 44dp** ที่ R0 ตั้งไว้เอง และมันคือทางเข้าโปรไฟล์ทางเดียวบนมือถือ
-           ⇒ ขนาดตรงกับโลโก้ (`h-11 w-11` ด้านซ้าย) ทำให้หัวแถบสมดุลด้วย
-           ⚠️ ตัวอักษรยัง `text-[13px]` — โตช้ากว่ากรอบ ไม่งั้นตัวอักษรจะใหญ่เท่าการ์ด
+        **ทำไมต้องย้าย (ทั้งที่ปุ่มนี้ทำงานได้ดี):** หลักการ "ทางเข้าเดียวต่อปลายทาง" —
+           หน้าที่มีทางเข้า 2 ทางคือหน้าที่ผู้ใช้ต้องเดาว่า "อันไหนคืออันจริง"
+           และแอปนี้ถูกฟ้องว่ามีทางเข้าซ้ำเป็นสาเหตุรากของความ "เยอะเกินไป"
+           · เดสก์ท็อปยังเข้าถึงโปรไฟล์ได้จาก sidebar (bottom nav ซ่อนที่ `lg` แต่ sidebar ไม่ซ่อน)
+           · มือถือเข้าจากแท็บ "เพิ่มเติม" ซึ่งอยู่ในแถบล่างที่มองเห็นตลอด
+
+        ⚠️ ถ้าวันหน้าจะเอากลับ ต้องเป็นทางเข้า *ใหม่* ที่ไม่ซ้ำกับที่ใน More
+           (เช่น แตะชื่อในหน้าแรก) ไม่ใช่ใส่ avatar กลับมาที่นี่พร้อมของเดิม
       -->
-      <RouterLink
-        to="/app/profile"
-        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-[13px] font-bold text-white"
-        :aria-label="`โปรไฟล์ของ ${identity.displayName.value}`"
-      >
-        {{ identity.avatarChar.value }}
-      </RouterLink>
     </div>
   </header>
 </template>
