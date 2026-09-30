@@ -98,6 +98,21 @@ export async function listEvents(
   })) as EventListResponse
 }
 
+/**
+ * กิจกรรมหนึ่งใบ (หน้าจัดการ) — **เห็นฉบับร่างด้วย** ต่างจาก `getPublicEvent`
+ *
+ * ⭐ ใช้โดยหน้าเต็มหน้าที่เปิดตรงได้ (หน้าแก้ไข · หน้ารายชื่อผู้สมัคร) ⇒ ต้องเรียกซ้ำได้
+ *    ตอน refresh โดยไม่พึ่ง state ที่ส่งข้ามหน้าจอมา
+ *
+ * ⚠️ ใบที่ถูกลบ (soft delete) **ได้ 200 พร้อม `deleted_at`** ไม่ใช่ 404 — ผู้เรียกต้องดู
+ *    `deleted_at` เองเพื่อปิดปุ่มบันทึก (`PATCH` บนใบที่ถูกลบจะได้ 404)
+ *    ⇒ อย่าเขียน `catch` ที่ตีความ 404 ว่า "ไม่มีกิจกรรม" แล้วให้ 200 ที่มี `deleted_at`
+ *    ตกไปเข้าเส้นทาง "แก้ไขได้ตามปกติ"
+ */
+export async function getEvent(eventId: number): Promise<Event> {
+  return (await api.get(`/api/events/${eventId}`)) as Event
+}
+
 /** สร้างกิจกรรม — เกิดเป็น **ฉบับร่าง** เสมอ และยังไม่แจ้งเตือนใคร (ดู `EventCreate`) */
 export async function createEvent(payload: EventCreate): Promise<Event> {
   return (await api.post('/api/events', payload)) as Event

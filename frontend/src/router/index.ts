@@ -128,9 +128,11 @@ const router = createRouter({
           name: 'board-detail',
           component: () => import('@/views/boards/BoardDetail.vue'),
         },
-        // 📅 กิจกรรม (D1) — สามหน้า สองระดับสิทธิ์
-        //    ⚠️ `events/manage` **ต้องมาก่อน** `events/:id` — ไม่งั้น "manage" ถูกจับเป็น `:id`
-        //       แล้วหน้า detail จะได้ eventId = "manage" ⇒ ยิง API ด้วย NaN
+        // 📅 กิจกรรม (D1) — สองระดับสิทธิ์: นักเรียน (สาธารณะ) กับสภา (จัดการ/ฉบับร่าง)
+        //    (ไม่ระบุจำนวนหน้าโดยเจตนา — จำนวนเคยถูกเขียนไว้แล้วล้าสมัยทุกครั้งที่มีหน้าใหม่)
+        //    ⚠️ **path 1 ส่วนที่ขึ้นต้นด้วยคำอังกฤษ (`manage`/`new`) ต้องมาก่อน `events/:id`**
+        //       — ไม่งั้นคำนั้นถูกจับเป็น `:id` แล้วหน้า detail จะได้ eventId = "new" ⇒ ยิง API ด้วย NaN
+        //       (ตอนนี้มีสองคำ: `manage` กับ `new` — เพิ่มคำใหม่ต้องวาง *ก่อน* `events/:id` เสมอ)
         {
           // รายการกิจกรรมที่เผยแพร่แล้ว — นักเรียนทุกคนเห็น (ต้องล็อกอิน แต่ไม่ต้องมี MANAGE_EVENTS)
           path: 'events',
@@ -147,10 +149,41 @@ const router = createRouter({
           meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
         },
         {
+          // ✍️ สร้างกิจกรรม — **หน้าเต็มหน้า ไม่ใช่ modal** (รอบ 4)
+          // ⚠️ อยู่ **ก่อน** `events/:id` โดยจำเป็น — "new" จะถูกจับเป็น `:id` ถ้าวางหลัง
+          //    (เหตุผลเดียวกับ `events/manage` ข้างบน — ดูคำเตือนที่หัวกลุ่มนี้)
+          // ⚠️ `requiresPermission` เหมือน `events/manage` ไม่ใช่แค่ `requiresAuth` — ตัว endpoint
+          //    ตรวจ MANAGE_EVENTS อยู่แล้ว แต่ถ้าไม่กันที่ route นักเรียนที่เดา URL จะเปิดฟอร์มได้
+          //    แล้วเจอ 403 ตอนกดบันทึก ⇒ "พิมพ์ไปเยอะแล้วเพิ่งบอกว่าไม่มีสิทธิ์" ซึ่งแย่ที่สุด
+          path: 'events/new',
+          name: 'event-create',
+          component: () => import('@/views/events/EventForm.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+        },
+        {
           path: 'events/:id',
           name: 'event-detail',
           component: () => import('@/views/events/EventDetail.vue'),
           meta: { requiresAuth: true },
+        },
+        {
+          // ✏️ แก้ไขกิจกรรม — คอมโพเนนต์เดียวกับหน้าสร้าง (`EventForm.vue`) เพราะ 8 ฟิลด์เหมือนกันเป๊ะ
+          //    และ `buildCreate`/`buildPatch` ถูกออกแบบให้ใช้ร่วมกันโดยเจตนา ⇒ ตรรกะ "ยังไม่บันทึก"
+          //    มีนิยามเดียว ไม่มีทางที่สองหน้าจะตีความต่างกัน
+          // ⚠️ 3 ส่วน ⇒ ไม่ชนกับ `events/:id` (2 ส่วน) · ลำดับสลับกันได้
+          path: 'events/:id/edit',
+          name: 'event-edit',
+          component: () => import('@/views/events/EventForm.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+        },
+        {
+          // 👥 รายชื่อผู้สมัคร + เช็คอินมือ (เดิมเป็น modal ในหน้า `events/manage` — รอบ 4)
+          // ⚠️ 3 ส่วน ⇒ ไม่ชนกับ `events/:id` (2 ส่วน) ⇒ ลำดับสลับกันได้
+          //    และคนละ literal กับ `events/:id/edit`/`check-in` ⇒ ไม่ชนกันอยู่แล้ว
+          path: 'events/:id/registrations',
+          name: 'event-registrations',
+          component: () => import('@/views/events/EventRegistrations.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
         },
         {
           // หน้าสแกนเช็คอินหน้างาน (D2) — **สภาเท่านั้น**

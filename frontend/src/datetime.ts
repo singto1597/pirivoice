@@ -1,0 +1,139 @@
+/**
+ * 🕐 เวลา — ตัวช่วยกลางของทั้งแอป (เขตเวลาไทยเสมอ)
+ *
+ * ⚠️ **ทำไมต้องรวมไว้ที่เดียว** — `fmtDateTime` เดิมถูก **ก๊อปซ้ำอยู่ 4 ไฟล์**
+ *    (`CommentThread` · `EventDetail` · `MyActivity` · `AuditLogs`) ⇒ วันที่มีคนแก้รูปแบบ
+ *    ที่เดียว อีกสามที่เหลือจะไม่ตรงกัน แล้วผู้ใช้จะเห็นวันที่คนละหน้าตาในระบบเดียว
+ *    ซึ่งไม่มีเทสต์ไหนจับได้ (ไม่มีเทสต์ไหนเทียบข้ามไฟล์)
+ *
+ * ⚠️ **ทุกฟังก์ชันในไฟล์นี้ตรึง `Asia/Bangkok`** — ห้ามใช้โซนของเครื่องผู้ใช้ เพราะนาฬิกา
+ *    เครื่องผู้ใช้ตั้งผิดได้ และเวลาของ *ระบบ* ไม่ใช่การแสดงผล
+ */
+
+/**
+ * `YYYY-MM-DDTHH:MM` **ในเขตเวลาไทย** สำหรับ `<input type="datetime-local">`
+ *
+ * ⚠️ **ห้ามใช้ `toISOString().slice(0,16)`** — ได้เวลา UTC ⇒ พอเปิดฟอร์มแก้ไข ฟิลด์จะโชว์
+ *    เวลาที่น้อยไป 7 ชั่วโมง และถ้าผู้ใช้กดบันทึกโดยไม่แตะอะไร ค่าที่ส่งกลับจะเพี้ยนทันที
+ *    ⚠️ และ **ห้ามใช้ `new Date(iso)` แบบ date-only** — กิจกรรมเป็น timestamptz จึงใช้ได้
+ *    แต่ต้องอ่าน "ชิ้นส่วน" ออกมาในโซน Bangkok ไม่ใช่โซนเครื่องผู้ใช้
+ *
+ * ⚠️ `hourCycle: 'h23'` **ห้ามถอด** — ค่าเริ่มต้นของ `en-GB` บางรันไทม์คืน `24:00` แทน
+ *    `00:00` ⇒ `<input type="datetime-local">` ปฏิเสธค่า `24:00` แล้วช่องจะว่างเปล่า
+ *    ซึ่งอ่านไม่ออกเลยว่ามาจากไหน
+ *
+ * 🔴 **`hourCycle: 'h23'` เป็น "เข็มขัดนิรภัย" ที่เทสต์พิสูจน์ไม่ได้บนเครื่องนี้** —
+ *    ทดสอบด้วย mutation แล้ว (ถอดบรรทัดนี้ออก ⇒ เทสต์ทั้งไฟล์ยังเขียว 21/21) เพราะ
+ *    Node 22 + full ICU **ให้ `h23` อยู่แล้วโดยปริยาย** ทั้ง `en-GB` และ `th-TH-u-ca-buddhist`
+ *    (ไล่เทียบครบ 24 ชั่วโมง ⇒ ต่างกัน 0 ชั่วโมง)
+ *    ⇒ **ห้ามลบบรรทัดนี้เพียงเพราะ "เทสต์เขียว"** — มันกันรันไทม์ที่ default เป็น `h24`
+ *      (ICU build แบบ small / เบราว์เซอร์บางตัว / Node เวอร์ชันอื่น) ซึ่งเทสต์จะจับได้ *ตอนนั้น*
+ *      ไม่ใช่ตอนนี้ · ถ้าย้ายไปรันไทม์ที่ผลต่างจริง เทสต์เคส `23:30` จะกลายเป็นตัวจับทันที
+ */
+const BKK_PARTS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Bangkok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+export function toLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const parts = BKK_PARTS.formatToParts(new Date(iso))
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
+}
+
+/**
+ * สตริงฟอร์ม (`YYYY-MM-DDTHH:MM`) → `Date` ใน **โซนของเครื่อง** (local constructor)
+ *
+ * ⭐ **คู่กับ `dateToInput()` และใช้ local ทั้งคู่โดยเจตนา** — round-trip ไม่เพี้ยนบนเครื่อง
+ *    ทุกโซน เพราะขาเข้าตีความเป็น local แล้วขาออกอ่านเป็น local ด้วยตัวเลขชุดเดิม
+ *
+ * 🚫 **ห้ามเปลี่ยนเป็น `new Date(s)` (ISO parse)** — สตริง `"2026-10-15T09:00"` ที่ไม่มี
+ *    tzinfo จะถูกตีเป็น **local** โดยสเปคก็จริง แต่ `"2026-10-15"` (date-only) ถูกตีเป็น
+ *    **UTC** ⇒ สองรูปแบบที่ดูเหมือนกันให้ผลต่างกัน 7 ชั่วโมง · และไม่มีใครจับได้จาก type
+ *    🚫 **ห้ามใช้ `toISOString()` ในเส้นทางกลับ** — เลื่อน 7 ชม. ทันที
+ */
+export function inputToDate(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
+  if (!m) return null
+  const [, y, mo, d, h, mi] = m
+  const date = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi))
+  // ⚠️ กันวันที่ที่ "ไม่มีอยู่จริง" (เช่น 31 ก.พ. ซึ่ง JS จะเลื่อนไป 2-3 มี.ค. เงียบ ๆ)
+  //    ⇒ ตรวจว่ากลับมาเป็นตัวเลขเดิม ถ้าไม่ใช่ = ค่านั้นไม่ถูกต้อง ให้ผู้เรียกจัดการ
+  if (dateToInput(date) !== value) return null
+  return date
+}
+
+/** `Date` → `YYYY-MM-DDTHH:MM` โดยอ่านด้วย **local getters** (คู่กับ `inputToDate`) */
+export function dateToInput(date: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`
+}
+
+/**
+ * คำอ่านภาษาไทยของค่าฟอร์ม — **"15 ตุลาคม 2569 09:00 น."**
+ *
+ * ⭐ ทำไมไม่ให้ date picker โชว์ พ.ศ. เลย: ไลบรารีที่ใช้ (`@vuepic/vue-datepicker` + `date-fns`)
+ *    **ไม่รองรับพุทธศักราช** ⇒ ทางเดียวที่ทำได้คือปล่อย ค.ศ. ในช่อง แล้วอ่านเป็น พ.ศ. ใต้ช่อง
+ *    ⇒ ได้ทั้ง "ค่าที่ตรงกับที่ส่ง backend เป๊ะ" (ไม่มีขั้นตอนแปลง = ไม่มีที่ให้พลาด)
+ *    และ "อ่านออก" สำหรับผู้ใช้ไทย
+ *
+ * ⚠️ **ต้องใช้ `Date.UTC` ไม่ใช่ `new Date(...)`** — เราป้อนตัวเลขจากสตริงเข้าไป ค่าเหล่านี้
+ *    เป็น "ตัวเลขบนหน้าปัด" ไม่ใช่เวลาจริง ⇒ ถ้าใช้ local แล้วเครื่องอยู่โซนที่มี DST
+ *    วันที่ 31 มี.ค. 03:00 อาจไม่มีอยู่จริงแล้วถูกเลื่อนเป็น 04:00 ⇒ คำอ่านเพี้ยน
+ *    UTC ไม่มี DST ⇒ ตัวเลขที่ได้ตรงกับที่ป้อนเสมอ
+ *
+ * ⚠️ ระบุ `'th-TH-u-ca-buddhist'` **ให้ชัด** — อย่าพึ่ง default ของ ICU เพราะ default ขึ้นกับ
+ *    build ของ Node/เบราว์เซอร์ (บางที่ไม่มีข้อมูลฏิทินพุทธ ⇒ เงียบ ๆ กลับมาเป็น ค.ศ.)
+ *    แล้วคำอ่านจะบอก พ.ศ. ผิดโดยไม่มีอะไรฟ้อง
+ */
+export function formatThaiDateTimeInput(value: string): string {
+  const date = inputToDate(value)
+  if (!date) return ''
+  const parts = new Date(
+    Date.UTC(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      date.getHours(),
+      date.getMinutes(),
+    ),
+  )
+  return new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    // ⚠️ เช่นเดียวกับ `BKK_PARTS` — บรรทัดนี้พิสูจน์ด้วยเทสต์บนเครื่องนี้ไม่ได้
+    //    (ถอดออกแล้วยังเขียว) แต่กันรันไทม์ที่ default เป็น `h24` ⇒ อย่าลบ
+    hourCycle: 'h23',
+  }).format(parts)
+}
+
+/** วันและเวลาจัดกิจกรรม — timestamptz จึงใช้ `new Date(iso)` ได้ตรง ๆ */
+export function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** เวลาสั้น ๆ (`HH:MM`) สำหรับตรา "เช็คอินแล้ว" — เช็คอินเกิดวันงานเสมอ วันที่จึงซ้ำกับหัวข้อ */
+export function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}

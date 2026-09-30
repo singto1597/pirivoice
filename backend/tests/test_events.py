@@ -239,6 +239,7 @@ async def test_create_allowed_with_explicit_permission(ev_world, client):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method,path", [
     ("get", ""),
+    ("get", "/{id}"),              # รอบ 4 — หน้าแก้ไข/หน้ารายชื่อผู้สมัคร
     ("get", "/{id}/registrations"),
     ("patch", "/{id}"),
     ("post", "/{id}/publish"),
@@ -2332,3 +2333,133 @@ async def test_migration_026_is_idempotent_and_backfills_by_default(ev_world, cl
 
     # ถอยกลับจริง — ค่าที่เทสต์สร้างไว้ยังอยู่และยังเป็นค่าที่ตั้งไว้
     assert await _db_category(db_pool, event_id) == "sports"
+
+
+# ============================================================
+# 12) อ่านกิจกรรมใบเดียว (`GET /events/{id}`) — รอบ 4
+# ============================================================
+
+@pytest.mark.asyncio
+async def test_get_event_returns_draft(ev_world, client, db_pool):
+    """★ หัวใจ: **ฉบับร่างต้องอ่านได้** — นี่คือเหตุผลทั้งหมดที่ต้องมี endpoint นี้
+
+    หน้าแก้ไข/หน้ารายชื่อเป็นหน้าเต็มหน้าที่เปิดตรงได้ ⇒ ต้องอ่านใบเดียวด้วย id
+    และ `GET /events/public/{id}` ทำหน้าที่นี้ไม่ได้เพราะกรอง `status='published'`
+    (เทสต์นี้จึงเทียบกับฝั่งนักเรียนด้านล่าง เพื่อพิสูจน์ว่าไม่ใช่ของซ้ำกัน)
+    """
+    event_id = _create(client, ev_world)["id"]   # สร้าง = draft เสมอ
+
+    res = client.get(f"/api/events/{event_id}", headers=_auth(ev_world))
+    assert res.status_code == 200, res.text
+    out = res.json()
+
+    assert out["id"] == event_id
+    assert out["status"] == "draft"
+
+    # เทียบกับ DB จริง (RULE 2) — ไม่เชื่อ response อย่างเดียว
+    row = await _db_event(db_pool, event_id)
+    assert out["title"] == row["title"]
+    assert out["status"] == row["status"] == "draft"
+
+    # ⭐ พิสูจน์ว่าทำไม `/public/{id}` ใช้แทนไม่ได้ — ฉบับร่างต้อง 404 ที่นั่น
+    pub = client.get(f"/api/events/public/{event_id}", headers=_auth(ev_world))
+    assert pub.status_code == 404, "ฉบับร่างต้องไม่หลุดทางฝั่งนักเรียน (นี่คือเหตุผลของ endpoint ใหม่)"
+
+
+@pytest.mark.asyncio
+async def test_get_event_matches_list_row(ev_world, client, db_pool):
+    """ใบเดียวกับในลิสต์ต้องให้ค่า **ชุดเดียวกัน** — ไม่งั้นหน้าแก้ไขจะเติมฟอร์มไม่ครบ
+
+    ⚠️ ทั้งสองที่ใช้ `_MANAGE_COLUMNS` ร่วมกันโดยเจตนา ⇒ เทสต์นี้กันวันที่คนใดคนหนึ่ง
+       เผลอ SELECT คนละชุด (อาการ: เปิดจากลิสต์เห็นข้อมูลครบ แต่เปิดตรง ๆ แล้วช่องว่าง)
+    """
+    event_id = _create(client, ev_world, category="sports", capacity=30)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+
+    listed = next(
+        i for i in client.get("/api/events?status=all", headers=_auth(ev_world)).json()["items"]
+        if i["id"] == event_id
+    )
+    single = client.get(f"/api/events/{event_id}", headers=_auth(ev_world)).json()
+
+    assert single == listed, "ใบเดียวกับในลิสต์ต้องให้ field ชุดเดียวกันและค่าเดียวกัน"
+
+    # ตัวนับต้องเป็นของจริง ไม่ใช่ค่าคงที่ 0 ที่เผลอ hardcode
+    assert single["registered_count"] == 1
+    assert single["waitlisted_count"] == 0
+    # ชื่อผู้ดูแลมาจาก `_JOINS` — ถ้าหลุด หน้าแก้ไขจะไม่รู้ว่าใครสร้าง (แต่ยังบันทึกได้)
+    assert single["created_by"] == ev_world["manager"]["user_id"]
+    assert single["created_by_name"] == "manager ทดสอบ"
+
+
+@pytest.mark.asyncio
+async def test_get_event_allowed_with_explicit_permission(ev_world, client):
+    """สิทธิ์ต้องมาจาก JSONB จริง — `granted` เป็น council_member ที่ is_admin = FALSE"""
+    event_id = _create(client, ev_world)["id"]
+    res = client.get(f"/api/events/{event_id}", headers=_auth(ev_world, "granted"))
+    assert res.status_code == 200, res.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("event_id", [999_999, 0])
+async def test_get_event_404_when_missing(ev_world, client, event_id):
+    """ไม่มี id นี้ → 404 (ไม่ใช่ 200 กับ body ว่าง ซึ่ง frontend จะเติมฟอร์มด้วย undefined)"""
+    res = client.get(f"/api/events/{event_id}", headers=_auth(ev_world))
+    assert res.status_code == 404, res.text
+
+
+@pytest.mark.asyncio
+async def test_get_event_returns_deleted_row(ev_world, client, db_pool):
+    """★ ใบที่ถูกลบ (soft delete) ต้องได้ **200 พร้อม `deleted_at`** ไม่ใช่ 404
+
+    เหตุผล: หน้าแก้ไขต้องรู้ว่า "ถูกลบอยู่" เพื่อปิดปุ่มบันทึก — `PATCH` มี
+    `deleted_at IS NULL` ⇒ ถ้าหน้านี้ 404 ผู้ใช้จะเจอ "แก้แล้วไม่บันทึก" แทนที่จะรู้สาเหตุ
+    ⚠️ ต่างจาก `list_registrations` ที่ **ต้อง** 404 เคสนี้ (ดู docstring ที่นั่น)
+       — ที่นั่นถามถึงรายชื่อของกิจกรรมที่ไม่มีอยู่ · ที่นี่ถามถึงตัวกิจกรรมซึ่งยังมีอยู่
+    """
+    event_id = _create(client, ev_world)["id"]
+    assert client.delete(f"/api/events/{event_id}", headers=_auth(ev_world)).status_code == 200
+
+    res = client.get(f"/api/events/{event_id}", headers=_auth(ev_world))
+    assert res.status_code == 200, res.text
+    assert res.json()["deleted_at"] is not None
+
+    # deep DB — ยืนยันว่าที่ได้มาเป็นแถวที่ถูกลบจริง ไม่ใช่ค่าที่ service แต่งขึ้น
+    assert (await _db_event(db_pool, event_id))["deleted_at"] is not None
+
+    # ⭐ และยืนยันว่าทำไมต้องเตือนผู้ใช้: บันทึกทับไม่ได้จนกว่าจะกู้คืน
+    patch = client.patch(
+        f"/api/events/{event_id}", json={"title": "แก้ใบที่ถูกลบ"}, headers=_auth(ev_world)
+    )
+    assert patch.status_code == 404, "PATCH บนใบที่ถูกลบต้อง 404 — คือเหตุผลที่หน้าต้องปิดปุ่ม"
+
+    # กู้คืนแล้วต้องแก้ได้ตามปกติ (พิสูจน์ว่า 404 ข้างบนมาจาก deleted_at ไม่ใช่จาก id)
+    assert client.post(f"/api/events/{event_id}/restore", headers=_auth(ev_world)).status_code == 200
+    assert client.patch(
+        f"/api/events/{event_id}", json={"title": "แก้หลังกู้คืน"}, headers=_auth(ev_world)
+    ).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_public_list_survives_adding_by_id_route(ev_world, client):
+    """★ regression ของ **ลำดับ route** — `/events/public` (1 segment) ต้องไม่ถูก `/{event_id}` กลืน
+
+    ⚠️ ถ้ามีคนย้าย `GET /{event_id}` ขึ้นไปเหนือกลุ่ม `/public` วันหนึ่ง `public` จะถูก
+       parse เป็น `int` ⇒ **422** และหน้ารายการกิจกรรมฝั่งนักเรียนจะพังทั้งหน้า
+       ซึ่งอ่านไม่ออกเลยว่ามาจากการเพิ่ม route (ดูคำเตือนที่หัว `event_router.py`)
+    """
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+
+    res = client.get("/api/events/public", headers=_auth(ev_world, "alice"))
+    assert res.status_code == 200, res.text
+    assert event_id in {i["id"] for i in res.json()["items"]}
+
+    # สอง path ที่ความยาวเท่ากันต้องแยกกันได้จริงตามลำดับที่ประกาศ
+    assert client.get(
+        f"/api/events/public/{event_id}", headers=_auth(ev_world, "alice")
+    ).status_code == 200
+    assert client.get(
+        f"/api/events/{event_id}/my-registration", headers=_auth(ev_world, "alice")
+    ).status_code == 200
