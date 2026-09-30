@@ -57,18 +57,22 @@ const router = createRouter({
           path: 'home',
           name: 'home',
           component: () => import('@/views/Home.vue'),
-          meta: { requiresAuth: true },
+          // 🏠 `headerBack: false` ที่ **แท็บรากทุกตัว** จำเป็น ไม่ใช่ของประดับ —
+          //    ถ้าไม่ใส่ `useAppChrome` จะตกไปใช้ fallback "รากของแท็บตัวเอง"
+          //    ⇒ ได้ลูกศร ← ที่กดแล้วไปหน้าเดิม (ดู `useAppChrome.ts`)
+          meta: { requiresAuth: true, navTab: 'home', headerBack: false, fab: 'issue' },
         },
         {
           path: 'dashboard',
           name: 'dashboard',
           component: () => import('@/views/Dashboard.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'VIEW_DASHBOARD' },
+          meta: { requiresAuth: true, requiresPermission: 'VIEW_DASHBOARD', navTab: 'more' },
         },
         {
           path: 'profile',
           name: 'profile',
           component: () => import('@/views/Profile.vue'),
+          meta: { navTab: 'more' },
         },
         {
           // 🧭 กิจกรรมของฉัน + บันทึกไว้ (C1/C2) — ข้อมูลของตัวเองล้วน ⇒ ไม่ต้องมี permission
@@ -76,57 +80,75 @@ const router = createRouter({
           path: 'me',
           name: 'my-activity',
           component: () => import('@/views/me/MyActivity.vue'),
+          meta: { navTab: 'more' },
         },
         {
           path: 'profile/edit',
           name: 'profile-edit',
           component: () => import('@/views/ProfileEdit.vue'),
+          meta: { navTab: 'more', navHidden: true, headerBack: { name: 'profile' } },
         },
         {
           path: 'profile/password',
           name: 'profile-password',
           component: () => import('@/views/ChangePassword.vue'),
+          meta: { navTab: 'more', navHidden: true, headerBack: { name: 'profile' } },
         },
         {
           path: 'issues/new',
           name: 'new-issue',
           component: () => import('@/views/issues/NewIssue.vue'),
+          // ซ่อนแถบล่างเพราะเป็น **ฟอร์ม** (skills #16) — กันนิ้วโป้งชนปุ่มส่ง
+          meta: { navTab: 'issues', navHidden: true, headerBack: { name: 'my-issues' } },
         },
         {
           path: 'issues/mine',
           name: 'my-issues',
           component: () => import('@/views/issues/MyIssues.vue'),
+          meta: { navTab: 'issues', segmentGroup: 'issues', headerBack: false, fab: 'issue' },
         },
         {
           path: 'issues/received',
           name: 'received-issues',
           component: () => import('@/views/issues/ReceivedIssues.vue'),
+          // 🔴 **ไม่ใส่ `requiresPermission`** โดยเจตนา — `students.permissions` เป็น snapshot
+          //    ที่ไม่มีอะไร re-sync ⇒ ผู้มีสิทธิ์จริงแต่ snapshot ตกหล่นจะถูกดีดกลับเงียบ ๆ
+          //    ⇒ กรองที่ `useNavItems.segmentsOf()` ซึ่งอ่าน auth store สดแทน (R0.3.3)
+          meta: { navTab: 'issues', segmentGroup: 'issues', headerBack: false },
         },
         {
           path: 'issues/:id',
           name: 'issue-detail',
           component: () => import('@/views/issues/IssueDetail.vue'),
+          // ⚠️ **ไม่ใส่ `navHidden`** — หน้านี้เป็นปลายทางของ push notification
+          //    ⇒ ต้องเหลือทางออกมากกว่าลูกศร ← เดียว และแถบที่ซ่อนอยู่ highlight แท็บแม่ไม่ได้
+          meta: { navTab: 'issues', headerBack: { name: 'my-issues' } },
         },
         {
           path: 'issues/:id/edit',
           name: 'issue-edit',
           component: () => import('@/views/issues/EditIssue.vue'),
+          // ฟอร์ม ⇒ ซ่อนแถบ · ไม่ประกาศ `headerBack` เพราะปลายทางต้องรู้ `:id`
+          // ซึ่ง meta เป็นค่าสถิต ⇒ ปล่อยให้ตกไปที่รากของแท็บ "เรื่อง" แทน
+          meta: { navTab: 'issues', navHidden: true },
         },
         {
           path: 'boards',
           name: 'boards',
           component: () => import('@/views/boards/PiriBoards.vue'),
+          meta: { navTab: 'boards', headerBack: false },
         },
         {
           path: 'boards/reports',
           name: 'board-reports',
           component: () => import('@/views/boards/ReportModeration.vue'),
-          meta: { requiresAuth: true, requiresCouncil: true },
+          meta: { requiresAuth: true, requiresCouncil: true, navTab: 'more' },
         },
         {
           path: 'boards/:id',
           name: 'board-detail',
           component: () => import('@/views/boards/BoardDetail.vue'),
+          meta: { navTab: 'boards', headerBack: { name: 'boards' } },
         },
         // 📅 กิจกรรม (D1) — สองระดับสิทธิ์: นักเรียน (สาธารณะ) กับสภา (จัดการ/ฉบับร่าง)
         //    (ไม่ระบุจำนวนหน้าโดยเจตนา — จำนวนเคยถูกเขียนไว้แล้วล้าสมัยทุกครั้งที่มีหน้าใหม่)
@@ -138,7 +160,7 @@ const router = createRouter({
           path: 'events',
           name: 'events',
           component: () => import('@/views/events/EventList.vue'),
-          meta: { requiresAuth: true },
+          meta: { requiresAuth: true, navTab: 'events', headerBack: false, fab: 'event' },
         },
         {
           // หน้าจัดการของสภา — ★ permission ตรวจที่ **route meta** ด้วย ไม่ใช่พึ่ง backend อย่างเดียว
@@ -146,7 +168,9 @@ const router = createRouter({
           path: 'events/manage',
           name: 'event-management',
           component: () => import('@/views/events/EventManagement.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+          // 🔁 R4 จะยุบหน้านี้เข้าแท็บ "กิจกรรม" เป็น segment "จัดการ" — ตอนนี้ยังเป็นหน้าของตัวเอง
+          //    แต่ประกาศ `navTab: 'events'` ไว้แล้ว เพื่อให้ย้ายแล้วไม่ต้องแก้ meta อีก
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS', navTab: 'events', fab: 'event' },
         },
         {
           // ✍️ สร้างกิจกรรม — **หน้าเต็มหน้า ไม่ใช่ modal** (รอบ 4)
@@ -158,13 +182,20 @@ const router = createRouter({
           path: 'events/new',
           name: 'event-create',
           component: () => import('@/views/events/EventForm.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_EVENTS',
+            navTab: 'events',
+            navHidden: true,
+            headerBack: { name: 'events' },
+          },
         },
         {
           path: 'events/:id',
           name: 'event-detail',
           component: () => import('@/views/events/EventDetail.vue'),
-          meta: { requiresAuth: true },
+          // ปลายทางของ deep link ⇒ เห็นแถบล่าง (เหตุผลเดียวกับ `issue-detail`)
+          meta: { requiresAuth: true, navTab: 'events', headerBack: { name: 'events' } },
         },
         {
           // ✏️ แก้ไขกิจกรรม — คอมโพเนนต์เดียวกับหน้าสร้าง (`EventForm.vue`) เพราะ 8 ฟิลด์เหมือนกันเป๊ะ
@@ -174,7 +205,12 @@ const router = createRouter({
           path: 'events/:id/edit',
           name: 'event-edit',
           component: () => import('@/views/events/EventForm.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_EVENTS',
+            navTab: 'events',
+            navHidden: true,
+          },
         },
         {
           // 👥 รายชื่อผู้สมัคร + เช็คอินมือ (เดิมเป็น modal ในหน้า `events/manage` — รอบ 4)
@@ -183,7 +219,12 @@ const router = createRouter({
           path: 'events/:id/registrations',
           name: 'event-registrations',
           component: () => import('@/views/events/EventRegistrations.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_EVENTS',
+            navTab: 'events',
+            navHidden: true,
+          },
         },
         {
           // หน้าสแกนเช็คอินหน้างาน (D2) — **สภาเท่านั้น**
@@ -196,62 +237,96 @@ const router = createRouter({
           path: 'events/:id/check-in',
           name: 'event-check-in',
           component: () => import('@/views/events/EventCheckIn.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+          // กล้องเต็มจอ ⇒ ซ่อนทั้งแถบล่างและหัวแถบ — **ต้องเหลือปุ่มปิดที่มองเห็นได้เสมอ**
+          // ไม่งั้นผู้ใช้ที่ปฏิเสธสิทธิ์กล้องจะติดอยู่ในหน้านี้โดยไม่มีทางออก (R4.4)
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_EVENTS',
+            navTab: 'events',
+            navHidden: true,
+            headerHidden: true,
+          },
         },
         {
           path: 'playbooks',
           name: 'playbooks',
           component: () => import('@/views/playbooks/PlaybooksCatalog.vue'),
-          meta: { requiresAuth: true },
+          meta: { requiresAuth: true, navTab: 'more' },
         },
         {
           path: 'playbooks/:id',
           name: 'playbook-reader',
           component: () => import('@/views/playbooks/PlaybookReader.vue'),
-          meta: { requiresAuth: true },
+          meta: { requiresAuth: true, navTab: 'more', headerBack: { name: 'playbooks' } },
         },
         {
           path: 'notifications',
           name: 'notifications',
           component: () => import('@/views/notifications/NotificationCenter.vue'),
-          meta: { requiresAuth: true },
+          // 🔔 เข้าถึงจากกระดิ่งบนหัวแถบ *ทุกหน้า* ⇒ ปลายทางของ ← จึงไม่ใช่ "หน้าที่แล้ว"
+          //    (meta เป็นค่าสถิต รู้ไม่ได้) ⇒ ชี้ไปหน้าแรกซึ่งเป็นที่ที่ผู้ใช้รู้จักดีที่สุด
+          meta: { requiresAuth: true, navTab: 'more', headerBack: { name: 'home' } },
         },
         {
           path: 'users',
           name: 'users',
           component: () => import('@/views/students/UserManagement.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_STUDENTS' },
+          // 👥 "สมาชิก" ไม่ใช่แท็บ — เป็นคู่ segment กับ `students` เข้าจากหน้า "เพิ่มเติม"
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_STUDENTS',
+            navTab: 'more',
+            segmentGroup: 'members',
+            fab: 'member',
+          },
         },
         {
           path: 'students',
           name: 'students',
           component: () => import('@/views/students/StudentList.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_STUDENTS' },
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_STUDENTS',
+            navTab: 'more',
+            segmentGroup: 'members',
+            fab: 'member',
+          },
         },
         {
           path: 'students/import',
           name: 'import-students',
           component: () => import('@/views/students/ImportStudents.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_STUDENTS' },
+          // ฟอร์มนำเข้า ⇒ ซ่อนแถบล่าง (แถบ segment ที่ค้างอยู่จะชวนให้กดออกกลางฟอร์ม)
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_STUDENTS',
+            navTab: 'more',
+            navHidden: true,
+            headerBack: { name: 'students' },
+          },
         },
         {
           path: 'announcements',
           name: 'announcements',
           component: () => import('@/views/announcements/AnnouncementManagement.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_ANNOUNCEMENTS' },
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_ANNOUNCEMENTS',
+            navTab: 'more',
+          },
         },
         {
           // 📅 ภาคเรียน — ใช้ MANAGE_SETTINGS ที่มีอยู่แล้ว (ไม่ต้อง backfill สิทธิ์)
           path: 'settings/terms',
           name: 'academic-terms',
           component: () => import('@/views/settings/AcademicTerms.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_SETTINGS' },
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_SETTINGS', navTab: 'more' },
         },
         {
           path: 'audit-logs',
           name: 'audit-logs',
           component: () => import('@/views/audit/AuditLogs.vue'),
-          meta: { requiresAuth: true, requiresPermission: 'VIEW_AUDIT_LOG' },
+          meta: { requiresAuth: true, requiresPermission: 'VIEW_AUDIT_LOG', navTab: 'more' },
         },
       ],
     },
