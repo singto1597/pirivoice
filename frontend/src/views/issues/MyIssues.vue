@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { RouterLink } from 'vue-router';
+import { ref, onMounted, computed, watch } from 'vue';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { listIssues } from '@/services/issue';
-import { MAIN_CATEGORY_LABELS, subcategoryLabel, STATUS_LABELS, LEVEL_LABELS, type Issue } from '@/types/issue';
-import { STATUS_BADGE } from '@/constants/status';
+import { MAIN_CATEGORY_LABELS, subcategoryLabel, LEVEL_LABELS, type Issue } from '@/types/issue';
+import { statusShort } from '@/constants/status';
 import IssueListToolbar from '@/components/IssueListToolbar.vue';
 import PaginationBar from '@/components/PaginationBar.vue';
+import PageHeader from '@/components/ui/PageHeader.vue';
+import AppCard from '@/components/ui/AppCard.vue';
+import AppChip from '@/components/ui/AppChip.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppEmptyState from '@/components/ui/AppEmptyState.vue';
+import StatusBadge from '@/components/ui/StatusBadge.vue';
+import { fmtRelative } from '@/datetime';
+
+const route = useRoute();
+const router = useRouter();
 
 const issues = ref<Issue[]>([]);
 const total = ref(0); // จำนวนทั้งหมดที่ตรงเงื่อนไข (จาก envelope)
@@ -15,11 +25,55 @@ const q = ref('');           // คำค้นหา
 const sort = ref<'asc' | 'desc'>('desc'); // ใหม่ไปเก่า (default)
 const page = ref(1);
 const pageSize = 20;
-const statusFilter = ref('');   // '' = ทุกสถานะ
+
+/**
+ * 🔴 **ตัวกรองสถานะอ่านจาก URL ไม่ใช่ `ref` ลอย ๆ**
+ *
+ * ⭐ เพราะหน้าแรก (การ์ด "สรุปเรื่องของฉัน") ลิงก์มากี่ช่องก็ได้ด้วย `?status=pending`
+ *    ⇒ ถ้าหน้านี้ไม่รับค่า จะกดจากหน้าแรกแล้วได้ลิสต์ **ไม่กรอง** ซึ่งดูเหมือนลิงก์พัง
+ *    และทำให้ตัวเลขบนหน้าแรกกับการ์ดที่กดเข้ามาไม่ตรงกัน
+ *
+ * ⚠️ และเมื่อ URL เป็นเจ้าของค่า "กดย้อนกลับ" ของเบราว์เซอร์จะย้อนตัวกรองให้ด้วย
+ *    ซึ่งเป็นสิ่งที่ผู้ใช้คาดหวังจากลิสต์ที่กรองได้อยู่แล้ว
+ */
+const statusFilter = ref(typeof route.query.status === 'string' ? route.query.status : '');
+
+/** ตัวเลือกสถานะทั้งหมด — ป้ายมาจาก `statusShort()` ที่เดียว (ไม่พิมพ์คำซ้ำที่นี่) */
+const STATUS_FILTERS = [
+  { value: '', label: 'ทั้งหมด' },
+  { value: 'pending', label: statusShort('pending') },
+  { value: 'in_progress', label: statusShort('in_progress') },
+  { value: 'escalated', label: statusShort('escalated') },
+  { value: 'resolved', label: statusShort('resolved') },
+  { value: 'rejected', label: statusShort('rejected') },
+  { value: 'cancelled', label: statusShort('cancelled') },
+] as const;
 
 const activeFilters = computed(() => (statusFilter.value ? 1 : 0));
+const hasAnyFilter = computed(() => Boolean(statusFilter.value || q.value.trim()));
+
+/**
+ * ซ่อนแถบเครื่องมือ (ค้นหา + ชิปสถานะ + เรียง) เมื่อ **ไม่มีอะไรให้กรองเลย**
+ * — กล่องค้นหาในลิสต์ว่างคือความรกที่ audit ฟ้อง ("ต้องตีความก่อนใช้")
+ *
+ * 🔴 แต่ **ห้ามซ่อนเมื่อมีตัวกรองค้างอยู่** — ไม่งั้นผู้ใช้ที่กรองจนได้ 0 ผลลัพธ์
+ *    จะไม่เหลือทางล้างตัวกรองในหน้าเลย ⇒ ติดอยู่ในลิสต์ว่างถาวร
+ */
+const showToolbar = computed(
+  () => isLoading.value || issues.value.length > 0 || hasAnyFilter.value,
+);
 
 onMounted(load);
+
+// 🔗 URL เปลี่ยน (กดชิป / กดย้อนกลับ / เปิดลิงก์จากหน้าแรก) → กลับหน้า 1 แล้วโหลดใหม่
+watch(
+  () => route.query.status,
+  (s) => {
+    statusFilter.value = typeof s === 'string' ? s : '';
+    page.value = 1;
+    load();
+  },
+);
 
 async function load() {
   isLoading.value = true;
@@ -42,7 +96,7 @@ async function load() {
   }
 }
 
-// search / sort / filter เปลี่ยน → กลับหน้า 1 แล้วโหลด
+// search / sort เปลี่ยน → กลับหน้า 1 แล้วโหลด
 function onToolbarChange() {
   page.value = 1;
   load();
@@ -52,131 +106,157 @@ function onPageChange(n: number) {
   page.value = n;
   load();
 }
+
+/** ล้างตัวกรองทั้งหมด — ใช้เป็นทางออกของ empty state ตอนกรองจนไม่เหลืออะไร */
+function clearFilters() {
+  q.value = '';
+  // 🔴 `statusFilter` มาจาก URL ⇒ **ต้องล้างที่ URL** ไม่งั้นค่าจะถูก watcher
+  //    เขียนทับกลับจาก query เดิมทันทีที่รอบถัดไปทำงาน
+  if (route.query.status !== undefined) {
+    void router.replace({ query: {} });
+  } else {
+    page.value = 1;
+    load();
+  }
+}
 </script>
 
 <template>
   <div>
-    <!-- Editorial page header -->
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
-          <i class="bi bi-file-earmark-text text-[13px]"></i> My Reports
-        </p>
-        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">เรื่องของฉัน</h1>
-        <p class="mt-2 text-sm text-stone-500">ติดตามสถานะเรื่องที่คุณแจ้ง</p>
-      </div>
-      <RouterLink to="/app/issues/new" class="btn-gradient text-sm shrink-0">
-        <i class="bi bi-plus-lg"></i> แจ้งเรื่องใหม่
-      </RouterLink>
-    </div>
+    <PageHeader title="เรื่องของฉัน" description="ติดตามสถานะเรื่องที่คุณแจ้ง" />
 
-    <!-- Toolbar: ค้นหา + filter (สถานะ) + เรียงลำดับ + จำนวน -->
-    <IssueListToolbar
-      v-model:q="q"
-      v-model:sort="sort"
-      :total="total"
-      :count="issues.length"
-      :active-filters="activeFilters"
-      :loading="isLoading"
-      @change="onToolbarChange"
-    >
-      <template #filters>
-        <div>
-          <label class="block text-xs font-semibold text-stone-500 mb-1.5">สถานะ</label>
-          <select v-model="statusFilter" @change="onToolbarChange"
-            class="w-full px-3 py-2 border border-stone-300 rounded-xl text-sm bg-white">
-            <option value="">ทุกสถานะ</option>
-            <option value="pending">รอรับเรื่อง</option>
-            <option value="in_progress">กำลังดำเนินการ</option>
-            <option value="escalated">ส่งต่อระดับบน</option>
-            <option value="resolved">แก้ไขเสร็จ</option>
-            <option value="cancelled">ถูกยกเลิก</option>
-            <option value="rejected">ถูกปัดตก</option>
-          </select>
-        </div>
-      </template>
-    </IssueListToolbar>
+    <!-- แถบเครื่องมือ — ซ่อนทั้งแถบเมื่อไม่มีอะไรให้กรอง (ดู `showToolbar`) -->
+    <div v-if="showToolbar" class="mb-3 space-y-3">
+      <IssueListToolbar
+        v-model:q="q"
+        v-model:sort="sort"
+        :total="total"
+        :count="issues.length"
+        :active-filters="activeFilters"
+        :loading="isLoading"
+        @change="onToolbarChange"
+      />
+
+      <!-- 🏷️ ชิปสถานะ — เลื่อนแนวนอน ไม่ตัดบรรทัด (ของเดิมเป็น `<select>` ที่ต้องกดเปิดดู) -->
+      <div class="chip-row">
+        <AppChip
+          v-for="f in STATUS_FILTERS"
+          :key="f.value"
+          :label="f.label"
+          :active="statusFilter === f.value"
+          :to="{ name: 'my-issues', query: f.value ? { status: f.value } : {} }"
+        />
+      </div>
+    </div>
 
     <!-- โหลดข้อมูล: skeleton รายการ -->
-    <div v-if="isLoading" class="animate-pulse rounded-2xl border border-stone-200 bg-white p-5">
-      <div class="divide-y divide-stone-100">
+    <AppCard v-if="isLoading">
+      <div class="animate-pulse divide-y divide-line">
         <div v-for="n in 5" :key="n" class="flex items-start gap-3 py-4">
-          <div class="h-10 w-10 rounded-full bg-stone-100"></div>
+          <div class="h-10 w-10 rounded-full bg-canvas"></div>
           <div class="flex-1 space-y-2 pt-1">
-            <div class="h-3 w-1/3 rounded bg-stone-100"></div>
-            <div class="h-3 w-2/3 rounded bg-stone-100"></div>
+            <div class="h-3 w-1/3 rounded bg-canvas"></div>
+            <div class="h-3 w-2/3 rounded bg-canvas"></div>
           </div>
-          <div class="h-6 w-16 rounded-full bg-stone-100"></div>
+          <div class="h-6 w-16 rounded-full bg-canvas"></div>
         </div>
       </div>
-    </div>
+    </AppCard>
 
-    <!-- โหลดไม่สำเร็จ: inline error + retry -->
-    <div
-      v-else-if="error"
-      class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
-    >
-      <i class="bi bi-wifi-off text-3xl text-stone-400 mb-3"></i>
-      <p class="text-stone-600">{{ error }}</p>
-      <button
-        type="button"
-        class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
-        @click="load"
+    <!-- โหลดไม่สำเร็จ -->
+    <AppCard v-else-if="error">
+      <AppEmptyState
+        icon="bi-wifi-off"
+        title="โหลดรายการเรื่องไม่สำเร็จ"
+        :description="error"
       >
-        ลองอีกครั้ง
-      </button>
-    </div>
+        <AppButton variant="secondary" size="sm" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" /></template>
+          ลองอีกครั้ง
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
-    <!-- Empty state -->
-    <div
-      v-else-if="!issues.length"
-      class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 px-6 text-center"
-    >
-      <div class="text-4xl mb-2 text-stone-300"><i class="bi bi-inbox"></i></div>
-      <p class="text-stone-600">ยังไม่มีเรื่องที่คุณแจ้ง</p>
-      <RouterLink to="/app/issues/new" class="inline-block mt-3 text-brand hover:underline font-medium">แจ้งเรื่องแรกของคุณ <i class="bi bi-arrow-right"></i></RouterLink>
-    </div>
-
-    <!-- Ledger-style list -->
-    <TransitionGroup
-      v-else
-      name="list"
-      tag="div"
-      class="rounded-2xl border border-stone-200 overflow-hidden bg-white divide-y divide-stone-200"
-    >
-      <RouterLink
-        v-for="i in issues"
-        :key="i.id"
-        :to="{ name: 'issue-detail', params: { id: i.id } }"
-        class="flex items-start justify-between gap-3 px-5 py-4 hover:bg-stone-50 transition block"
+    <!-- ว่างเพราะ **กรองแล้วไม่เหลือ** — ต้องมีทางล้างตัวกรอง ไม่ใช่บอกแค่ "ไม่พบ" -->
+    <AppCard v-else-if="!issues.length && hasAnyFilter">
+      <AppEmptyState
+        icon="bi-search"
+        title="ไม่พบเรื่องในเงื่อนไขที่เลือก"
+        description="ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา แล้วดูใหม่"
       >
-        <div class="flex-1 min-w-0">
-          <div class="flex gap-2 mb-1.5">
-            <span class="px-2 py-0.5 bg-stone-100 text-stone-600 text-xs rounded-full">{{ MAIN_CATEGORY_LABELS[i.main_category] }}</span>
-            <span class="px-2 py-0.5 bg-stone-100 text-stone-600 text-xs rounded-full">{{ subcategoryLabel(i.main_category, i.category) }}</span>
+        <AppButton variant="secondary" size="sm" @click="clearFilters">
+          ล้างตัวกรอง
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
+
+    <!-- ว่างเพราะ **ยังไม่เคยแจ้งเลย** — ต่างจากข้างบนคนละความหมาย ⇒ คนละข้อความ + คนละปุ่ม -->
+    <AppCard v-else-if="!issues.length">
+      <AppEmptyState
+        icon="bi-megaphone"
+        title="ยังไม่มีเรื่องที่คุณแจ้ง"
+        description="เจอปัญหาหรือมีข้อเสนอแนะ? แจ้งเข้ามาได้เลย ติดตามสถานะได้จากหน้านี้"
+      >
+        <AppButton :to="{ name: 'new-issue' }">
+          <template #icon><i class="bi bi-plus-lg" /></template>
+          แจ้งเรื่องแรกของคุณ
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
+
+    <!-- รายการ -->
+    <AppCard v-else :padded="false">
+      <TransitionGroup name="list" tag="div" class="divide-y divide-line">
+        <RouterLink
+          v-for="i in issues"
+          :key="i.id"
+          :to="{ name: 'issue-detail', params: { id: i.id } }"
+          class="flex items-start justify-between gap-3 px-4 py-3.5 transition-colors hover:bg-canvas"
+        >
+          <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+            <!-- หมวด — ของเดิมมี 2 ชิป + ชิปแยกหมวดย่อย ⇒ เหลือบรรทัดเดียว
+                 (หมวดหลักเป็น *คำนำหน้า* ของหมวดย่อยที่อ่านออกได้เอง) -->
+            <p class="truncate text-[11px] font-medium text-ink-3">
+              {{ MAIN_CATEGORY_LABELS[i.main_category] }} ·
+              {{ subcategoryLabel(i.main_category, i.category) }}
+            </p>
+            <h3 class="line-clamp-2 font-semibold leading-snug text-ink-1">{{ i.title }}</h3>
+            <p class="flex items-center gap-1.5 text-[11px] font-medium text-ink-3">
+              <i class="bi bi-diagram-3"></i> {{ LEVEL_LABELS[i.current_level] }}
+              <span aria-hidden="true">•</span>
+              {{ fmtRelative(i.created_at) }}
+            </p>
           </div>
-          <h3 class="font-semibold text-stone-900 truncate">{{ i.title }}</h3>
-          <p class="text-xs text-stone-500 mt-1">ตอนนี้อยู่ที่: {{ LEVEL_LABELS[i.current_level] }}</p>
-        </div>
-        <div class="text-right shrink-0">
-          <span
-            class="px-2.5 py-1 text-xs font-medium rounded-full whitespace-nowrap"
-            :class="STATUS_BADGE[i.status] || 'bg-stone-100 text-stone-500'"
-          >
-            {{ STATUS_LABELS[i.status] }}
-          </span>
-        </div>
-      </RouterLink>
-    </TransitionGroup>
+          <div class="shrink-0 pt-0.5">
+            <StatusBadge :status="i.status" />
+          </div>
+        </RouterLink>
+      </TransitionGroup>
+    </AppCard>
 
     <!-- แบ่งหน้า -->
-    <PaginationBar :total="total" :page="page" :page-size="pageSize" :loading="isLoading" @page-change="onPageChange" />
+    <PaginationBar
+      :total="total"
+      :page="page"
+      :page-size="pageSize"
+      :loading="isLoading"
+      @page-change="onPageChange"
+    />
   </div>
 </template>
 
 <style scoped>
 /* list animation */
-.list-enter-active, .list-leave-active { transition: all 0.25s ease; }
-.list-enter-from { opacity: 0; transform: translateY(10px); }
-.list-leave-to { opacity: 0; transform: translateY(-6px); }
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.25s ease;
+}
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
 </style>
