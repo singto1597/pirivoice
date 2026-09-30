@@ -39,15 +39,40 @@ async function loginAs(page: Page, key: string): Promise<void> {
   )
 }
 
+/**
+ * ⚠️ **อัปเดต รอบ 2 (R3.1)** — ฟอร์มแจ้งเรื่องเปลี่ยนจาก "หน้าเดียว 5 หัวข้อ" เป็น
+ *    **ตัวช่วยกรอก 3 ขั้น** (ประเภท → รายละเอียด → ตรวจสอบ)
+ *
+ * ⇒ สามอย่างที่เปลี่ยนและต้องแก้ที่นี่:
+ *   1. ช่องกรอกอยู่คนละขั้น ⇒ ต้องกด "ถัดไป" คั่น
+ *      (`cat-*` + ชิปหมวดย่อย อยู่ขั้น 1 · `issue-title`/`issue-desc` อยู่ขั้น 2 ·
+ *       `dest-*` + `issue-submit` อยู่ขั้น 3)
+ *   2. `dest-*` **ไม่ถูกเลือกไว้ก่อนแล้ว** (เดิมตั้ง `'normal'` เป็นค่าเริ่มต้น ซึ่งเป็นบั๊ก
+ *      ที่ audit ฟ้อง) ⇒ เทสต์ต้อง **กดเลือกเอง** ซึ่งมันทำอยู่แล้ว — ไม่ต้องแก้
+ *   3. **หน้าสำเร็จเป็นหน้าเต็ม ไม่ใช่ `Swal`** ⇒ ไม่มี `.swal2-confirm` ให้กดแล้ว
+ *      ต้องกดปุ่ม "ดูเรื่องนี้" (`goto-created-issue`) เพื่อไปหน้ารายละเอียดแทน
+ *
+ * 🔴 `waitForURL(/\/issues\/\d+$/)` **คงไว้เหมือนเดิม** — ตัวทดสอบส่วนที่เหลือพึ่ง URL นี้
+ */
 async function submitIssue(page: Page, title: string, dest: 'vote' | 'talk'): Promise<string> {
   await page.goto('/issues/new')
+
+  // ── ขั้น 1: ประเภท ──────────────────────────────────────────────────────
   await page.getByTestId('cat-suggestion').click()
   await page.getByRole('button', { name: 'วิชาการ' }).click()
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+
+  // ── ขั้น 2: รายละเอียด ──────────────────────────────────────────────────
   await page.getByTestId('issue-title').fill(title)
   await page.getByTestId('issue-desc').fill('E2E test — รายละเอียดอัตโนมัติ')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+
+  // ── ขั้น 3: ตรวจสอบ + ส่ง ───────────────────────────────────────────────
   await page.getByTestId(`dest-${dest}`).click()
   await page.getByTestId('issue-submit').click()
-  await page.locator('.swal2-confirm').click() // ปิด Swal "แจ้งเรื่องสำเร็จ!"
+
+  // หน้าสำเร็จ (เต็มหน้า) → กด "ดูเรื่องนี้" เพื่อไปหน้ารายละเอียด
+  await page.getByTestId('goto-created-issue').click()
   await page.waitForURL(/\/issues\/\d+$/)
   return page.url()
 }
