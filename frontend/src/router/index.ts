@@ -85,6 +85,16 @@ const router = createRouter({
           meta: { navTab: 'more' },
         },
         {
+          // ⚙️ หน้าตั้งค่า — แยกออกจาก `profile` (R3.3) เพราะเดิมไฟล์เดียวบรรจุทั้ง
+          //    "ฉันเป็นใคร" และ "ฉันจะรับอะไร" ⇒ ผู้ใช้ต้องเลื่อนผ่านสวิตช์ 5 ตัวเพื่อดูชื่อตัวเอง
+          //    🔴 **`headerBack` ชี้ `profile` ไม่ใช่ `'history'`** — หน้านี้เป็นลูกของกลุ่ม
+          //       "บัญชี" ที่อยู่ติดกับโปรไฟล์ และ deep link/กดจากที่อื่นต้องมีปลายทางที่แน่นอน
+          path: 'settings',
+          name: 'settings',
+          component: () => import('@/views/Settings.vue'),
+          meta: { navTab: 'more', headerBack: { name: 'profile' } },
+        },
+        {
           // 🧭 กิจกรรมของฉัน + บันทึกไว้ (C1/C2) — ข้อมูลของตัวเองล้วน ⇒ ไม่ต้องมี permission
           //    (ตัวตนคือสิทธิ์ — backend เอา user_id จาก JWT เท่านั้น)
           path: 'me',
@@ -102,7 +112,11 @@ const router = createRouter({
           path: 'profile/password',
           name: 'profile-password',
           component: () => import('@/views/ChangePassword.vue'),
-          meta: { navTab: 'more', navHidden: true, headerBack: { name: 'profile' } },
+          // ⚠️ **`path` ยังเป็น `profile/password` แต่ปุ่ม ← ชี้ `settings`** (R3.3) — ตั้งใจ ไม่ขัดกัน:
+          //    `path` ถูกตรึงไว้เพราะเทสต์/deep link อ้างถึง (R1.4) ส่วน `headerBack` เป็น *UX* ล้วน
+          //    ⇒ ต้องชี้ที่ที่ผู้ใช้มาจากจริง ซึ่งตอนนี้คือหน้า **ตั้งค่า** (ทางเข้าเดิมคือ dropdown
+          //    `⋮` ในหน้าโปรไฟล์ ซึ่ง R3.3 ถอดออกแล้ว — ดูคอมเมนต์หัว `Profile.vue`)
+          meta: { navTab: 'more', navHidden: true, headerBack: { name: 'settings' } },
         },
         {
           path: 'issues/new',
