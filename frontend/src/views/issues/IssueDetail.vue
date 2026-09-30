@@ -30,7 +30,14 @@ import type { ApiError } from '@/services/api'
 import { goUnavailable } from '@/router/unavailable'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
-import { STATUS_BADGE } from '@/constants/status'
+import { avatarCharOf } from '@/utils/avatar'
+import { fmtDateTime } from '@/datetime'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import AppSheet from '@/components/ui/AppSheet.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import StatusBadge from '@/components/ui/StatusBadge.vue'
 import ApproveBoardModal from '@/components/boards/ApproveBoardModal.vue'
 import BookmarkButton from '@/components/BookmarkButton.vue'
 
@@ -88,7 +95,8 @@ async function handleChangeDestination() {
   if (!issue.value) return
   const { value: dest } = await Swal.fire({
     title: 'แก้ไขปลายทางของเรื่อง',
-    html: 'เรื่องจะถูกส่งไป<span class="font-semibold">' +
+    html:
+      'เรื่องจะถูกส่งไป<span class="font-semibold">' +
       (issue.value.current_level === 'council' ? 'สภานักเรียน' : 'หัวหน้าห้อง') +
       '</span>เพื่อรับเรื่องอีกครั้ง',
     icon: 'question',
@@ -124,7 +132,12 @@ async function handleChangeDestination() {
 
   try {
     await changeDestination(issue.value.id, dest as RequestedDestination)
-    Swal.fire({ icon: 'success', title: 'เปลี่ยนปลายทางแล้ว', timer: 1200, showConfirmButton: false })
+    Swal.fire({
+      icon: 'success',
+      title: 'เปลี่ยนปลายทางแล้ว',
+      timer: 1200,
+      showConfirmButton: false,
+    })
     load()
   } catch (e) {
     Swal.fire({ icon: 'error', title: 'เปลี่ยนปลายทางไม่สำเร็จ', text: errMsg(e) })
@@ -137,7 +150,8 @@ async function load() {
   try {
     issue.value = await getIssue(Number(route.params.id))
     // 🔔 เปิดเรื่องแล้ว → mark notification ของเรื่องนี้ว่าอ่านแล้ว (badge ลด)
-    if (issue.value) void notificationsStore.read({ entity_type: 'issue', entity_id: issue.value.id })
+    if (issue.value)
+      void notificationsStore.read({ entity_type: 'issue', entity_id: issue.value.id })
   } catch (e) {
     // 🚪 404 = เรื่องนี้เปิดดูไม่ได้แล้ว (ถูกลบ หรือถูกสภากดซ่อน) — backend ตอบ 404 เหมือนกัน
     //    ⚠️ เช็ค **ก่อน** เงื่อนไข `!issue.value` เพราะ 404 เป็นสถานะสุดท้าย —
@@ -455,18 +469,162 @@ async function handleExtendCountdown() {
   }
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return '-'
-  const d = new Date(iso)
-  return d.toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+/**
+ * 🎯 **แถบปฏิบัติการ — ปุ่มเดียวต่อหนึ่ง "งานที่รออยู่จริง"**
+ *
+ * ⭐ ของเดิมมีปุ่มเต็มความกว้าง **9 ปุ่ม** เรียงเท่ากันหมด (`:577-651`) ⇒ ผู้ใช้ต้องอ่านทั้งหน้า
+ *    เพื่อหาว่า "ตกลงฉันต้องกดอะไร" ซึ่งเป็นข้อที่ audit ฟ้องตรง ๆ
+ *
+ * ⇒ แยกเป็น **1 ปุ่มหลัก** (อยู่ในแถบปักล่าง — โซนนิ้วโป้ง) + ที่เหลือใน `⋯`
+ *    · นิยามปุ่มรองเป็น **ข้อมูลชุดเดียว** (`secondaryActions`) แล้วให้ทั้งแถบเดสก์ท็อป
+ *      และแผ่นมือถือ `v-for` จากตัวเดียวกัน ⇒ เพิ่ม/ถอดปุ่มในอนาคตแก้ที่เดียว
+ *      ไม่มีทางที่สองที่จะไม่ตรงกัน
+ *    · **กรองสิทธิ์ตอนสร้างรายการ ไม่ใช่ `disabled`** — เมนูที่กดไม่ได้คือความรกที่ audit ฟ้อง
+ *      (หลักการ "ไม่ใส่เมนูที่ผู้ใช้ไม่มีสิทธิ์")
+ */
+interface ActionItem {
+  key: string
+  label: string
+  icon: string
+  /** ผูกกับ e2e ที่มีอยู่ (`piri-boards-flow.spec.ts`) — ห้ามถอด */
+  testid?: string
+  danger?: boolean
+  run: () => void
 }
+
+const moreOpen = ref(false)
+
+/**
+ * 🔴 **`canApprove` มาก่อน `canReceive`** — ทั้งคู่จริงพร้อมกันได้ (แอดมิน/สภารับเรื่องได้ทุกเรื่อง)
+ *    แต่เรื่องที่ขอ `vote`/`talk` และยังไม่ถูกอนุมัติ "งานที่รออยู่จริง" คือการอนุมัติ
+ *    ไม่ใช่การรับเข้าไปดำเนินการเอง ⇒ ถ้าให้ `canReceive` ชนะ ผู้ใช้อบรมจะต้องไปงมปุ่มอนุมัติใน `⋯`
+ *    ทั้งที่มันคือขั้นถัดไปของเรื่องนั้น
+ *
+ * ⚠️ **แผนเดิมเขียนว่า `กำลังดำเนินการ` → "อัปเดตความคืบหน้า"** ซึ่งในระบบนี้ **ไม่มี endpoint นั้น**
+ *    ⇒ ใช้ "เพิ่มความคืบหน้า" ที่เลื่อน+โฟกัสช่องเพิ่มขั้นตอนแทน (เป็นการกระทำจริง ไม่ใช่ปุ่มหลอก)
+ *    และ **ไม่ยก "ปิดเรื่อง" ขึ้นมาเป็นปุ่มหลัก** เพราะการปิดเป็นทางตันที่กดพลาดแล้วกู้ยาก
+ *    ⇒ อยู่ล่างใน `⋯` ตามหลัก "ปุ่มอันตรายนอกโซนนิ้วโป้ง"
+ */
+const primaryAction = computed<ActionItem | null>(() => {
+  if (!issue.value) return null
+  if (canApprove.value) {
+    return {
+      key: 'approve',
+      label: 'อนุมัติเผยแพร่สาธารณะ',
+      icon: 'bi-people-fill',
+      testid: 'approve-public-btn',
+      run: () => {
+        approveOpen.value = true
+      },
+    }
+  }
+  if (canReceive.value) {
+    return {
+      key: 'receive',
+      label: 'รับเรื่อง + ตั้งเวลา',
+      icon: 'bi-hand-thumbs-up',
+      run: handleAccept,
+    }
+  }
+  if (canManage.value && issue.value.status === 'in_progress') {
+    return {
+      key: 'progress',
+      label: 'เพิ่มความคืบหน้า',
+      icon: 'bi-plus-circle',
+      run: focusStepComposer,
+    }
+  }
+  return null
+})
+
+const secondaryActions = computed<ActionItem[]>(() => {
+  const i = issue.value
+  if (!i) return []
+  const list: ActionItem[] = []
+
+  if (canEditIssue.value) {
+    list.push({
+      key: 'edit',
+      label: 'แก้ไขเรื่อง',
+      icon: 'bi-pencil-square',
+      run: () => router.push({ name: 'issue-edit', params: { id: i.id } }),
+    })
+  }
+  if (canChangeDestination.value) {
+    list.push({
+      key: 'destination',
+      label: 'แก้ไขปลายทาง',
+      icon: 'bi-arrow-repeat',
+      testid: 'change-dest-btn',
+      run: handleChangeDestination,
+    })
+  }
+  // 🔴 ดึงออกเป็นตัวแปรก่อน — `publishedBoardId.value` เป็น `number | null` และโปรเจกต์นี้เปิด
+  //    `noUncheckedIndexedAccess` ⇒ การใช้ `!` ในเทมเพลต/คอมโพเนนต์เป็นทางที่ type-check จับได้ทีหลัง
+  const bid = publishedBoardId.value
+  if (bid !== null) {
+    list.push({
+      key: 'board',
+      label: 'ดู PIRI Board สาธารณะ',
+      icon: 'bi-box-arrow-up-right',
+      testid: 'board-link',
+      run: () => router.push({ name: 'board-detail', params: { id: bid } }),
+    })
+  }
+  if (canManage.value && canEscalate.value) {
+    list.push({
+      key: 'escalate',
+      label: 'ส่งต่อไประดับบน',
+      icon: 'bi-arrow-up-circle',
+      run: handleEscalate,
+    })
+  }
+  if (canManage.value && i.status === 'in_progress') {
+    list.push({
+      key: 'resolve',
+      label: 'ปิดเรื่อง (เสร็จแล้ว)',
+      icon: 'bi-check2-circle',
+      run: handleResolve,
+    })
+  }
+  if (canManage.value && i.countdown && i.status === 'in_progress') {
+    list.push({
+      key: 'extend',
+      label: 'ยืดเวลา',
+      icon: 'bi-clock-history',
+      run: handleExtendCountdown,
+    })
+  }
+  if (canCancel.value || canReject.value) {
+    list.push({
+      key: 'cancel',
+      label: isReporter.value ? 'ยกเลิกเรื่อง' : 'ปัดตก',
+      icon: 'bi-x-circle',
+      danger: true,
+      run: handleCancel,
+    })
+  }
+  return list
+})
+
+/** ปิดแผ่นก่อนเสมอ — ไม่งั้น Swal ที่เด้งขึ้นจะซ้อนกับแผ่นที่ยังเปิดอยู่ */
+function runSecondary(a: ActionItem) {
+  moreOpen.value = false
+  a.run()
+}
+
+/** อินพุต "เพิ่มขั้นตอน" — เป้าของปุ่มหลักตอนสถานะเป็น `กำลังดำเนินการ` */
+const stepTitleInput = ref<HTMLInputElement | null>(null)
+function focusStepComposer() {
+  const el = stepTitleInput.value
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  // ⚠️ `preventScroll` — ไม่งั้นเบราว์เซอร์จะกระโดดอีกรอบหลัง `scrollIntoView` ที่ตั้งใจทำความนุ่ม
+  el.focus({ preventScroll: true })
+}
+
+/** ตัวนับความคืบหน้า — "2/5" บอกได้ทันทีว่าเรื่องนี้เดินไปถึงไหนโดยไม่ต้องอ่านทีละบรรทัด */
+const completedSteps = computed(() => issue.value?.steps?.filter((s) => s.is_completed).length ?? 0)
 
 /**
  * ป้าย "เหลืออีกกี่วัน" — **ต้องคำนวณจาก `deadline` ไม่ใช่ `estimated_days`**
@@ -490,358 +648,406 @@ function countdownLabel(deadline: string): string {
 
 <template>
   <!-- โหลดข้อมูล: skeleton เนื้อหา -->
-  <div v-if="isLoading" class="max-w-3xl mx-auto space-y-5 animate-pulse">
-    <div class="rounded-2xl border border-stone-200 bg-white p-5 space-y-4">
-      <div class="h-3 w-40 rounded bg-stone-100"></div>
-      <div class="flex gap-2">
-        <div class="h-6 w-20 rounded-full bg-stone-100"></div>
-        <div class="h-6 w-24 rounded-full bg-stone-100"></div>
+  <div v-if="isLoading" class="mx-auto max-w-3xl animate-pulse space-y-4">
+    <AppCard>
+      <div class="h-3 w-32 rounded bg-canvas"></div>
+      <div class="mt-3 flex gap-2">
+        <div class="h-6 w-24 rounded-full bg-canvas"></div>
+        <div class="h-6 w-20 rounded-full bg-canvas"></div>
       </div>
-      <div class="h-8 w-3/4 rounded-lg bg-stone-100"></div>
-      <div class="h-3 w-48 rounded bg-stone-100"></div>
-      <div class="h-4 w-full rounded bg-stone-100"></div>
-      <div class="h-4 w-2/3 rounded bg-stone-100"></div>
-    </div>
-    <div class="rounded-2xl border border-stone-200 bg-white p-5 space-y-3">
-      <div class="h-5 w-44 rounded bg-stone-100"></div>
-      <div v-for="n in 3" :key="n" class="h-12 rounded-lg bg-stone-100"></div>
-    </div>
+    </AppCard>
+    <AppCard>
+      <div class="h-3 w-24 rounded bg-canvas"></div>
+      <div class="mt-3 h-6 w-3/4 rounded-lg bg-canvas"></div>
+      <div class="mt-4 h-4 w-full rounded bg-canvas"></div>
+      <div class="mt-2 h-4 w-2/3 rounded bg-canvas"></div>
+    </AppCard>
   </div>
 
-  <!-- โหลดไม่สำเร็จ: inline error + retry -->
-  <div
-    v-else-if="loadError"
-    class="max-w-3xl mx-auto flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
-  >
-    <i class="bi bi-exclamation-triangle text-3xl text-stone-400 mb-3"></i>
-    <p class="text-stone-600 px-6">{{ loadError }}</p>
-    <button
-      type="button"
-      class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
-      @click="load"
-    >
-      ลองอีกครั้ง
-    </button>
+  <!-- โหลดไม่สำเร็จ — `AppEmptyState` (ไม่มีกรอบเส้นประแล้ว) + ทางออกคือปุ่มลองใหม่ -->
+  <div v-else-if="loadError" class="mx-auto max-w-3xl">
+    <AppCard>
+      <AppEmptyState icon="bi-wifi-off" title="เปิดเรื่องนี้ไม่ได้" :description="loadError">
+        <AppButton variant="secondary" size="sm" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" /></template>
+          ลองอีกครั้ง
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
   </div>
 
-  <div v-else-if="issue" class="max-w-3xl mx-auto space-y-5">
-    <!-- Header -->
-    <div class="rounded-2xl border border-stone-200 bg-white p-5">
-      <p class="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
-        <i class="bi bi-folder2-open text-[12px]"></i> Issue Dossier
-      </p>
+  <div v-else-if="issue" class="mx-auto flex max-w-3xl flex-col gap-4">
+    <!-- ① สถานะ + SLA — "ตอนนี้เรื่องนี้อยู่ไหน" ต้องตอบได้ก่อนอย่างอื่น -->
+    <AppCard>
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <div class="flex flex-wrap gap-2 mb-2">
-            <span class="px-2.5 py-0.5 bg-stone-100 text-stone-600 text-xs rounded-full">
-              {{ MAIN_CATEGORY_LABELS[issue.main_category] }}
-            </span>
-            <span class="px-2.5 py-0.5 bg-stone-100 text-stone-600 text-xs rounded-full">
-              {{ subcategoryLabel(issue.main_category, issue.category) }}
-            </span>
-            <span class="px-2.5 py-0.5 bg-stone-100 text-stone-600 text-xs rounded-full">
+          <p class="text-[13px] font-medium text-ink-3">สถานะปัจจุบัน</p>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <StatusBadge :status="issue.status" :label="STATUS_LABELS[issue.status]" size="full" />
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full bg-canvas px-2.5 py-1 text-[13px] font-semibold text-ink-2"
+            >
+              <i class="bi bi-diagram-3" aria-hidden="true" />
               {{ LEVEL_LABELS[issue.current_level] }}
             </span>
+            <!-- 🔁 ปลายทางที่ผู้แจ้งขอ — สำคัญพอจะอยู่การ์ดสถานะ ไม่ใช่ไปกองกับชิปหมวด -->
             <span
               v-if="issue.requested_destination && issue.requested_destination !== 'normal'"
-              class="px-2.5 py-0.5 bg-stone-100 text-stone-600 text-xs rounded-full"
+              class="inline-flex items-center gap-1.5 rounded-full bg-brand-tint px-2.5 py-1 text-[13px] font-semibold text-brand"
             >
+              <i class="bi bi-send" aria-hidden="true" />
               {{ DESTINATION_LABELS[issue.requested_destination] }}
             </span>
           </div>
-          <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-snug break-words">
-            {{ issue.title }}
-          </h1>
-          <p class="text-stone-500 text-sm mt-1 break-words">
-            โดย {{ issue.reporter_name || 'ไม่ระบุชื่อ' }}
-            {{ issue.reporter_room ? `(${issue.reporter_room})` : '' }}
-          </p>
         </div>
-        <div class="flex shrink-0 items-center gap-2">
-          <span
-            class="px-3 py-1 text-sm font-medium rounded-full whitespace-nowrap"
-            :class="STATUS_BADGE[issue.status] || 'bg-stone-100 text-stone-500'"
-          >
-            {{ STATUS_LABELS[issue.status] }}
-          </span>
-          <!-- 🔖 บันทึกไว้อ่านทีหลัง (C2) — อยู่ในการ์ดหัวเรื่อง ไม่ใช่แถบปุ่มด้านล่าง -->
-          <BookmarkButton entity-type="issue" :entity-id="issue.id" />
-        </div>
+        <!-- 🔖 บันทึกไว้อ่านทีหลัง (C2) — อยู่การ์ดหัวเรื่อง ไม่ใช่แถบปุ่มด้านล่าง -->
+        <BookmarkButton entity-type="issue" :entity-id="issue.id" />
       </div>
-      <p class="text-stone-700 mt-4 whitespace-pre-wrap">{{ issue.description }}</p>
-      <p class="text-xs text-stone-400 mt-3">
-        แจ้งเมื่อ {{ fmtDate(issue.created_at) }} · ห้อง {{ issue.room_name }}
-      </p>
-    </div>
 
-    <!-- Actions (mobile = ปุ่มเต็มแถว, กดง่าย) -->
-    <div
-      v-if="canReceive || canManage || canEditIssue"
-      class="grid grid-cols-1 sm:flex sm:flex-wrap gap-2"
-    >
-      <button
-        v-if="canEditIssue"
-        @click="router.push({ name: 'issue-edit', params: { id: issue.id } })"
-        class="px-4 py-2.5 bg-white border border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 text-sm font-medium"
+      <!-- ⏳ SLA — คงแถบสีซ้ายแบบเดิมไว้ (ของดีที่มีอยู่แล้ว) แต่ผูกสีกับ token ของสถานะ -->
+      <div
+        v-if="issue.countdown"
+        class="mt-4 flex items-center justify-between gap-3 rounded-control border-l-4 p-3.5"
+        :class="
+          issue.countdown.is_overdue ? 'border-l-danger bg-danger-soft' : 'border-l-brand bg-canvas'
+        "
       >
-        <i class="bi bi-pencil-square mr-1"></i> แก้ไขเรื่อง
-      </button>
-      <button
-        v-if="canReceive"
-        @click="handleAccept"
-        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
-      >
-        <i class="bi bi-hand-thumbs-up mr-1"></i> รับเรื่อง + ตั้งเวลา
-      </button>
-      <!-- 🏛️ สภานักเรียน/แอดมิน อนุมัติเผยแพร่เป็น PIRI Board -->
-      <button
-        v-if="canApprove"
-        @click="approveOpen = true"
-        data-testid="approve-public-btn"
-        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
-      >
-        <i class="bi bi-people-fill mr-1"></i> อนุมัติเผยแพร่สาธารณะ
-      </button>
-      <!-- 🔁 หัวหน้าห้อง/สภา แก้ไขปลายทาง (แจ้งผิด) — normal/vote/talk -->
-      <button
-        v-if="canChangeDestination"
-        @click="handleChangeDestination"
-        data-testid="change-dest-btn"
-        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
-      >
-        <i class="bi bi-arrow-repeat mr-1"></i> แก้ไขปลายทาง
-      </button>
-      <!-- เรื่องที่เผยแพร่เป็น board แล้ว → ลิงก์ไปชม -->
-      <button
-        v-if="publishedBoardId"
-        @click="router.push({ name: 'board-detail', params: { id: publishedBoardId } })"
-        data-testid="board-link"
-        class="px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 text-sm font-medium"
-      >
-        <i class="bi bi-box-arrow-up-right mr-1"></i> ดู PIRI Board สาธารณะ
-      </button>
-      <button
-        v-if="canManage && canEscalate"
-        @click="handleEscalate"
-        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
-      >
-        <i class="bi bi-arrow-up-circle mr-1"></i> ส่งต่อไประดับบน
-      </button>
-      <button
-        v-if="canManage && issue.status === 'in_progress'"
-        @click="handleResolve"
-        class="px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 text-sm font-medium"
-      >
-        <i class="bi bi-check2-circle mr-1"></i> ปิดเรื่อง (เสร็จแล้ว)
-      </button>
-      <button
-        v-if="canManage && issue.countdown && issue.status === 'in_progress'"
-        @click="handleExtendCountdown"
-        class="px-4 py-2.5 bg-white border border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 text-sm font-medium"
-      >
-        <i class="bi bi-clock-history mr-1"></i> ยืดเวลา
-      </button>
-      <!-- ยกเลิก (ผู้แจ้ง — กันส่งผิด) / ปัดตก (ผู้ดูแล) -->
-      <button
-        v-if="canCancel || canReject"
-        @click="handleCancel"
-        class="px-4 py-2.5 bg-white border border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 text-sm font-medium"
-      >
-        <i class="bi bi-x-circle mr-1"></i> {{ isReporter ? 'ยกเลิกเรื่อง' : 'ปัดตก' }}
-      </button>
-    </div>
-
-    <!-- Countdown -->
-    <div
-      v-if="issue.countdown"
-      class="bg-white rounded-2xl border border-stone-200 border-l-4 border-l-brand p-5"
-    >
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <i class="bi bi-hourglass-split text-xl text-brand"></i>
-          <div>
-            <p class="text-sm font-medium text-stone-700">การนับถอยหลัง</p>
-            <p class="text-xs text-stone-500">
+        <div class="flex min-w-0 items-center gap-2.5">
+          <i
+            class="bi bi-hourglass-split text-lg"
+            :class="issue.countdown.is_overdue ? 'text-danger' : 'text-brand'"
+            aria-hidden="true"
+          />
+          <div class="min-w-0">
+            <p class="text-[13px] font-semibold text-ink-1">กำหนดแก้ไข</p>
+            <p class="text-[13px] text-ink-2">
               ตั้งไว้ {{ issue.countdown.estimated_days }} วัน · ถึง
-              {{ fmtDate(issue.countdown.deadline) }}
+              {{ fmtDateTime(issue.countdown.deadline) }}
             </p>
           </div>
         </div>
-        <div class="text-lg font-bold font-display text-brand">
-          {{
-            issue.countdown.is_overdue
-              ? 'เกินเวลา!'
-              : countdownLabel(issue.countdown.deadline)
-          }}
-        </div>
-      </div>
-    </div>
-
-    <!-- Steps -->
-    <div class="rounded-2xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900 mb-3">
-        <i class="bi bi-diagram-3 mr-1"></i> ขั้นตอนการดำเนินงาน
-      </h2>
-      <div v-if="issue.steps && issue.steps.length" class="divide-y divide-stone-100">
-        <div
-          v-for="s in issue.steps"
-          :key="s.id"
-          class="flex items-center gap-3 py-3"
-          :class="s.is_completed ? 'opacity-70' : ''"
+        <p
+          class="shrink-0 font-display text-title-m font-bold"
+          :class="issue.countdown.is_overdue ? 'text-danger' : 'text-brand'"
         >
+          {{ issue.countdown.is_overdue ? 'เกินเวลา!' : countdownLabel(issue.countdown.deadline) }}
+        </p>
+      </div>
+    </AppCard>
+
+    <!-- ② เรื่องที่แจ้ง -->
+    <AppCard>
+      <!-- 🏷️ เหลือ 2 ชิป (หมวดหลักเป็น *คำนำหน้า* ของหมวดย่อยที่อ่านออกได้เอง) — ระดับย้ายไปการ์ดสถานะ -->
+      <p class="text-[11px] font-medium text-ink-3">
+        {{ MAIN_CATEGORY_LABELS[issue.main_category] }} ·
+        {{ subcategoryLabel(issue.main_category, issue.category) }}
+      </p>
+      <!-- ⚠️ `<h2>` ไม่ใช่ `<h1>` — `<h1>` ของหน้าอยู่ที่ `AppHeader` แล้ว (R0.3.1) -->
+      <h2 class="mt-1.5 text-title-l font-bold leading-snug break-words text-ink-1">
+        {{ issue.title }}
+      </h2>
+      <p class="mt-3 whitespace-pre-wrap text-body text-ink-1">{{ issue.description }}</p>
+      <img
+        v-if="issue.image_url"
+        :src="issue.image_url"
+        alt="ภาพประกอบที่แนบมากับเรื่อง"
+        class="mt-3 max-h-80 w-full rounded-control border border-line object-cover"
+      />
+    </AppCard>
+
+    <!-- ③ ขั้นตอนการดำเนินงาน -->
+    <AppCard>
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-base font-bold text-ink-1">ขั้นตอนการดำเนินงาน</h2>
+        <span v-if="issue.steps && issue.steps.length" class="text-[13px] font-medium text-ink-3">
+          {{ completedSteps }}/{{ issue.steps.length }}
+        </span>
+      </div>
+
+      <ul v-if="issue.steps && issue.steps.length" class="mt-1 divide-y divide-line">
+        <li v-for="s in issue.steps" :key="s.id" class="flex items-start gap-3 py-3">
+          <!-- ปุ่มทำเครื่องหมาย — ต้องมี aria-label เพราะปุ่มที่มีแต่ไอคอนอ่านไม่ออก -->
           <button
             v-if="canManage && !s.is_completed"
+            type="button"
+            class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-line text-ink-3 transition-colors hover:border-brand hover:text-brand"
+            :aria-label="`ทำเครื่องหมายว่าขั้นตอน “${s.step_title}” เสร็จแล้ว`"
             @click="handleCompleteStep(s.id)"
-            class="w-6 h-6 rounded-full border-2 border-stone-300 hover:border-brand hover:bg-stone-50 flex items-center justify-center text-xs transition"
-            title="ทำขั้นตอนนี้สำเร็จ"
           >
-            <i class="bi bi-check text-brand"></i>
+            <i class="bi bi-check text-sm" aria-hidden="true" />
           </button>
-          <div
+          <span
             v-else
-            class="w-6 h-6 rounded-full flex items-center justify-center"
-            :class="s.is_completed ? 'bg-emerald-500 text-white' : 'bg-stone-200'"
+            class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+            :class="s.is_completed ? 'bg-ok text-white' : 'bg-canvas'"
+            aria-hidden="true"
           >
-            <i v-if="s.is_completed" class="bi bi-check text-xs"></i>
-          </div>
-          <div class="flex-1 min-w-0">
+            <i v-if="s.is_completed" class="bi bi-check text-sm" />
+          </span>
+          <div class="min-w-0 flex-1">
             <p
               class="text-sm font-medium"
-              :class="s.is_completed ? 'text-stone-500 line-through' : 'text-stone-800'"
+              :class="s.is_completed ? 'text-ink-3 line-through' : 'text-ink-1'"
             >
               {{ s.step_title }}
             </p>
-            <p v-if="s.step_detail" class="text-xs text-stone-500">{{ s.step_detail }}</p>
+            <p v-if="s.step_detail" class="mt-0.5 text-[13px] text-ink-2">{{ s.step_detail }}</p>
           </div>
-        </div>
-      </div>
-      <p v-else class="text-sm text-stone-400">ยังไม่มีขั้นตอนการดำเนินงาน</p>
+        </li>
+      </ul>
+      <p v-else class="mt-2 text-[13px] text-ink-3">ยังไม่มีขั้นตอนการดำเนินงาน</p>
 
-      <div v-if="canManage" class="mt-4 pt-4 border-t border-stone-100 grid grid-cols-1 sm:flex gap-2">
+      <div v-if="canManage" class="mt-3 grid gap-2 border-t border-line pt-3 sm:grid-cols-2">
         <input
+          ref="stepTitleInput"
           v-model="newStepTitle"
           type="text"
           placeholder="เพิ่มขั้นตอน..."
-          class="w-full sm:flex-1 px-3 py-2.5 border border-stone-300 rounded-lg text-sm bg-white"
+          class="field"
           @keyup.enter="handleAddStep"
         />
         <input
           v-model="newStepDetail"
           type="text"
           placeholder="รายละเอียด (ไม่บังคับ)"
-          class="w-full sm:w-48 px-3 py-2.5 border border-stone-300 rounded-lg text-sm bg-white"
+          class="field"
           @keyup.enter="handleAddStep"
         />
-        <button
+        <AppButton
+          variant="secondary"
+          size="sm"
+          class="sm:col-span-2 sm:justify-self-start"
+          :disabled="!newStepTitle.trim()"
           @click="handleAddStep"
-          class="px-4 py-2.5 bg-white border border-stone-200 text-stone-600 rounded-lg text-sm hover:bg-stone-50"
         >
-          <i class="bi bi-plus-lg"></i>
-        </button>
+          <template #icon><i class="bi bi-plus-lg" /></template>
+          เพิ่มขั้นตอน
+        </AppButton>
       </div>
-    </div>
+    </AppCard>
 
-    <!-- Comments (แบบ YouTube — ชื่อ + เวลา + ข้อความ) -->
-    <div class="rounded-2xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900 mb-3">
-        <i class="bi bi-chat-left-text mr-1"></i> คอมเมนต์
-        <span v-if="issue.comments?.length" class="text-sm font-normal text-stone-400"
-          >({{ issue.comments.length }})</span
-        >
-      </h2>
-
-      <div v-if="issue.comments && issue.comments.length" class="divide-y divide-stone-100">
-        <div
-          v-for="c in issue.comments"
-          :key="c.id"
-          class="py-4 first:pt-0 last:pb-0"
-        >
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <div
-                class="w-8 h-8 rounded-full bg-stone-100 text-stone-700 flex items-center justify-center font-bold text-sm shrink-0"
-              >
-                {{ (c.commenter_first_name || c.commenter_name || '?').charAt(0) }}
-              </div>
-              <div class="min-w-0">
-                <p class="text-sm font-medium text-stone-800 truncate">
-                  {{ c.commenter_name || 'ไม่ระบุชื่อ' }}
-                  <span v-if="c.commenter_room" class="text-xs text-stone-400 font-normal"
-                    >({{ c.commenter_room }})</span
-                  >
-                </p>
-                <p class="text-xs text-stone-400">
-                  {{ fmtDate(c.created_at) }}
-                  <span v-if="c.updated_at">· แก้ไข {{ fmtDate(c.updated_at) }}</span>
-                </p>
-              </div>
-            </div>
-            <!-- แก้/ลบได้เฉพาะคอมเมนต์ของตัวเอง -->
-            <div v-if="c.user_id === authStore.user?.id" class="flex gap-1 shrink-0">
-              <button
-                @click="handleEditComment(c.id, c.body)"
-                title="แก้ไขคอมเมนต์"
-                class="w-8 h-8 rounded-lg hover:bg-stone-100 text-stone-500 text-sm"
-              >
-                <i class="bi bi-pencil"></i>
-              </button>
-              <button
-                @click="handleDeleteComment(c.id)"
-                title="ลบคอมเมนต์"
-                class="w-8 h-8 rounded-lg hover:bg-red-50 text-brand text-sm"
-              >
-                <i class="bi bi-trash"></i>
-              </button>
-            </div>
-          </div>
-          <p class="text-sm text-stone-700 mt-2 whitespace-pre-wrap break-words">{{ c.body }}</p>
+    <!-- ④ ประวัติการดำเนินงาน (ไทม์ไลน์) — มาก่อนคอมเมนต์ เพราะเป็น "เรื่อง" ไม่ใช่ "บทสนทนา" -->
+    <AppCard>
+      <h2 class="text-base font-bold text-ink-1">ประวัติการดำเนินงาน</h2>
+      <div
+        v-if="issue.status_history && issue.status_history.length"
+        class="relative mt-3 space-y-4 border-l-2 border-line pl-5"
+      >
+        <div v-for="h in issue.status_history" :key="h.id" class="relative">
+          <span
+            class="absolute -left-[25px] top-1.5 h-3 w-3 rounded-full bg-brand"
+            aria-hidden="true"
+          />
+          <StatusBadge :status="h.status" :label="STATUS_LABELS[h.status]" size="full" />
+          <p v-if="h.note" class="mt-1.5 text-sm text-ink-1">{{ h.note }}</p>
+          <p class="mt-0.5 text-caption text-ink-3">{{ fmtDateTime(h.created_at) }}</p>
         </div>
       </div>
-      <p v-else class="text-sm text-stone-400">ยังไม่มีคอมเมนต์ — เป็นคนแรกที่รับทราบเรื่องนี้</p>
+      <p v-else class="mt-2 text-[13px] text-ink-3">ไม่มีประวัติ</p>
+    </AppCard>
+
+    <!-- ⑤ คอมเมนต์ -->
+    <AppCard>
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-base font-bold text-ink-1">คอมเมนต์</h2>
+        <span
+          v-if="issue.comments && issue.comments.length"
+          class="text-[13px] font-medium text-ink-3"
+        >
+          {{ issue.comments.length }}
+        </span>
+      </div>
+
+      <div v-if="issue.comments && issue.comments.length" class="mt-1 divide-y divide-line">
+        <div v-for="c in issue.comments" :key="c.id" class="py-3.5 first:pt-3 last:pb-0">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex min-w-0 items-center gap-2.5">
+              <span
+                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-canvas text-sm font-bold text-ink-2"
+                aria-hidden="true"
+              >
+                {{ avatarCharOf(c.commenter_name || c.commenter_first_name) }}
+              </span>
+              <div class="min-w-0">
+                <p class="truncate text-sm font-medium text-ink-1">
+                  {{ c.commenter_name || 'ไม่ระบุชื่อ' }}
+                  <span v-if="c.commenter_room" class="text-[11px] font-normal text-ink-3">
+                    ({{ c.commenter_room }})
+                  </span>
+                </p>
+                <p class="text-[11px] text-ink-3">
+                  {{ fmtDateTime(c.created_at) }}
+                  <span v-if="c.updated_at">· แก้ไข {{ fmtDateTime(c.updated_at) }}</span>
+                </p>
+              </div>
+            </div>
+            <!-- แก้/ลบได้เฉพาะคอมเมนต์ของตัวเอง — `IconButton` บังคับ `label` (a11y) -->
+            <div v-if="c.user_id === authStore.user?.id" class="flex shrink-0 gap-0.5">
+              <IconButton
+                icon="bi-pencil"
+                label="แก้ไขคอมเมนต์นี้"
+                @click="handleEditComment(c.id, c.body)"
+              />
+              <IconButton
+                icon="bi-trash"
+                label="ลบคอมเมนต์นี้"
+                danger
+                @click="handleDeleteComment(c.id)"
+              />
+            </div>
+          </div>
+          <p class="mt-2 whitespace-pre-wrap break-words text-sm text-ink-1">{{ c.body }}</p>
+        </div>
+      </div>
+      <p v-else class="mt-2 text-[13px] text-ink-3">
+        ยังไม่มีคอมเมนต์ — เป็นคนแรกที่รับทราบเรื่องนี้
+      </p>
 
       <!-- ช่องพิมพ์คอมเมนต์ -->
-      <div class="mt-4 flex gap-2">
+      <div class="mt-3 flex gap-2 border-t border-line pt-3">
         <input
           v-model="newComment"
           type="text"
           placeholder="พิมพ์คอมเมนต์..."
-          class="flex-1 px-3 py-2.5 border border-stone-300 rounded-lg text-sm bg-white"
+          class="field"
           maxlength="1000"
           @keyup.enter="handleAddComment"
         />
-        <button
-          @click="handleAddComment"
-          class="px-4 py-2.5 bg-brand text-white rounded-lg text-sm hover:bg-brand-strong disabled:opacity-50 disabled:pointer-events-none"
-          :disabled="!newComment.trim()"
+        <AppButton :disabled="!newComment.trim()" @click="handleAddComment">
+          <template #icon><i class="bi bi-send" /></template>
+          ส่ง
+        </AppButton>
+      </div>
+    </AppCard>
+
+    <!-- ⑥ ข้อมูลผู้แจ้ง — งาน "อ่านประกอบ" ⇒ ไว้ท้ายสุด และพื้นเทาเพื่อลดน้ำหนัก -->
+    <AppCard muted>
+      <h2 class="text-base font-bold text-ink-1">ข้อมูลผู้แจ้ง</h2>
+      <dl class="mt-2 space-y-1.5 text-sm">
+        <div class="flex gap-2">
+          <dt class="w-20 shrink-0 text-ink-3">ผู้แจ้ง</dt>
+          <dd class="min-w-0 break-words text-ink-1">
+            {{ issue.reporter_name || 'ไม่ระบุชื่อ' }}
+            <span v-if="issue.reporter_room" class="text-ink-3">({{ issue.reporter_room }})</span>
+          </dd>
+        </div>
+        <div v-if="issue.room_name" class="flex gap-2">
+          <dt class="w-20 shrink-0 text-ink-3">ห้อง</dt>
+          <dd class="min-w-0 break-words text-ink-1">{{ issue.room_name }}</dd>
+        </div>
+        <div class="flex gap-2">
+          <dt class="w-20 shrink-0 text-ink-3">แจ้งเมื่อ</dt>
+          <dd class="text-ink-1">{{ fmtDateTime(issue.created_at) }}</dd>
+        </div>
+        <div v-if="issue.current_assignee_name" class="flex gap-2">
+          <dt class="w-20 shrink-0 text-ink-3">ผู้รับผิดชอบ</dt>
+          <dd class="min-w-0 break-words text-ink-1">
+            {{ issue.current_assignee_name }}
+            <span v-if="issue.current_assignee_role" class="text-ink-3">
+              ({{ issue.current_assignee_role }})
+            </span>
+          </dd>
+        </div>
+      </dl>
+
+      <!--
+        🔴 **ห้ามสัญญาเกินจริงเรื่องนิรนาม** — `is_anonymous` ซ่อนชื่อ *ผู้แจ้ง* แต่ชื่อผู้เขียน
+           คอมเมนต์เป็น **ชื่อจริงเสมอ** (`CommentOut.commenter_name`) ⇒ ถ้าโชว์แค่ป้าย
+           "ไม่ระบุตัวตน" เฉย ๆ ผู้ใช้จะเข้าใจว่าคลุมทั้งหน้า แล้วไปคอมเมนต์โดยคิดว่าตัวเองนิรนาม
+      -->
+      <p
+        v-if="issue.is_anonymous"
+        class="mt-3 flex gap-2 rounded-control bg-warn-soft p-2.5 text-[13px] leading-relaxed text-ink-1"
+      >
+        <i class="bi bi-incognito mt-0.5 shrink-0" aria-hidden="true" />
+        <span>
+          เรื่องนี้แจ้งแบบ <b>ไม่ระบุตัวตน</b> — ซ่อนชื่อผู้แจ้งเท่านั้น ส่วน<b
+            >คอมเมนต์ยังแสดงชื่อจริงของผู้เขียนเสมอ</b
+          >
+        </span>
+      </p>
+    </AppCard>
+
+    <!--
+      ⚑ แถบปฏิบัติการ — มือถือปักขอบล่าง (โซนนิ้วโป้ง) · เดสก์ท็อปเป็นแถวบนสุดแบบเดิม
+        ⭐ **ปุ่มถูกนิยามครั้งเดียว** (`primaryAction` / `secondaryActions`) แล้วให้ทั้งแถบนี้
+          และแผ่น `⋯` เรนเดอร์จากตัวเดียวกัน ⇒ ไม่มีทางที่สองชุดจะให้สิทธิ์ไม่ตรงกัน
+          ⇒ จึงเลื่อนตำแหน่งด้วย `order` ไม่ใช่เรนเดอร์สองก้อน
+
+        🔴 **`bottom-0` เฉย ๆ ถูกต้องแล้ว — ห้ามเปลี่ยนไปบวก `--app-nav-h`**
+           「วัดจริงแล้ว (Chromium · จอ 360×740)」:
+             · `bottom-0`                    → แถบอยู่เหนือ bottom nav **16px** · ปักอยู่นิ่ง · ไม่ทับการ์ดสุดท้าย
+             · `bottom: calc(nav + safe + .5rem)` → อยู่เหนือ nav **80px** และ **ทับการ์ดสุดท้าย 48px**
+           เพราะ `<main>` มี `pb-[calc(var(--app-nav-h)+safe+1rem)]` อยู่แล้ว ⇒ Chromium คิดขอบเขต
+           `sticky` จาก **content box** ของ scroll container ⇒ ระยะที่ `<main>` เว้นไว้ให้แถบล่าง
+           ถูกนับเป็นระยะปักไปในตัว · การบวกซ้ำจึงดันแถบลอยสูงเกินและไปทับเนื้อหา
+
+        ⚠️ แถบต้องเป็น **ลูกคนสุดท้ายที่จะเข้าลำดับการไหล** (อยู่ก่อน `AppSheet`/`ApproveBoardModal`
+           ที่ `Teleport`/`fixed` จึงไม่กินที่) — ถ้าย้ายไปไว้บนสุดของบล็อก แถบจะถูกดึงขึ้นทับการ์ด
+           เหนือมัน ณ ตำแหน่งเลื่อนสุด (ตรรกะเดียวกับที่วัดได้ข้างบน)
+    -->
+    <div
+      v-if="primaryAction || secondaryActions.length"
+      class="bottom-0 sticky z-30 lg:static lg:order-first"
+    >
+      <div class="flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-2">
+        <AppButton
+          v-if="primaryAction"
+          :data-testid="primaryAction.testid"
+          class="grow lg:grow-0"
+          @click="primaryAction.run()"
         >
-          <i class="bi bi-send mr-1"></i> ส่ง
-        </button>
+          <template #icon><i :class="['bi', primaryAction.icon]" /></template>
+          {{ primaryAction.label }}
+        </AppButton>
+
+        <!-- 📱 ที่เหลือในแผ่น — `lg:hidden` (ดูคอมเมนต์ใน AppSheet: แผ่นเป็น surface ของมือถือ) -->
+        <IconButton
+          v-if="secondaryActions.length"
+          class="ml-auto lg:hidden"
+          icon="bi-three-dots"
+          label="ตัวเลือกอื่น"
+          @click="moreOpen = true"
+        />
+
+        <!-- 🖥️ เดสก์ท็อป: ปุ่มรองเรียงในแถวเดียวกัน (แผ่นเป็น `lg:hidden` ⇒ ต้องมีทางเข้าอื่น) -->
+        <AppButton
+          v-for="a in secondaryActions"
+          :key="a.key"
+          :data-testid="a.testid"
+          :variant="a.danger ? 'danger' : 'secondary'"
+          size="sm"
+          class="hidden lg:inline-flex"
+          @click="a.run()"
+        >
+          <template #icon><i :class="['bi', a.icon]" /></template>
+          {{ a.label }}
+        </AppButton>
       </div>
     </div>
 
-    <!-- Timeline -->
-    <div class="rounded-2xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900 mb-3">
-        <i class="bi bi-clock-history mr-1"></i> ประวัติการดำเนินงาน
-      </h2>
-      <div
-        v-if="issue.status_history && issue.status_history.length"
-        class="relative pl-5 border-l-2 border-stone-200 space-y-4"
+    <!-- 📱 แผ่นตัวเลือกอื่น — `AppSheet` ใช้ `<Teleport to="body">` + `z-[60]` อยู่ในตัวแล้ว -->
+    <AppSheet
+      v-model="moreOpen"
+      title="ตัวเลือกอื่น"
+      :description="`เรื่อง #${issue.id} · ${issue.title}`"
+    >
+      <button
+        v-for="a in secondaryActions"
+        :key="a.key"
+        type="button"
+        :data-testid="a.testid"
+        class="flex min-h-[44px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-canvas"
+        :class="a.danger ? 'text-danger' : 'text-ink-1'"
+        @click="runSecondary(a)"
       >
-        <div v-for="h in issue.status_history" :key="h.id" class="relative">
-          <div class="absolute -left-[25px] top-1 w-3 h-3 rounded-full bg-brand"></div>
-          <span
-            class="px-2 py-0.5 text-[11px] font-medium rounded-full"
-            :class="STATUS_BADGE[h.status] || 'bg-stone-100 text-stone-500'"
-          >
-            {{ STATUS_LABELS[h.status] || h.status }}
-          </span>
-          <p class="text-sm text-stone-700 mt-1">{{ h.note }}</p>
-          <p class="text-xs text-stone-400">{{ fmtDate(h.created_at) }}</p>
-        </div>
-      </div>
-      <p v-else class="text-sm text-stone-400">ไม่มีประวัติ</p>
-    </div>
+        <i
+          :class="['bi', a.icon, 'text-lg', a.danger ? 'text-danger' : 'text-ink-2']"
+          aria-hidden="true"
+        />
+        <span class="text-sm font-medium">{{ a.label }}</span>
+      </button>
+    </AppSheet>
 
     <!-- 🏛️ Modal อนุมัติเผยแพร่ PIRI Board -->
     <ApproveBoardModal :issue="issue" v-model:open="approveOpen" @approved="onApproved" />
