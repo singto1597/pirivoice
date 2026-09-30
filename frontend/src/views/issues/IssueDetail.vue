@@ -32,6 +32,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { avatarCharOf } from '@/utils/avatar'
 import { fmtDateTime } from '@/datetime'
+import { useIsDesktop } from '@/composables/useMediaQuery'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppEmptyState from '@/components/ui/AppEmptyState.vue'
@@ -493,6 +494,12 @@ interface ActionItem {
 }
 
 const moreOpen = ref(false)
+
+/**
+ * 🔴 **ต้องรู้ขนาดจอ ไม่ใช่แค่ซ่อนด้วย CSS** — ดูเหตุผลเต็มในคอมเมนต์ของ `useMediaQuery.ts`
+ *    (สรุป: CSS ซ่อนแต่โหนดยังอยู่ใน DOM ⇒ `data-testid` ซ้ำ ⇒ Playwright strict mode ระเบิด)
+ */
+const isDesktop = useIsDesktop()
 
 /**
  * 🔴 **`canApprove` มาก่อน `canReceive`** — ทั้งคู่จริงพร้อมกันได้ (แอดมิน/สภารับเรื่องได้ทุกเรื่อง)
@@ -1001,28 +1008,37 @@ function countdownLabel(deadline: string): string {
           {{ primaryAction.label }}
         </AppButton>
 
-        <!-- 📱 ที่เหลือในแผ่น — `lg:hidden` (ดูคอมเมนต์ใน AppSheet: แผ่นเป็น surface ของมือถือ) -->
+        <!--
+          🔴 **สลับด้วย `v-if` ไม่ใช่ `lg:hidden`** — วัดบน staging แล้วเจอของจริง:
+             ถ้าใช้ CSS ซ่อน โหนด**ยังอยู่ใน DOM ทั้งสองชุด** ⇒ พอเปิดแผ่นที่จอ 360dp
+             จะมี `data-testid="change-dest-btn"` **2 ตัว** (แผ่น 1 + แถวเดสก์ท็อปที่ถูกซ่อน 1)
+             ⇒ Playwright strict mode **นับทุกโหนดที่ match ไม่สนใจว่ามองเห็นไหม** ⇒ เทสต์ที่จะเขียน
+             อนาคตระเบิดด้วย "resolved to 2 elements" โดยหาสาเหตุยากมาก
+             ⇒ ใช้ `useIsDesktop()` คุมให้ **มีชุดเดียวใน DOM เสมอ** (พิสูจน์ได้ ไม่ต้องเชื่อ CSS)
+             「ตรวจซ้ำหลังแก้: `data-testid` ทั้งหน้า = 1 ตัวต่อปุ่ม ✅」
+        -->
         <IconButton
-          v-if="secondaryActions.length"
-          class="ml-auto lg:hidden"
+          v-if="secondaryActions.length && !isDesktop"
+          class="ml-auto"
           icon="bi-three-dots"
           label="ตัวเลือกอื่น"
           @click="moreOpen = true"
         />
 
-        <!-- 🖥️ เดสก์ท็อป: ปุ่มรองเรียงในแถวเดียวกัน (แผ่นเป็น `lg:hidden` ⇒ ต้องมีทางเข้าอื่น) -->
-        <AppButton
-          v-for="a in secondaryActions"
-          :key="a.key"
-          :data-testid="a.testid"
-          :variant="a.danger ? 'danger' : 'secondary'"
-          size="sm"
-          class="hidden lg:inline-flex"
-          @click="a.run()"
-        >
-          <template #icon><i :class="['bi', a.icon]" /></template>
-          {{ a.label }}
-        </AppButton>
+        <!-- 🖥️ เดสก์ท็อป: ปุ่มรองเรียงในแถวเดียวกัน (แผ่น `AppSheet` เป็น surface ของมือถือ) -->
+        <template v-if="isDesktop">
+          <AppButton
+            v-for="a in secondaryActions"
+            :key="a.key"
+            :data-testid="a.testid"
+            :variant="a.danger ? 'danger' : 'secondary'"
+            size="sm"
+            @click="a.run()"
+          >
+            <template #icon><i :class="['bi', a.icon]" /></template>
+            {{ a.label }}
+          </AppButton>
+        </template>
       </div>
     </div>
 
