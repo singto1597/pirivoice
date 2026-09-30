@@ -591,11 +591,12 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
          ผู้ใช้เห็นเลข **1, 3, 4, 5** · แก้ที่โครงสร้าง: จำนวนขั้นคงที่ไม่ว่าข้อมูลจะกรอกถึงไหน
     -->
     <ol class="flex items-center gap-1.5" aria-label="ขั้นตอนการแจ้งเรื่อง">
-      <li v-for="s in STEPS" :key="s.n" class="flex min-w-0 flex-1 items-center gap-1.5">
+      <li v-for="s in STEPS" :key="s.n" class="flex min-w-0 items-center">
         <div
-          class="flex min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 py-2"
+          class="flex min-w-0 items-center gap-2 rounded-control px-2.5 py-2"
           :class="step === s.n ? 'bg-brand-tint' : ''"
           :aria-current="step === s.n ? 'step' : undefined"
+          :aria-label="`ขั้นที่ ${s.n} ${s.label}`"
         >
           <span
             class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold"
@@ -611,9 +612,16 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
             <i v-if="step > s.n" class="bi bi-check-lg" />
             <template v-else>{{ s.n }}</template>
           </span>
+          <!--
+            🔴 **มือถือโชว์ชื่อเฉพาะขั้นที่กำลังทำ** — วัดบน staging 360dp แล้วเจอ "รายละเอียด"
+               ถูกตัดเหลือ **"รายละ..."** เพราะ `flex-1` แบ่งสามส่วนเท่ากันแล้ว `truncate`
+               ⇒ ขั้นอื่นเหลือแต่วงกลมเลข ซึ่งอ่านออกและ **ไม่ตัดคำ**
+               · ชื่อเต็มยังถึง screen reader ผ่าน `aria-label` ของแต่ละขั้น (ด้านบน)
+               · ใช้ `whitespace-nowrap` **ไม่ใช่ `truncate`** ⇒ ตัดคำเป็นไปไม่ได้โดยโครงสร้าง
+          -->
           <span
-            class="truncate text-[13px] font-semibold"
-            :class="step === s.n ? 'text-brand' : 'text-ink-3'"
+            class="text-[13px] font-semibold whitespace-nowrap"
+            :class="[step === s.n ? 'text-brand' : 'text-ink-3', step === s.n ? null : 'hidden sm:inline']"
           >
             {{ s.label }}
           </span>
