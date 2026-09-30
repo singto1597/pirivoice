@@ -72,13 +72,26 @@ function onDanger(item: NavItem): void {
       <i class="bi bi-chevron-right shrink-0 text-xs text-ink-3" aria-hidden="true" />
     </RouterLink>
 
-    <!-- กลุ่มเมนู — หัวกลุ่ม sticky ติดขอบบนของ <main> -->
+    <!--
+      กลุ่มเมนู — หัวกลุ่ม sticky ติดขอบบนของ <main>
+
+      🔴 **ห้ามใส่ `overflow-hidden` ที่การ์ดนี้** — มันจะทำให้ `sticky` ของหัวกลุ่ม
+         หยุดทำงาน *เงียบ ๆ* เพราะ `overflow != visible` ทำให้ div นี้กลายเป็น scroll container
+         ⇒ หัวกลุ่มไปติดกับ "กล่องที่ไม่มีการเลื่อน" แทนที่จะติดกับ `<main>`
+         (กลไกเดียวกับ `skills.md` #11 ทุกประการ — ตรวจเจอจริงบน staging: เลื่อน 400px
+         แล้วหัวกลุ่มขยับ -400px ตามเนื้อหา ไม่ได้ค้างที่ขอบบน)
+
+      ⚠️ แต่การ์ดยังต้องมุมโค้ง ⇒ ย้ายความรับผิดชอบไปที่ `rounded-t-card` บนหัวกลุ่ม
+         (พื้นหัวกลุ่มทึบ `bg-surface` ⇒ ถ้าไม่โค้ง มันจะทับมุมโค้งของการ์ดเป็นมุมเหลี่ยม)
+         ส่วนมุมล่างได้จาก `rounded-card` ของการ์ดเอง — ลูกข้างในพื้นโปร่งทั้งหมด
+         (แถว hover ใช้ `rounded-control` ของตัวเอง) ⇒ ไม่มีอะไรล้นออกไปให้ต้อง clip
+    -->
     <div
       v-for="group in groups"
       :key="group.key"
-      class="-mx-4 overflow-hidden rounded-card border border-line bg-surface sm:mx-0"
+      class="-mx-4 rounded-card border border-line bg-surface sm:mx-0"
     >
-      <AppGroupHeader :label="group.label" tone="surface" />
+      <AppGroupHeader :label="group.label" tone="surface" class="rounded-t-card" />
       <div class="space-y-0.5 px-2 pb-2">
         <AppNavRow
           v-for="item in group.items"
