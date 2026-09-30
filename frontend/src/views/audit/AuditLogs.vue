@@ -60,6 +60,15 @@ const ACTION_LABELS: Record<string, string> = {
   CREATE_SUGGESTION: 'สร้างข้อเสนอแนะ',
   // A8 — ค่าตั้งระดับโรงเรียน (app_settings)
   UPDATE_QUIET_HOURS: 'ตั้งช่วงเวลาไม่ส่งแจ้งเตือน',
+  // D1 — ระบบกิจกรรม (ตาราง events + event_registrations)
+  CREATE_EVENT: 'สร้างกิจกรรม',
+  UPDATE_EVENT: 'แก้ไขกิจกรรม',
+  PUBLISH_EVENT: 'เผยแพร่กิจกรรม',
+  CANCEL_EVENT: 'ยกเลิกกิจกรรม',
+  DELETE_EVENT: 'ลบกิจกรรม',
+  RESTORE_EVENT: 'กู้คืนกิจกรรม',
+  REGISTER_EVENT: 'ลงทะเบียนกิจกรรม',
+  UNREGISTER_EVENT: 'ถอนการลงทะเบียนกิจกรรม',
   // ⚠️ หนี้ที่มีอยู่ก่อนรอบนี้: action ของ PIRI Boards ตัวอื่น (SUBMIT_VOTE · ADD_COMMENT ·
   //    APPROVE_TO_PUBLIC · HIDE_BOARD · …) ยังไม่มีป้ายทั้งสอง map ⇒ หน้าจอจะโชว์ชื่อดิบ
   //    ไม่ใช่บั๊กที่รอบนี้ก่อ และไม่แก้ในรอบนี้ (นอกขอบเขต E1 — บันทึกไว้ใน PR)

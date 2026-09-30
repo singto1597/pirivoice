@@ -1958,3 +1958,121 @@
   - 📌 **สัญญาณวินิจฉัย "เวลาเทียมรั่ว":** เทสต์ค้าง (ไม่ fail) · ค้างที่เทสต์ *ถัดไป* ไม่ใช่ตัวที่ใช้เวลาเทียม · ไฟล์เดียวผ่านแต่ทั้งไฟล์ค้าง ⇒ ให้สงสัยเวลาก่อนตรรกะ
   - 📌 **ตระกูลเดียวกับบทเรียน "สถานะที่ไม่มีใครเป็นเจ้าของ"** — `localStorage` · state ระดับโมดูล · และ **เวลาเทียม** ล้วนเป็นสถานะที่ `restoreAllMocks()` ไม่ได้คืนให้ ⇒ ต้องมีบรรทัดที่คืนมันตรง ๆ
 - **Date Added:** 2026-09-29
+
+### 🧮 helper ที่รับ **สองคิวรี** (นับ + ดึงแถว) = ต้องมี **สองชุดพารามิเตอร์** — เลข placeholder ของแต่ละคิวรีเป็นอิสระต่อกัน
+- **Context/Problem:** ฟังก์ชัน `_envelope(conn, count_sql, params, rows_sql, params, limit, offset)` รวม "นับ total" กับ "ดึงหน้า" ไว้ในตัวเดียว (แพตเทิร์นที่โปรเจคนี้ใช้ทั่ว) · พอเอามาใช้กับลิสต์ที่ดึงแถวต้องรู้ `user_id` (`rows_sql` มี `$1` = `user_id`) แต่ `count_sql` **ไม่ต้องใช้ `user_id` เลย** ⇒ ส่งลิสต์เดียวกันให้ทั้งคู่ ⇒ `asyncpg.exceptions.InterfaceError: the server expects 0 arguments for this query, 1 was passed` — **ล้มทั้ง 6 เทสต์ที่เรียกผ่าน helper นี้** และข้อความ error ไม่ได้บอกว่าคิวรีไหนเป็นปัญหา
+- **Root Cause:** **`$n` ของแต่ละคิวรีเป็น Namespace ของตัวเอง** — `$1` ใน `count_sql` กับ `$1` ใน `rows_sql` **ไม่ใช่พารามิเตอร์ตัวเดียวกัน** และไม่มีอะไรรับประกันว่าทั้งสองคิวรีใช้จำนวน/ลำดับพารามิเตอร์เท่ากัน · การห่อเป็น helper เดียวทำให้ **ข้อสันนิษฐานนั้นถูกซ่อนไว้ใน signature** (`params` ตัวเดียว) ⇒ วันที่คิวรีหนึ่งโตขึ้นแล้วต้องการพารามิเตอร์เพิ่ม อีกคิวรีไม่ต้อง ⇒ พังทันทีและพังแบบกว้าง
+- **Correct Pattern/Solution:**
+  - **แยกเป็น `count_params` / `rows_params` ใน signature** แล้วส่งต่อแยกกัน:
+    ```python
+    async def _envelope(conn, *, count_sql: str, count_params: list,
+                        rows_sql: str, rows_params: list, limit: int, offset: int) -> dict:
+    ```
+    ⇒ ทั้งสองฝั่งบังคับให้ผู้เรียก **คิดทีละคิวรี** และแนบ `assert sql.count("$") == len(params)` ได้จริงทั้งคู่
+  - 📌 **`assert sql.count("$")` ที่วางไว้ตรงจุดเดียว (ใน helper) จะไม่ทำงาน** เมื่อ helper ถือสองคิวรี — ต้อง assert **ต่อคิวรี** ไม่ใช่ต่อการเรียก
+  - ⚠️ **ข้อความ error ชี้ผิดที่เสมอ** (`the server expects 0 arguments` ฟังดูเหมือน "ผู้เรียกลืมส่ง") ⇒ **อ่านว่า "จำนวน args ไม่ตรงกับ *คิวรีใดคิวรีหนึ่ง*" แล้วไปนับ `$n` สูงสุดของแต่ละคิวรี** ไม่ใช่ไปหาว่าลืมส่งตัวไหน
+  - 🚩 **สัญญาณของคลาสนี้:** helper ตัวเดียวที่ "ทำสองอย่าง" (นับ + ดึง · insert + select · validate + write) ⇒ **พารามิเตอร์ของสองอย่างจะถูกรวมเป็นชุดเดียวเสมอ** ถ้าไม่แยกเอง
+- **Date Added:** 2026-09-29
+
+### 🏷️ `entity_id` — **ชื่อคอลัมน์เดียวกัน แต่คนละชนิดในคนละตาราง** ⇒ ต้อง `str()` ก่อนเขียน audit log
+- **Context/Problem:** `audit_logs` ใช้ `entity_type VARCHAR(50)` + **`entity_id VARCHAR(50)`** (มี default `'-'`) · แต่ `notifications.entity_id` เป็น **`INTEGER`** และ `bookmarks.entity_id` ก็ **`INTEGER`** · โค้ดที่ยิง `audit_logs` ด้วย `entity_id=event_id` (int) ⇒ `asyncpg.exceptions.DataError: invalid input for query argument $5: 3 (expected str, got int)` และเทสต์ที่เทียบก็ล้มด้วย `assert ('event' == 'event' and '3' == 3)` *"ทั้งที่ค่าตรงกัน"*
+- **Root Cause:** `entity_id` เป็น **คำที่แปลว่า "id ของสิ่งนั้น"** ซึ่งในฐานข้อมูลนี้ถูกทำให้เป็น **สองชนิดที่ต่างกันโดยเจตนา** (audit log เก็บเป็นข้อความเพราะรองรับ entity หลายชนิดรวมถึงชนิดที่ id ไม่ใช่ตัวเลข · ตารางปลายทางเก็บเป็น integer เพราะ FK/join ต้องใช้) ⇒ **การอ่านชื่อคอลัมน์แล้วอนุมานชนิด = กับดัก** และ type checker ฝั่ง Python **ไม่ช่วยเลย** เพราะ asyncpg ตรวจที่ runtime
+- **Correct Pattern/Solution:**
+  - **`entity_id=str(event_id)` เสมอเมื่อเขียน `audit_logs`** + เขียน comment กำกับที่จุดนั้นว่าทำไม (ไม่งั้นคนอ่านจะ "แก้ให้สะอาด" แล้วพัง)
+  - **เทสต์ต้องเทียบ `str(entity_id)`** ไม่ใช่ int — และ **`json.loads()` ก่อนเทียบ `old_values`/`new_values`** เพราะ **JSONB จาก raw asyncpg pool คืนมาเป็น `str`** ไม่ใช่ dict (`AttributeError: 'str' object has no attribute 'keys'`)
+  - 📌 **ก่อนเขียนโค้ดที่แตะตารางใหม่ ให้เปิด `init_db.py` ดูชนิดจริงของทุกคอลัมน์ที่จะเขียน** — อย่าเทียบกับตารางที่ "ชื่อคล้ายกัน" (บทเรียนตระกูลเดียวกับ polymorphic `entity_type`/`entity_id` ที่ L1478)
+  - 🚩 **สัญญาณของคลาสนี้:** error ที่พูดถึง **"expected X, got Y"** บนคอลัมน์ที่ชื่อคุ้นเคย — ให้สงสัย **ชนิดของคอลัมน์ในตารางนั้น** ก่อนสงสัยว่าโค้ดส่งค่าผิด
+- **Date Added:** 2026-09-29
+
+### 🎫 `created` ต้องแปลว่า **"INSERT แถวใหม่"** ไม่ใช่ **"คำสั่งสำเร็จ"** — ไม่งั้น 201/200 จะโกหก
+- **Context/Problem:** `register_event()` มีสองเส้นทาง: ผู้ใช้ใหม่ ⇒ `INSERT` · ผู้ใช้ที่เคยยกเลิกแล้วกลับมาสมัครใหม่ ⇒ `UPDATE` แถวเดิม · ฟังก์ชันคืน `(created, payload)` ให้ router แปลงเป็น **201 ถ้า `created`** ไม่งั้น **200** · ตอนแรกผมตั้ง `created = True` ทั้งสองเส้นทาง ⇒ เทสต์ที่คาด 200 ได้ 201 (`assert 201 == 200`)
+- **Root Cause:** คำว่า **"สร้าง"** กำกวมระหว่าง *"ทรัพยากรนั้นเกิดขึ้นจากการเรียกครั้งนี้"* กับ *"การเรียกครั้งนี้สำเร็จ"* ⇒ ถ้าอนุมานแบบหลัง **ทุกคำขอที่สำเร็จจะกลายเป็น 201** ซึ่งทำลายความหมายเดียวที่ 201 มี (ใช้แยก "กดซ้ำ/กดต่อ" ออกจาก "เพิ่งเกิด") ⇒ ฝั่ง client ที่ใช้ 201 เพื่อแสดงข้อความ "สมัครสำเร็จ" จะแสดงผิดในเส้นทางที่กลับมาสมัครใหม่
+- **Correct Pattern/Solution:**
+  - **ตั้งชื่อให้ความกำกวมหายไปตั้งแต่ตัวแปร** — `created` = *"มีแถวใหม่ถูก INSERT"* เขียน comment กำกับที่ `return` ทุกจุด (L806/L902/L914) เพราะนี่คือค่าที่ router ใช้ตัดสิน status
+  - **`RETURNING (xmax = 0) AS inserted`** เป็นทางที่ DB บอกเองตรง ๆ · หรือแยกสาขาให้ชัด (`if existing: UPDATE; created = False else: INSERT; created = True`)
+  - ⚠️ **อย่าให้ denormalize แบบ "นับก่อน-นับหลัง"** (`count_before != count_after`) — เปราะกับ concurrent request และอ่านไม่ออก
+  - 📌 **เทสต์ต้องมีทั้งสองเส้นทาง** — เส้นทาง `INSERT` (201) และเส้นทาง `UPDATE` (200) · ถ้ามีแต่เส้นทางแรก บั๊กนี้จะไม่โผล่เลย (และนี่คือเหตุที่มันรอดมาได้จนเกือบ commit)
+- **Date Added:** 2026-09-29
+
+### 🕳 `value in obj` เดินขึ้น **prototype chain** — `?unavailable=constructor` ผ่านด่านไปโผล่เป็น `undefined` บนหน้าจอ
+- **Context/Problem:** ฟังก์ชันที่อ่านค่าจาก `route.query` แล้วแปลงเป็นชนิดที่รู้จัก เขียนว่า `if (value in MESSAGES) return value as Kind` ⇒ `?unavailable=constructor` **ผ่านด่าน** เพราะ `'constructor' in {}` เป็น `true` (สืบทอดมาจาก `Object.prototype`) แล้ว `MESSAGES[value]` เป็น `undefined` ⇒ **Swal ขึ้นคำว่า "undefined"** ให้ผู้ใช้เห็น
+- **Root Cause:** **`in` ตรวจทั้ง own property และ property ที่สืบทอดมา** (ต่างจาก `Object.hasOwn`/`hasOwnProperty`) ⇒ ทุกคีย์ของ `Object.prototype` (`constructor` · `toString` · `valueOf` · `hasOwnProperty` · `__proto__` · …) ผ่านด่านทั้งหมด · และ **TypeScript ไม่ช่วยเลย** — `value in obj` ไม่ narrow type ให้ และ `Record<K, V>` indexing ที่คีย์มาจาก `string` จะถูกบังคับให้ cast ⇒ **ทั้งด่านและ type ถูกปิดปากพร้อมกัน**
+- **Correct Pattern/Solution:**
+  - **literal chain** — `if (value === 'board' || value === 'issue' || value === 'event') return value` ⇒ narrow type ให้ฟรี และไม่มีทางรั่ว
+  - ทางเลือกที่ปลอดภัยพอ ๆ กัน: `Object.hasOwn(MESSAGES, value)` (ES2022) หรือ `Object.keys(MESSAGES).includes(value)`
+  - 📌 **ค่านี้มาจาก URL ที่ใครก็แก้ได้ ⇒ ถือเป็น input ที่ไม่เชื่อถือ** และต้องกรอง — **การ cast คือการเชื่อว่า input** ซึ่งเป็นสิ่งที่ห้ามทำ (ตระกูลเดียวกับ "กรอง ไม่ cast" ของ `safeRedirect`)
+  - ⚠️ **เขียนเทสต์ด้วย `'constructor'` และ `'toString'` จริง** ไม่ใช่แค่ comment — เพราะถ้าวันหนึ่งมีคน "ทำให้สั้นลง" เป็น `in` อีก จะมีเทสต์ที่ล้มพร้อมชื่อที่บอกสาเหตุ (ผมเพิ่มสองแถวนี้เข้า `it.each` ของ U2 โดยเจตนา)
+  - 🚩 **สัญญาณของคลาสนี้:** โค้ดที่ **"ตรวจว่าคีย์มีอยู่"** ด้วย `in`/indexing บนค่าที่มาจาก **URL · localStorage · postMessage · JSON ภายนอก** ⇒ ตรวจทุกจุด
+- **Date Added:** 2026-09-29
+
+### 🕐 `<input type="datetime-local">` ต้องอ่านค่าด้วย **`Intl.DateTimeFormat().formatToParts()`** — `toISOString()` เลื่อน 7 ชั่วโมงและ **ไม่ error**
+- **Context/Problem:** ฟอร์มแก้ไขกิจกรรมต้องเติมค่า `event_date` (timestamptz) กลับลง `<input type="datetime-local">` ⇒ เขียน `new Date(iso).toISOString().slice(0, 16)` ซึ่งให้ **เวลา UTC** ⇒ เปิดฟอร์มมาเห็นเวลาน้อยไป **7 ชั่วโมง** และ — อันตรายกว่า — **ถ้าผู้ใช้กดบันทึกโดยไม่แตะฟิลด์นั้นเลย** ค่าที่ส่งกลับจะเพี้ยนทันที 7 ชั่วโมง · **ไม่มี error ไม่มีคำเตือน** และถ้าไม่มีเทสต์เทียบค่าก่อน/หลัง ฟอร์มจะ "บันทึกได้" ทุกครั้ง
+- **Root Cause:** `<input type="datetime-local">` มี **ไม่มี** เขตเวลาในค่า — มันคือ *"เวลาตามนาฬิกาบนผนัง"* ของผู้ใช้ ⇒ ต้องป้อนด้วยชิ้นส่วนของ **เขตเวลาที่ระบบใช้ (`Asia/Bangkok`)** · `toISOString()` แปลงเป็น UTC ก่อนเสมอ ⇒ การใช้มันเท่ากับ **สมมติว่าผู้ใช้อยู่ที่ UTC** · และ `toLocaleString()` ก็ใช้ไม่ได้ตรง ๆ เพราะให้สตริงที่รูปแบบไม่คงที่ในแต่ละ ICU
+- **Correct Pattern/Solution:**
+  ```ts
+  const BKK_PARTS = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  })
+  function toLocalInput(iso: string | null): string {
+    if (!iso) return ''
+    const parts = BKK_PARTS.formatToParts(new Date(iso))
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
+  }
+  ```
+  · **`hourCycle: 'h23'` จำเป็น** — `en-GB` กับ `hour12: false` อาจให้ `24` แทน `00` ในบางรUNTIME ⇒ input ปฏิเสธค่าที่ไม่ถูกต้อง **แบบเงียบ** (ค่าในช่องหายไปเฉย ๆ)
+  · สร้าง `Intl.DateTimeFormat` **ครั้งเดียวระดับโมดูล** ไม่ใช่ต่อการเรียก (สร้างใหม่ทุกครั้งช้ากว่ามาก)
+  - ⚠️ **`<PaginationBar>` ต้อง... ** (ไม่เกี่ยว) — **ใช้ `toLocalInput()` ทั้งตอน *เติมฟอร์ม* และตอน *สร้าง baseline*** เพื่อให้เทียบ diff ได้ (ดูข้อถัดไป)
+  - 📌 **การแสดงผลใช้ `toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', … })` ได้ตรง ๆ** เพราะนั่นเป็นการ *แสดง* ไม่ใช่การป้อนกลับ — **สองหน้าที่นี้ต้องใช้คนละวิธี** และนี่คือจุดที่คนมักใช้ตัวเดียวกันแล้วพังข้างหนึ่ง
+  - ⚠️ **ต่างจากวันที่ล้วน (date-only)** ที่โปรเจคนี้มีกฎว่า **ห้ามใช้ `new Date()`** (เพราะ parse เป็น UTC เที่ยงคืน) — กิจกรรมเป็น **timestamptz** จึงใช้ `new Date(iso)` ได้ **แต่ยังต้องอ่านชิ้นส่วนในโซน Bangkok**
+- **Date Added:** 2026-09-29
+
+### 📄 PATCH ที่ส่ง **เฉพาะฟิลด์ที่เปลี่ยน** ต้องมี **snapshot ตั้งต้นที่ normalize แล้ว** — ไม่งั้น "ไม่ได้แตะ" จะกลายเป็น "แก้ค่า"
+- **Context/Problem:** ฟอร์มแก้ไขต้องส่ง PATCH เฉพาะฟิลด์ที่ผู้ใช้แก้จริง (กฎโปรเจค: backend ใช้ `exclude_unset=True` และ audit log บันทึกเฉพาะของที่เปลี่ยน) · ถ้าเทียบ **ค่าดิบจาก API** กับ **ค่าจากฟอร์ม** ตรง ๆ จะได้ "ต่าง" ทุกครั้งที่ชนิด/รูปแบบไม่ตรงกันเป๊ะ (เช่น `null` กับ `''` · `2026-10-15T02:00:00Z` กับ `2026-10-15T09:00` · `null` กับ `'null'`) ⇒ **PATCH ส่งทุกฟิลด์ทุกครั้งที่กดบันทึก** ⇒ audit log ท่วม และ "เขียนทับคอลัมน์ที่ผู้ใช้ไม่ได้แตะ" กลับมา
+- **Root Cause:** สองฝั่งของ diff มาจาก **คนละตัวแทนของข้อมูล** (server JSON vs ค่าฟอร์ม HTML) ซึ่ง **ไม่มีอะไรรับประกันว่าเท่ากันสำหรับค่าที่ "เหมือนกัน"** ⇒ ต้องมีขั้น **แปลงทั้งสองฝั่งให้เป็นตัวแทนเดียวกันก่อนเทียบ** · และ **`baseline` ต้องถูกจับ *ตอนเปิดฟอร์ม* ไม่ใช่ตอนกดบันทึก** — ถ้าจับตอนกดบันทึก มันจะเท่ากับค่าปัจจุบันเสมอ ⇒ diff ว่างตลอด (อีกอาการหนึ่งของบั๊กเดียวกัน)
+- **Correct Pattern/Solution:**
+  ```ts
+  const baseline = ref<EventCreate | null>(null)   // จับตอน openEdit()
+  function toBaseline(e: Event): EventCreate {      // ← ผ่าน toLocalInput() ตัวเดียวกับฟอร์ม
+    return { …e, event_date: toLocalInput(e.event_date),
+                 registration_deadline: toLocalInput(e.registration_deadline) }
+  }
+  function buildPatch(): EventUpdate {              // เทียบ baseline ↔ ค่าฟอร์มปัจจุบัน
+    const next = buildCreate(); const base = baseline.value
+    if (!base) return next
+    const patch: EventUpdate = {}
+    if (base.title !== next.title) patch.title = next.title
+    /* …ทีละฟิลด์… */
+    return patch
+  }
+  ```
+  · **`Object.keys(patch).length === 0` ⇒ ไม่ยิง API เลย** (ผู้ใช้อาจเปิดฟอร์มแล้วปิดโดยไม่แก้) — และอย่าลืม `closeModal()` ให้ถูก ไม่งั้นฟอร์มค้างเปิดโดยไม่มีอะไรเกิดขึ้น
+  · 📌 **`''` กับ `null` ต้องตัดสินให้ชัด** — ในฟอร์มนี้ช่องว่างของฟิลด์ที่ไม่บังคับ = **`null` (สั่งล้างค่า)** ไม่ใช่ `undefined` (ไม่แตะ) ⇒ เขียน helper `buildCreate()` ที่ทำ normalization นี้ **ที่เดียว** แล้วให้ทั้ง "สร้าง" และ "แก้" ใช้ร่วมกัน
+  - ⚠️ **`ref` ของ object ที่แก้ทีละฟิลด์ต้องสร้าง object ใหม่** ไม่ใช่ mutate — ไม่งั้น diff จะเทียบ object เดียวกันแล้วได้ "ไม่เปลี่ยน" เสมอ
+  - 🚩 **สัญญาณของคลาสนี้:** หน้าจอที่ "บันทึกแล้วดูเหมือนไม่เกิดอะไรขึ้น" · audit log ที่มีทุกฟิลด์ทุกครั้ง · หรือเปิดฟอร์มแล้วกดบันทึกทันที **แล้วค่าที่แสดงเปลี่ยนไปเอง** ⇒ ตรวจ diff และทิศทางของ timezone ก่อน
+- **Date Added:** 2026-09-29
+
+### 🔄 "ถอยกลับหน้าที่แล้วเมื่อแถวสุดท้ายหาย" — วาง **ใน `load()`** ไม่ใช่ไล่ใส่หลังทุก mutation
+- **Context/Problem:** หน้ารายการที่แบ่งหน้า: ลบ/กู้คืนแถวสุดท้ายของหน้าสุดท้าย ⇒ หน้านั้นว่างเปล่า · แพตเทิร์นเดิมในโปรเจคคือ **ใส่ guard หลังทุก mutation** (`afterDelete` · `afterRestore` · `afterCreate`) ⇒ ลืมง่ายมาก และเพิ่ม mutation ใหม่ = ต้องจำว่าต้องใส่ · **และที่สำคัญกว่า: ในหน้านี้ `<PaginationBar>` อยู่ในกิ่ง `v-else` ของรายการ** ⇒ พอ items ว่าง ปุ่มเปลี่ยนหน้าหายไปด้วย ⇒ **ผู้ใช้ไม่มีทางกลับไปดูแถวที่เหลือได้เลย** (ไม่ใช่แค่ "เห็นหน้าว่าง")
+- **Root Cause:** การ "ถอยกลับ" เป็นคุณสมบัติของ **สถานะที่โหลดมา** (ผลลัพธ์ + เลขหน้า) ไม่ใช่ของ **การกระทำ** ⇒ การผูกไว้กับ action ทำให้มี N จุดที่ต้องจำ · และ component แบ่งหน้าที่ **ซ่อนตัวเองเมื่อไม่มีข้อมูล** จะทำให้ทางออกหายไปพร้อมกับปัญหา
+- **Correct Pattern/Solution:**
+  ```ts
+  async function load() {
+    isLoading.value = true; hasError.value = false
+    try {
+      const res = await listEvents({ … offset: (page.value - 1) * PAGE_SIZE })
+      items.value = res.items; total.value = res.total
+      // ⚠️ หน้าที่ว่างเปล่าต้องถอยกลับ — วางที่เดียวตรงนี้ครอบทั้งลบ/กู้คืน/สร้าง
+      if (items.value.length === 0 && page.value > 1) { page.value -= 1; await load() }
+    } catch { hasError.value = true; items.value = []; total.value = 0 }
+    finally { isLoading.value = false }
+  }
+  ```
+  · **ห่วงจบแน่นอน** เพราะ `page.value` ลดลงแบบMonotonic ถึง 1 ⇒ เรียกซ้อนได้ไม่เกิน `page - 1` ชั้น
+  · 📌 **เรียก `load()` ซ้ำแบบ recursive ได้ที่นี่** เพราะ `finally { isLoading = false }` ของชั้นในทำงานก่อนชั้นนอก ⇒ สถานะ loading จบถูกต้อง
+  - ⚠️ **ต้องมีเงื่อนไข `page.value > 1`** ไม่งั้นหน้า 1 ที่ว่างจริง (ยังไม่มีข้อมูลเลย) จะเรียกตัวเองวนไม่จบ
+  - 📌 **ทางเลือกที่ชัดกว่า: ย้าย `<PaginationBar>` ออกจากกิ่ง `v-else`** ให้แสดงเสมอเมื่อ `total > 0` ⇒ ผู้ใช้ไม่ต้องพึ่งการถอยอัตโนมัติเลย (ทำทั้งสองอย่างได้ และควรทำ)
+  - 🚩 **สัญญาณของคลาสนี้:** หน้าที่มี guard แบบเดียวกันเขียนซ้ำหลายที่ · และ component ที่ "หายไปเมื่อไม่มีข้อมูล" ซึ่งเป็นทางออกของผู้ใช้
+- **Date Added:** 2026-09-29

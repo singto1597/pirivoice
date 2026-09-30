@@ -22,9 +22,9 @@ logger = logging.getLogger("NOTIF_STREAM")
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 # pattern ของ **การอ่าน/กรอง** — ต้องมี `announcement` (E2) ด้วย ไม่งั้น `/notifications?group_type=
-# announcement` ตอบ 422 ทั้งที่แถวชนิดนั้นมีจริงใน DB · ต่างจาก pattern ของ preference ที่มี 4 กลุ่ม
+# announcement`/`event` ตอบ 422 ทั้งที่แถวชนิดนั้นมีจริงใน DB · ต่างจาก pattern ของ preference ที่มี 5 กลุ่ม
 # ⚠️ ซ้ำโดยเจตนากับ `READ_GROUP_TYPE_PATTERN` ใน models/notification_schemas.py (ดูคอมเมนต์ที่นั่น)
-GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report|announcement)$"
+GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report|announcement|event)$"
 
 
 def _ensure_user(user_ctx: dict) -> int:
@@ -96,7 +96,7 @@ async def get_preferences(
     user_ctx: dict = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db_pool),
 ):
-    """ค่าตั้งค่าการแจ้งเตือนของฉัน — คืนครบทั้ง 4 กลุ่มเสมอ"""
+    """ค่าตั้งค่าการแจ้งเตือนของฉัน — คืนครบทั้ง 5 กลุ่มเสมอ"""
     uid = _ensure_user(user_ctx)
     return await notification_service.get_preferences(pool, uid)
 

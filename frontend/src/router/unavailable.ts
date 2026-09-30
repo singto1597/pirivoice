@@ -25,11 +25,17 @@ import type { Router } from 'vue-router'
 export const UNAVAILABLE_QUERY = 'unavailable'
 
 /** ชนิดของเนื้อหาที่เปิดไม่ได้ — เพิ่มชนิดใหม่แล้วต้องเพิ่มข้อความใน `UNAVAILABLE_MESSAGES` */
-export type UnavailableKind = 'board' | 'issue'
+export type UnavailableKind = 'board' | 'issue' | 'event'
 
 const UNAVAILABLE_MESSAGES: Record<UnavailableKind, string> = {
   board: 'บอร์ดที่ลิงก์ชี้ไปถูกซ่อนหรือถูกลบไปแล้ว',
   issue: 'เรื่องที่ลิงก์ชี้ไปถูกซ่อนหรือถูกลบไปแล้ว',
+  // 📅 กิจกรรม: 404 มีสองทางเหมือนกัน แต่ทางแรกไม่ใช่ `status='hidden'` (ไม่มีสถานะนั้น)
+  //    — ทางแรกคือ **`status='draft'` = สภายังไม่เผยแพร่** ซึ่งแปลว่า "ถูกซ่อนจากคนทั่วไป"
+  //    ตรงตัว · ส่วนกิจกรรมที่ **ยกเลิก** ยังเปิดดูได้ (ไม่ใช่ 404) ⇒ ไม่ต้องพูดถึง
+  //    ⚠️ ห้ามเปลี่ยนเป็น "ยังไม่เผยแพร่หรือถูกลบ" — เทสต์ U8 บังคับคำว่า "ซ่อน" เพราะผู้ใช้
+  //    แยกไม่ออกระหว่าง "สภาฯ ยังไม่ปล่อย" กับ "ถูกลบ" และทั้งคู่แก้ต่างกันไม่ได้จากฝั่งเขา
+  event: 'กิจกรรมที่ลิงก์ชี้ไปถูกซ่อนหรือถูกลบไปแล้ว',
 }
 
 /** ป้ายหัวข้อของ Swal — แยกจาก `title` ของ notification ที่ผู้ใช้อาจเพิ่งกดมา */
@@ -45,7 +51,10 @@ export const UNAVAILABLE_TITLE = 'เนื้อหานี้เปิดด�
  */
 export function readUnavailable(raw: unknown): UnavailableKind | null {
   const value = Array.isArray(raw) ? raw[0] : raw
-  if (value === 'board' || value === 'issue') return value
+  // ⚠️ ต้องเป็น literal chain แบบนี้ ไม่ใช่ `value in UNAVAILABLE_MESSAGES` — เพราะ `in`
+  //    รับคีย์ที่สืบทอดมาจาก prototype ได้ (`'toString' in {...}` = true) ⇒
+  //    `?unavailable=constructor` จะผ่านด่านไปโผล่เป็น `undefined` บนหน้าจอ
+  if (value === 'board' || value === 'issue' || value === 'event') return value
   return null
 }
 

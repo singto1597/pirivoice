@@ -96,7 +96,8 @@ async def clean_database(db_pool):
                 piri_vote_choices, piri_votes, piri_board_reactions,
                 piri_board_reports, piri_board_views, notifications,
                 notification_preferences, academic_terms, announcements,
-                push_subscriptions, push_outbox, bookmarks, app_settings
+                push_subscriptions, push_outbox, bookmarks, app_settings,
+                event_registrations, events
             CASCADE
         """)
     yield

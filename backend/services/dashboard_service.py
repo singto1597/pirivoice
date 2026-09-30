@@ -77,6 +77,17 @@ ACTION_LABELS = {
     # A8 — ค่าตั้งระดับโรงเรียน (app_settings): ต้องมีป้ายที่นี่ **และ** ที่
     # frontend/src/views/audit/AuditLogs.vue (ACTION_LABELS) — กฎ "audit action ใหม่ = 2 ที่"
     "UPDATE_QUIET_HOURS": "ตั้งช่วงเวลาไม่ส่งแจ้งเตือน",
+    # D1 — ระบบกิจกรรม (ตาราง events + event_registrations)
+    # ⚠️ กฎ "audit action ใหม่ = 2 ที่" — ต้องมีป้ายที่นี่ **และ** ที่
+    #    frontend/src/views/audit/AuditLogs.vue (ACTION_LABELS) เสมอ
+    "CREATE_EVENT": "สร้างกิจกรรม",
+    "UPDATE_EVENT": "แก้ไขกิจกรรม",
+    "PUBLISH_EVENT": "เผยแพร่กิจกรรม",
+    "CANCEL_EVENT": "ยกเลิกกิจกรรม",
+    "DELETE_EVENT": "ลบกิจกรรม",
+    "RESTORE_EVENT": "กู้คืนกิจกรรม",
+    "REGISTER_EVENT": "ลงทะเบียนกิจกรรม",
+    "UNREGISTER_EVENT": "ถอนการลงทะเบียนกิจกรรม",
 }
 
 

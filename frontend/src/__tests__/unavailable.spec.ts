@@ -32,7 +32,7 @@ import {
  * ไฟล์นี้จะ **ไม่คอมไพล์** ⇒ บังคับให้มีข้อความของชนิดใหม่ก่อน merge
  * (และเทส `U4` ข้างล่างจะวนทุกตัวอัตโนมัติ เพราะอ่านจาก object นี้)
  */
-const KIND_COVERAGE: Record<UnavailableKind, true> = { board: true, issue: true }
+const KIND_COVERAGE: Record<UnavailableKind, true> = { board: true, issue: true, event: true }
 const ALL_KINDS = Object.keys(KIND_COVERAGE) as UnavailableKind[]
 
 /** Router ปลอม — เก็บ argument ที่ `replace` ถูกเรียกด้วย */
@@ -56,6 +56,11 @@ describe('readUnavailable — กรองค่าจาก URL', () => {
     ['อ็อบเจ็กต์', { kind: 'board' }],
     ['undefined', undefined],
     ['null', null],
+    // ⚠️ สองตัวนี้คือเหตุที่ `readUnavailable` ต้องเป็น literal chain ไม่ใช่ `value in UNAVAILABLE_MESSAGES`
+    //    — `in` เดินขึ้น prototype chain ⇒ `'constructor' in {...}` = true แล้วค่าจะทะลุออกไปเป็น
+    //    `undefined` บนหน้าจอ (หรือแย่กว่านั้นถ้าวันหนึ่งมีคนเปลี่ยนไปใช้ indexing)
+    ['คีย์ของ prototype', 'constructor'],
+    ['คีย์ของ prototype อีกตัว', 'toString'],
   ])('U2: %s → null (ต้องไม่โยน exception)', (_label, raw) => {
     expect(readUnavailable(raw)).toBeNull()
   })

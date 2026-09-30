@@ -21,6 +21,7 @@ AVAILABLE_PERMISSIONS = [
     "MANAGE_SETTINGS",       # ตั้งค่าระบบ
     "VIEW_AUDIT_LOG",        # ดูบันทึกการใช้งาน (audit_logs) — admin/ครูสภา/ประธานสภา
     "MANAGE_ANNOUNCEMENTS",  # จัดการประกาศหน้า Landing Page — admin/ครูสภา/ประธานสภา/สภานักเรียน
+    "MANAGE_EVENTS",         # จัดการกิจกรรม (สร้าง/เผยแพร่/ยกเลิก) — admin/ครูสภา/ประธานสภา (ชุดเดียวกับ MANAGE_SETTINGS)
 ]
 
 # 🎯 บทบาทที่เห็น/จัดการข้อมูลทั้งโรงเรียน (สิทธิ์เทียบเท่า is_admin)

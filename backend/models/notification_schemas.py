@@ -27,18 +27,18 @@ class NotificationListOut(BaseModel):
 
 
 class UnreadCountsOut(BaseModel):
-    # ⚠️ 5 กลุ่ม (announcement มาจาก E2) — ไม่ fix ตายตัวเพราะ GROUP_TYPES โตได้
-    counts: dict[str, int]  # {"issue_mine": 1, …, "board": 3, "report": 0, "announcement": 0}
+    # ⚠️ 6 กลุ่ม (announcement มาจาก E2 · event มาจาก D1) — ไม่ fix ตายตัวเพราะ GROUP_TYPES โตได้
+    counts: dict[str, int]  # {"issue_mine": 1, …, "board": 3, "report": 0, "announcement": 0, "event": 0}
     total: int
 
 
 # ⚠️ **สอง pattern นี้ต้องไม่เหมือนกัน — อย่ารวมเป็นตัวเดียว**
-#   · READ_GROUP_TYPE_PATTERN     = 5 กลุ่ม: ใช้ *กรอง/อ่าน* (list, mark_read) ⇒ ต้องมี announcement
-#   · GROUP_TYPE_PATTERN (ของ preference) = 4 กลุ่ม: ใช้ *ปิด/เปิด* ⇒ **ห้ามมี announcement**
+#   · READ_GROUP_TYPE_PATTERN     = 6 กลุ่ม: ใช้ *กรอง/อ่าน* (list, mark_read) ⇒ ต้องมี announcement
+#   · GROUP_TYPE_PATTERN (ของ preference) = 5 กลุ่ม: ใช้ *ปิด/เปิด* ⇒ **ห้ามมี announcement**
 #   ซ้ำโดยเจตนากับ `GROUP_TYPES`/`PREFERENCE_GROUPS` ใน services/notification_service.py
 #   และ `GROUP_TYPE_PATTERN` (read) ใน routers/notification_router.py — เพิ่มกลุ่มใหม่ต้องแก้ทั้งชุด
 #   เชิงอ่าน + frontend
-READ_GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report|announcement)$"
+READ_GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report|announcement|event)$"
 
 
 class MarkReadRequest(BaseModel):
@@ -57,7 +57,7 @@ class MarkReadOut(BaseModel):
 
 # pattern ของกลุ่มที่ **ผู้ใช้ปิดได้** — ต้องตรงกับ PREFERENCE_GROUPS ใน
 # services/notification_service.py ⇒ `announcement` ไม่มีทางเข้ามาที่นี่ได้ (ปิดประกาศฉุกเฉินไม่ได้)
-GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report)$"
+GROUP_TYPE_PATTERN = "^(issue_mine|issue_received|board|report|event)$"
 
 
 class NotificationPreferenceItem(BaseModel):
@@ -71,9 +71,10 @@ class NotificationPreferencesOut(BaseModel):
 
 
 class UpdateNotificationPreferencesRequest(BaseModel):
-    # 1–4 รายการ: ต้องส่งมาอย่างน้อย 1 (ไม่งั้นเป็น no-op ที่ไม่มีความหมาย) และไม่เกิน
-    # จำนวนกลุ่มที่มีจริง — กัน client ส่งขยะยาว ๆ มา
-    preferences: List[NotificationPreferenceItem] = Field(..., min_length=1, max_length=4)
+    # 1–5 รายการ: ต้องส่งมาอย่างน้อย 1 (ไม่งั้นเป็น no-op ที่ไม่มีความหมาย) และไม่เกิน
+    # จำนวนกลุ่มที่มีจริง (PREFERENCE_GROUPS = 5 หลัง D1) — กัน client ส่งขยะยาว ๆ มา
+    # ⚠️ เลขนี้ต้องขยับตาม PREFERENCE_GROUPS เสมอ ไม่งั้น client ที่ส่งครบทุกกลุ่มจะได้ 422
+    preferences: List[NotificationPreferenceItem] = Field(..., min_length=1, max_length=5)
 
 
 # ============================================================

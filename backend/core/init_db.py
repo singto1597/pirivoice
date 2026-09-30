@@ -637,6 +637,57 @@ async def init_db(pool: asyncpg.Pool):
                     );
                 """)
 
+                # --- 9.7 events / event_registrations: ระบบกิจกรรม (D1 / migration 025) ---
+                #   ⚠️ **แหล่งความจริงของ DDL อยู่ที่ migrations/025_events.py** — ที่นี่เป็น
+                #      mirror ให้ DB ใหม่ได้ครบในรอบเดียว (ตัว migration จะเป็น no-op เพราะ IF NOT EXISTS)
+                #   - `status` = สถานะการเผยแพร่ (draft/published/cancelled) **คนละมิติกับ deleted_at**
+                #     ⇒ ต่างจาก announcements ที่ใช้ `retired_at`
+                #   - `capacity IS NULL` = ไม่จำกัดจำนวน (0 ไม่ใช่ "ไม่จำกัด" ⇒ มี CHECK กันไว้)
+                #   - created_by/updated_by **ไม่ใส่ FK** (เหตุผลเดียวกับ migration 014:
+                #     "ลบผู้ใช้ = หลักฐานหาย") ⇒ LEFT JOIN เอาเองตอนอ่าน
+                #   - unique (event_id, user_id) **ไม่มี partial predicate** โดยเจตนา —
+                #     ยกเลิก = พลิก status ไม่ใช่ลบแถว ⇒ ประวัติการสมัครไม่หาย
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS events (
+                        id SERIAL PRIMARY KEY,
+                        title VARCHAR(200) NOT NULL,
+                        description TEXT,
+                        location VARCHAR(200),
+                        cover_image_url VARCHAR(500),
+                        event_date TIMESTAMP WITH TIME ZONE NOT NULL,
+                        registration_deadline TIMESTAMP WITH TIME ZONE,
+                        capacity INTEGER,
+                        status VARCHAR(20) NOT NULL DEFAULT 'draft',
+                        published_at TIMESTAMP WITH TIME ZONE,
+                        cancelled_at TIMESTAMP WITH TIME ZONE,
+                        created_by INTEGER,
+                        updated_by INTEGER,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        deleted_at TIMESTAMP WITH TIME ZONE,
+                        CONSTRAINT chk_events_status
+                            CHECK (status IN ('draft', 'published', 'cancelled')),
+                        CONSTRAINT chk_events_capacity
+                            CHECK (capacity IS NULL OR capacity > 0)
+                    );
+                """)
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS event_registrations (
+                        id SERIAL PRIMARY KEY,
+                        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        status VARCHAR(20) NOT NULL DEFAULT 'registered',
+                        registered_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        cancelled_at TIMESTAMP WITH TIME ZONE,
+                        checked_in_at TIMESTAMP WITH TIME ZONE,
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        -- `checked_in` ใส่ไว้รอ D2 (QR) — CHECK ที่ลิสต์ค่าตายตัวแก้ทีหลัง
+                        -- ต้องออก migration ใหม่ (บทเรียน board_type ตอน E1) ⇒ ใส่ล่วงหน้าถูกกว่า
+                        CONSTRAINT chk_event_registrations_status
+                            CHECK (status IN ('registered', 'waitlisted', 'cancelled', 'checked_in'))
+                    );
+                """)
+
                 # --- 10. ตารางรองรับ dashboard ---
                 # (การนับสถิติสามารถ query ตรงจาก issues ได้ แต่ให้มี view/ตารางสรุปไว้ก่อน)
 
@@ -780,6 +831,24 @@ async def init_db(pool: asyncpg.Pool):
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_students_room_student_active
                     ON students(room_id, student_id)
                     WHERE deleted_at IS NULL;
+
+                -- --- D1 ระบบกิจกรรม (migration 025) ---
+                CREATE INDEX IF NOT EXISTS idx_events_status_date
+                    ON events (status, event_date)
+                    WHERE deleted_at IS NULL;
+                CREATE INDEX IF NOT EXISTS idx_events_created_by
+                    ON events (created_by)
+                    WHERE deleted_at IS NULL;
+                -- หนึ่งคนสมัครกิจกรรมหนึ่งครั้งได้ใบเดียว — เป็นทั้งด่านกันซ้ำและ index ของ
+                -- "ฉันสมัครกิจกรรมนี้หรือยัง" (วิ่งทุกครั้งที่เปิดหน้ารายละเอียด)
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_event_registrations_event_user
+                    ON event_registrations (event_id, user_id);
+                -- เรียงคอลัมน์ตามที่ใช้จริง: นับที่นั่ง (event_id,status) แล้วต่อด้วยหัวคิว
+                -- สำรอง (ORDER BY registered_at) ⇒ index เดียวตอบสองคำถาม
+                CREATE INDEX IF NOT EXISTS idx_event_registrations_event_status
+                    ON event_registrations (event_id, status, registered_at);
+                CREATE INDEX IF NOT EXISTS idx_event_registrations_user
+                    ON event_registrations (user_id, registered_at DESC);
             """)
     except Exception as e:
         logger.error(f"❌ Failed to create indexes: {e}")

@@ -27,8 +27,11 @@ from core.exceptions import ValidationError
 # `announcement` (E2 ประกาศฉุกเฉิน) อยู่ในลิสต์บนเท่านั้น ⇒ **ปิดไม่ได้โดยเจตนา**
 #   ประกาศฉุกเฉินที่เงียบได้ = ประกาศที่ล้มเหลวในหน้าที่ของมัน · ผู้ใช้ยังปิด *กลุ่มอื่น* ได้ตามเดิม
 #   และการที่มันไม่อยู่ใน PREFERENCE_GROUPS ทำให้ `_pref_allows` คืน True เสมอ (ไม่มีแถว = เปิด)
-GROUP_TYPES = ("issue_mine", "issue_received", "board", "report", "announcement")
-PREFERENCE_GROUPS = ("issue_mine", "issue_received", "board", "report")
+# `event` (D1 กิจกรรม) อยู่ **ทั้งสองลิสต์** — ต่างจาก `announcement` เพราะกิจกรรม
+#   ไม่ใช่เรื่องฉุกเฉิน ⇒ ผู้ใช้ที่ไม่อยากได้ข่าวกิจกรรมต้องปิดได้ ไม่งั้นสภาเปิดรับสมัคร
+#   สัปดาห์ละหลายกิจกรรมจะกลายเป็นสแปมที่ปิดไม่ได้ (และเป็นข้อร้องเรียนที่แก้ไม่ได้เลย)
+GROUP_TYPES = ("issue_mine", "issue_received", "board", "report", "announcement", "event")
+PREFERENCE_GROUPS = ("issue_mine", "issue_received", "board", "report", "event")
 
 
 # ============================================================
@@ -282,7 +285,7 @@ async def get_preferences(pool, user_id: int) -> dict:
     zero-fill แบบเดียวกับ get_unread_counts: frontend ไม่ต้องรู้จักรายชื่อกลุ่มเอง
     ⇒ วันหน้าเพิ่มกลุ่มใหม่ แค่แก้ PREFERENCE_GROUPS ที่เดียว UI ก็ได้แถวใหม่อัตโนมัติ
 
-    ⚠️ ใช้ `PREFERENCE_GROUPS` (4) **ไม่ใช่** `GROUP_TYPES` (5) — `announcement` ต้องไม่โผล่
+    ⚠️ ใช้ `PREFERENCE_GROUPS` (5) **ไม่ใช่** `GROUP_TYPES` (6) — `announcement` ต้องไม่โผล่
     เป็นสวิตช์ที่ปิดได้ (ดูเหตุผลที่หัวไฟล์) · ถ้าเผลอเปลี่ยนเป็น GROUP_TYPES เมื่อไหร่
     UI จะขึ้นสวิตช์ "ประกาศฉุกเฉิน" ที่กดปิดได้ทันที = ความสามารถในการปิดประกาศฉุกเฉิน
     ซึ่งเป็นสิ่งที่งานนี้ตั้งใจไม่ให้มี"""

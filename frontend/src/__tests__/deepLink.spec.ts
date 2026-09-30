@@ -24,7 +24,7 @@ import { deepLinkTarget, type DeepLinkSource, type DeepLinkTarget } from '@/rout
 
 /**
  * ด่าน compile-time: `Record<NotificationGroup, true>` **บังคับให้ครบทุกสมาชิก**
- * ⇒ วันที่มีคนเพิ่มกลุ่มที่ 5 ใน `NotificationGroup` ไฟล์นี้จะ **ไม่คอมไพล์**
+ * ⇒ วันที่มีคนเพิ่มกลุ่มใหม่ใน `NotificationGroup` ไฟล์นี้จะ **ไม่คอมไพล์**
  *   จนกว่าจะมีการระบุว่ากลุ่มนั้นมี notification ชนิดใด และไปที่ไหน
  *
  * (ใช้ `Object.keys` ต่อ ⇒ ตัวแปรนี้ "ถูกใช้" จริง ไม่ใช่ของประดับที่ lint ฟ้อง)
@@ -35,6 +35,7 @@ const GROUP_COVERAGE: Record<NotificationGroup, true> = {
   board: true,
   report: true,
   announcement: true,
+  event: true,
 }
 const ALL_GROUPS = Object.keys(GROUP_COVERAGE) as NotificationGroup[]
 
@@ -43,13 +44,15 @@ function targetToPath(t: DeepLinkTarget): string {
   if (!t) return '/app/notifications'
   if (t.name === 'board-reports') return '/app/boards/reports'
   if (t.name === 'board-detail') return `/app/boards/${t.params.id}`
+  if (t.name === 'events') return '/app/events'
+  if (t.name === 'event-detail') return `/app/events/${t.params.id}`
   if (t.name === 'home') return '/app/home'
   return `/app/issues/${t.params.id}`
 }
 
 /**
- * ⭐ ตารางเดียวกับ `_DEEP_LINK_CASES` ฝั่ง backend — **ชนิดจริงทั้ง 10 แบบ**
- * ที่ระบบผลิตได้ (วัดจาก call site ทั้ง 13 จุดใน `backend/services/` + E2)
+ * ⭐ ตารางเดียวกับ `_DEEP_LINK_CASES` ฝั่ง backend — **14 แถว** (ชนิดจริงที่ระบบผลิตได้
+ * วัดจาก call site ทั้งหมดใน `backend/services/` + E2 + D1) ⇒ **ต้องมีจำนวนแถวเท่ากันเป๊ะ**
  *
  * ⚠️ `null` ในคอลัมน์ `board_id` คือ `NULL` ของ SQL จริง ไม่ใช่ "ไม่มีคีย์"
  */
@@ -67,6 +70,18 @@ const DEEP_LINK_CASES: ReadonlyArray<
   ['report_actioned', 'report', 'piri_board_report', 9, 3, '/app/boards/3'],
   // E2 — ประกาศฉุกเฉิน: `entity_type='announcement'` และ `board_id` เป็น NULL
   ['announcement_urgent', 'announcement', 'announcement', 7, null, '/app/home'],
+  //   ↑ สองแถวนี้ **เจตนาให้ซ้ำกลุ่ม** (แบบเดียวกับ `issue_comment` ที่มี 2 แถว) เพราะกฎของ
+  //     ประกาศต้อง **ไม่ผูกกับ `entity_id`** — Home แสดงประกาศทั้งก้อน ไม่ได้เจาะจงใบ
+  //     ⇒ แถวล่างคือเคสที่ `entity_id` เป็น NULL (ตรึงซ้ำแบบเจาะจงที่ D11)
+  ['announcement_urgent', 'announcement', 'announcement', null, null, '/app/home'],
+  // D1 — ระบบกิจกรรม: **ต่างจาก E2 โดยเจตนา** คือกิจกรรม *เจาะจงใบ* ⇒ มี entity_id
+  ['event_published', 'event', 'event', 42, null, '/app/events/42'],
+  ['event_waitlist_promoted', 'event', 'event', 42, null, '/app/events/42'],
+  //   ↑ สองชนิดใช้ปลายทางเดียวกัน — "คุณได้ที่นั่งแล้ว" ต้องพาไปที่ใบนั้นเพื่อกดยืนยัน
+  //   ⚠️ แถวล่างคือเคสที่ `entity_id` เป็น NULL (ข้อมูลเก่า/แถวที่ JOIN พลาด)
+  //     ⇒ ต้องถอยไป **ลิสต์กิจกรรม** ไม่ใช่ตกไปหน้ารวมแจ้งเตือน และ **ห้าม** `/app/events/None`
+  //     (ตรึงซ้ำแบบเจาะจงที่ D12/D13)
+  ['event_published', 'event', 'event', null, null, '/app/events'],
 ]
 
 function source(
@@ -177,5 +192,34 @@ describe('deepLinkTarget — กับดักที่ทำให้ "ดู�
     expect(
       targetToPath(deepLinkTarget(source('announcement_urgent', 'announcement', 'announcement', null, null))),
     ).toBe('/app/home')
+  })
+
+  it('D12: 🚨 กิจกรรม (D1) ต้องชนะ board_id — ห้ามตกไปที่ตัวบอร์ด', () => {
+    // กิจกรรมใช้ `entity_type='event'` **ไม่ใช่ `'issue'`** ⇒ ถ้าไม่มีกฎของกลุ่มนี้โดยตรง
+    // มันจะไหลข้ามข้อ 5 (entity_type ไม่ใช่ issue) ไปเข้าข้อ 6 (`board_id != null`)
+    // แล้วพาไป `/app/boards/3` ซึ่ง **ดูสมเหตุสมผล** แต่ผิดเจตนา — และถ้า `board_id`
+    // เป็น NULL จะได้ `null` = กดแล้วไม่มีอะไรเกิดขึ้นเลย (อาการเดียวกับที่ §32 รูที่ 1 ชี้)
+    expect(
+      targetToPath(deepLinkTarget(source('event_published', 'event', 'event', 42, null))),
+    ).toBe('/app/events/42')
+    // assert แยกเพื่อให้ข้อความ fail ชี้ตรงว่า "ลำดับผิด" ไม่ใช่ "path ผิด"
+    expect(
+      targetToPath(deepLinkTarget(source('event_published', 'event', 'event', 42, 3))),
+    ).not.toBe('/app/boards/3')
+  })
+
+  it('D13: 🚨 กิจกรรมที่ entity_id เป็น NULL → ลิสต์กิจกรรม ห้ามเป็น null และห้าม /app/events/null', () => {
+    // ⚠️ **กับดักที่แพงที่สุดของข้อนี้:** `null` ไม่ใช่คำตอบที่ถูก — `targetToPath(null)`
+    //    คืน `/app/notifications` (อยู่ที่รายการต่อ) แต่ฝั่ง backend คาด `/app/events`
+    //    ⇒ ต้องมี target `{ name: 'events' }` **แยกต่างหาก** ไม่ใช่ปล่อยเป็น `null`
+    //    (ไม่งั้นสองภาษาตอบไม่ตรงกัน = อาการ "สองพฤติกรรมจาก notification อันเดียวกัน")
+    expect(
+      targetToPath(deepLinkTarget(source('event_published', 'event', 'event', null, null))),
+    ).toBe('/app/events')
+
+    const target = deepLinkTarget(source('event_published', 'event', 'event', null, null))
+    // assert แยก 2 ข้อ เพื่อให้ข้อความ fail บอกว่าผิดแบบไหน
+    expect(target).not.toBe(null) // ต้องไม่ตกไป fallback
+    expect(targetToPath(target)).not.toBe('/app/notifications') // ต้องไม่ใช่หน้ารวมแจ้งเตือน
   })
 })
