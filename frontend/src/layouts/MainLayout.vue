@@ -100,6 +100,9 @@ const routeTitles: Record<string, string> = {
   boards: 'PIRI Boards',
   'board-detail': 'PIRI Boards',
   'board-reports': 'จัดการรายงาน',
+  events: 'กิจกรรม',
+  'event-detail': 'รายละเอียดกิจกรรม',
+  'event-management': 'จัดการกิจกรรม',
   playbooks: 'P.R. Playbooks',
   'playbook-reader': 'อ่านหนังสือ',
   notifications: 'การแจ้งเตือน',
@@ -138,6 +141,7 @@ const menuBadge = (path: string): number => {
     '/app/issues/received': 'issue_received',
     '/app/boards': 'board',
     '/app/boards/reports': 'report',
+    '/app/events': 'event',
   } as Record<string, string>
   const group = g[path]
   return group ? notificationsStore.counts[group] || 0 : 0
@@ -169,6 +173,22 @@ const menuItems = computed<NavItem[]>(() => {
     icon: 'bi-columns-gap',
     badge: menuBadge('/app/boards'),
   })
+  // 📅 กิจกรรม — ทุกคนที่ล็อกอินเห็น (ไม่ต้องมีสิทธิ์พิเศษ) · badge = แจ้งเตือนกลุ่ม 'event'
+  //    ซึ่งเกิดตอนสภากด "เผยแพร่" เท่านั้น (ไม่ใช่ตอนสร้าง — ดู `publish_event`)
+  items.push({
+    name: 'กิจกรรม',
+    path: '/app/events',
+    icon: 'bi-calendar-event',
+    badge: menuBadge('/app/events'),
+  })
+  if (authStore.hasPermission('MANAGE_EVENTS')) {
+    items.push({
+      name: 'จัดการกิจกรรม',
+      path: '/app/events/manage',
+      icon: 'bi-calendar-plus',
+      badge: 0,
+    })
+  }
   if (authStore.hasPermission('RECEIVE_ISSUES')) {
     items.push({
       name: 'เรื่องที่รับ / ระดับฉัน',

@@ -76,7 +76,7 @@ async def _count_notifs(db_pool, user_id, group_type=None):
 
 @pytest.mark.asyncio
 async def test_get_preferences_zero_fill_when_never_set(client, pref_world, db_pool):
-    """ผู้ใช้ใหม่ยังไม่มีแถวเลย → ต้องได้ครบ 4 กลุ่ม enabled=True (ไม่ใช่ [] หรือ null)"""
+    """ผู้ใช้ใหม่ยังไม่มีแถวเลย → ต้องได้ครบ 5 กลุ่ม enabled=True (ไม่ใช่ [] หรือ null)"""
     res = client.get("/api/notifications/preferences", headers=_auth(pref_world))
     assert res.status_code == 200, res.text
     body = res.json()
@@ -84,7 +84,8 @@ async def test_get_preferences_zero_fill_when_never_set(client, pref_world, db_p
     got = {p["group_type"]: p["enabled"] for p in body["preferences"]}
     assert got == {
         "issue_mine": True, "issue_received": True, "board": True, "report": True,
-    }, "ต้องคืนครบ 4 กลุ่ม เปิดหมด"
+        "event": True,
+    }, "ต้องคืนครบ 5 กลุ่ม เปิดหมด"
 
     # deep-DB: ยังไม่มีแถวจริง — ค่ามาจาก zero-fill ไม่ใช่จากตาราง
     assert await _pref_rows(db_pool, pref_world["student"]["user_id"]) == []

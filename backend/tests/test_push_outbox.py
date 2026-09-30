@@ -1128,6 +1128,17 @@ _DEEP_LINK_CASES = [
     #     ⇒ แถวล่างคือเคสที่ `entity_id` เป็น NULL ซึ่งถ้าเผลอเขียน `if ... and entity_id is not None`
     #       จะตกไป fallback = กดแล้วไม่มีอะไรเกิดขึ้น (ฝั่ง FE ตรึงเคสเดียวกันที่ `deepLink.spec.ts` D11)
     ("announcement_urgent", "announcement", "announcement",   None, None, "/app/home"),
+    # D1 — ระบบกิจกรรม: **ต่างจาก E2 โดยเจตนา** คือกิจกรรม *เจาะจงใบ* ⇒ มี entity_id
+    #   ต้องพาไปที่ตัวกิจกรรมนั้น ไม่ใช่ลิสต์ (เหตุผล: "เปิดรับสมัครแล้ว" ต้องกดแล้วสมัครได้เลย)
+    ("event_published",        "event", "event", 42, None, "/app/events/42"),
+    ("event_waitlist_promoted", "event", "event", 42, None, "/app/events/42"),
+    #   ↑ สองชนิดใช้ปลายทางเดียวกัน — "คุณได้ที่นั่งแล้ว" ต้องพาไปที่ใบนั้นเพื่อกดยืนยัน
+    #     ไม่ใช่พาไปลิสต์แล้วให้หาต่อ (แบบเดียวกับที่ `report_new` กับ `report_actioned` ต่างกัน)
+    #   ⚠️ แถวล่างคือเคสที่ `entity_id` เป็น NULL (ข้อมูลเก่า/แถวที่ JOIN พลาด)
+    #     ⇒ ต้องถอยไป **ลิสต์กิจกรรม** ไม่ใช่ตกไปหน้ารวมแจ้งเตือน และ **ห้าม** `/app/events/None`
+    #     — ถ้าเขียน `f"{EVENTS_URL}/{entity_id}"` ตรง ๆ จะได้ path ที่ดูจริงแต่กดแล้ว 404
+    #     (ฝั่ง FE ตรึงเคสเดียวกันที่ `deepLink.spec.ts` D12/D13)
+    ("event_published",        "event", "event", None, None, "/app/events"),
 ]
 
 
@@ -1204,7 +1215,11 @@ def test_T21e_unknown_or_empty_row_never_raises_and_lands_on_the_list():
        ไม่ใช่แค่ "หนึ่งอันไม่มีปลายทาง" · และ row จาก SQL จริงอาจขาดคีย์ได้เสมอ
     """
     assert push_service._deep_link_url({}) == "/app/notifications"
-    assert push_service._deep_link_url({"group_type": "event"}) == "/app/notifications"
+    # ⚠️ ใช้ชื่อกลุ่มที่ **ไม่มีจริงและจะไม่มี** — เคยเขียน `"event"` ไว้ตรงนี้ตั้งแต่ก่อน D1
+    #    ⇒ พอ D1 เพิ่มกลุ่ม `event` เข้า `GROUP_TYPES` เทสต์นี้จะพัง **ทั้งที่พฤติกรรมถูกต้อง**
+    #    (เป็นเทสต์ที่ผูกกับ "กลุ่มที่ยังไม่มี" ซึ่งเป็นสภาพชั่วคราว ไม่ใช่สัญญา)
+    #    · ชื่อที่ตั้งใจให้ไม่มีจริงจึงต้องเป็นอะไรที่ไม่มีวันถูกเพิ่มเป็นกลุ่มแจ้งเตือน
+    assert push_service._deep_link_url({"group_type": "no_such_group"}) == "/app/notifications"
     assert push_service._deep_link_url({
         "group_type": "board", "entity_type": "piri_board", "board_id": None,
     }) == "/app/notifications"
@@ -1263,8 +1278,9 @@ def test_T21h_every_notification_group_has_a_deep_link_case():
     """ด่านกัน "เพิ่มกลุ่มใหม่แล้วลืมนิยามปลายทาง" — ฝั่ง backend ไม่เคยมีมาก่อน
 
     `_DEEP_LINK_CASES` ข้างบนเป็นตารางที่ **ต้องครบทุกสมาชิกของ `GROUP_TYPES`** แต่ตัว
-    ตารางเองไม่รู้จัก `GROUP_TYPES` ⇒ เพิ่มกลุ่มที่ 5 (E2 `announcement`) แล้วลืมเพิ่มเคส
-    จะ **ไม่มีอะไรฟ้องเลย** — เทสต์ทุกตัวยังผ่าน เพราะมันวนอยู่บนตารางที่ขาดสมาชิก
+    ตารางเองไม่รู้จัก `GROUP_TYPES` ⇒ เพิ่มกลุ่มที่ 5 (E2 `announcement`) หรือกลุ่มที่ 6
+    (D1 `event`) แล้วลืมเพิ่มเคส จะ **ไม่มีอะไรฟ้องเลย** — เทสต์ทุกตัวยังผ่าน เพราะมันวน
+    อยู่บนตารางที่ขาดสมาชิก
     · ผลจริงที่จะเกิด: ประกาศฉุกเฉินกดจาก push แล้วเด้งไป `/app/notifications` แทน Home
       โดยไม่มี error ที่ไหนให้เห็น
 

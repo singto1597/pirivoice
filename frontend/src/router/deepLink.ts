@@ -40,13 +40,15 @@ export type DeepLinkTarget =
   | { name: 'board-reports' }
   | { name: 'board-detail'; params: { id: number } }
   | { name: 'issue-detail'; params: { id: number } }
+  | { name: 'events' }
+  | { name: 'event-detail'; params: { id: number } }
   | { name: 'home' }
   | null
 
 /**
  * แปลง notification → ปลายทาง — **ฟังก์ชันบริสุทธิ์** (เทสง่าย ไม่ต้องมี router/DB)
  *
- * ลำดับ 5 ขั้น — **ลำดับมีความหมาย ห้ามสลับ** (ตรงกับ `_deep_link_url()` ฝั่ง backend):
+ * ลำดับ 6 ขั้น — **ลำดับมีความหมาย ห้ามสลับ** (ตรงกับ `_deep_link_url()` ฝั่ง backend):
  *
  *   1. กลุ่ม `report` + ชนิด `report_new` → **คิวรายงาน** (`/app/boards/reports`)
  *      ★ ต้องมาก่อนข้อ 4 เพราะ notification นี้พก `board_id` มาด้วย — ถ้าตกไปข้อ 4
@@ -60,8 +62,13 @@ export type DeepLinkTarget =
  *      ★ Home คือที่ที่ประกาศถูกแสดง (บล็อกประกาศ ไม่มี LIMIT) ⇒ กดแล้วต้องเห็น
  *      ตัวประกาศเลย ไม่ใช่ไปดูรายการแจ้งเตือนที่ต้องกดต่ออีกที
  *      · ไม่ต้องมี guard `entity_id` — ประกาศแสดงทั้งก้อนบน Home ไม่ได้เจาะจงใบ
- *   4. `entity_type === 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
- *   5. มี `board_id` → **หน้าบอร์ด**
+ *   4. กลุ่ม `event` (D1 กิจกรรม) → **ตัวกิจกรรมนั้น** (`/app/events/{id}`)
+ *      ★ **ต้องมาก่อนข้อ 5** เพราะกิจกรรมใช้ `entity_type='event'` ไม่ใช่ `'issue'`
+ *      แต่ถ้าวันหน้าฝั่ง service ส่ง `board_id` มาด้วยไม่ว่าด้วยเหตุใด ข้อ 6 จะแย่งไป
+ *      · **ไม่มี `entity_id` → ลิสต์กิจกรรม `{ name: 'events' }`** — ไม่ใช่ `null`
+ *      (ดูคำเตือนล่างสุด: `null` จะพาไป `/app/notifications` ซึ่งไม่ตรงกับ backend)
+ *   5. `entity_type === 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
+ *   6. มี `board_id` → **หน้าบอร์ด**
  *
  * ไม่เข้าเงื่อนไขใด → `null` (อยู่ที่รายการแจ้งเตือน ซึ่งเป็นที่ที่ผู้ใช้กดมา
  * และเป็นที่เดียวที่ยัง "ต่อได้" — ปลอดภัยเสมอ)
@@ -79,6 +86,11 @@ export function deepLinkTarget(n: DeepLinkSource): DeepLinkTarget {
 
   if (n.group_type === 'announcement') {
     return { name: 'home' }
+  }
+
+  if (n.group_type === 'event') {
+    if (n.entity_id != null) return { name: 'event-detail', params: { id: n.entity_id } }
+    return { name: 'events' }
   }
 
   if (n.entity_type === 'issue' && n.entity_id != null) {

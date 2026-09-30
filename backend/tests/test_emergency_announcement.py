@@ -337,7 +337,7 @@ async def test_urgent_escapes_quiet_hours_while_normal_is_suppressed(db_pool, e2
 
 @pytest.mark.asyncio
 async def test_announcement_group_is_readable_but_not_silenceable(client, db_pool, e2_world):
-    """`announcement` **อ่าน/กรองได้** (5 กลุ่ม) แต่ **ปิดไม่ได้** (4 กลุ่ม) — สองลิสต์ไม่เท่ากันโดยเจตนา
+    """`announcement` **อ่าน/กรองได้** (6 กลุ่ม) แต่ **ปิดไม่ได้** (5 กลุ่ม) — สองลิสต์ไม่เท่ากันโดยเจตนา
 
     ⭐ ประกาศฉุกเฉินที่ผู้ใช้ปิดได้ = ล้มเหลวในหน้าที่ของมัน ⇒ กลุ่มนี้ถูกกันออกจาก
        `PREFERENCE_GROUPS` ทั้งฝั่ง backend และ frontend (ไม่มีสวิตช์ให้กดตั้งแต่แรก)
@@ -349,7 +349,7 @@ async def test_announcement_group_is_readable_but_not_silenceable(client, db_poo
     """
     await _announce(db_pool, e2_world)
 
-    # (ก) อ่าน/กรองได้ — 5 กลุ่ม
+    # (ก) อ่าน/กรองได้ — 6 กลุ่ม
     res = client.get("/api/notifications", params={"group_type": "announcement"},
                      headers=_auth(e2_world, "s1"))
     assert res.status_code == 200, res.text
@@ -365,10 +365,10 @@ async def test_announcement_group_is_readable_but_not_silenceable(client, db_poo
         "กลุ่ม announcement ต้องอยู่นอกลิสต์ที่ปิดได้ — ถ้าผ่าน แสดงว่าประกาศฉุกเฉินถูกปิดได้"
     )
 
-    # (ค) หน้าตั้งค่าต้องไม่โชว์กลุ่มนี้เลย (4 กลุ่มเท่านั้น)
+    # (ค) หน้าตั้งค่าต้องไม่โชว์กลุ่มนี้เลย (5 กลุ่มเท่านั้น)
     res = client.get("/api/notifications/preferences", headers=_auth(e2_world, "s1"))
     groups = {p["group_type"] for p in res.json()["preferences"]}
-    assert groups == {"issue_mine", "issue_received", "board", "report"}
+    assert groups == {"issue_mine", "issue_received", "board", "report", "event"}
     assert "announcement" not in groups
 
 

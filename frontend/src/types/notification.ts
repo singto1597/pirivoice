@@ -1,13 +1,20 @@
 // 🔔 ระบบแจ้งเตือน (Notifications) — badge ตามเมนู + หน้าแจ้งเตือนกลาง
 // group_type ตรงกับ backend: badge "เรื่องของฉัน" / "เรื่องที่รับ" / PIRI Boards / จัดการรายงาน
 // + "ประกาศฉุกเฉิน" (E2) ซึ่ง **ปิดไม่ได้** — ดูเหตุผลที่ PREFERENCE_GROUPS ข้างล่าง
+// + "กิจกรรม" (D1) ซึ่ง **ปิดได้** — กิจกรรมไม่ใช่เรื่องฉุกเฉิน ผู้ใช้ต้องปิดได้
 
-export type NotificationGroup = 'issue_mine' | 'issue_received' | 'board' | 'report' | 'announcement'
+export type NotificationGroup =
+  | 'issue_mine'
+  | 'issue_received'
+  | 'board'
+  | 'report'
+  | 'announcement'
+  | 'event'
 
 export interface NotificationItem {
   id: number
   group_type: NotificationGroup
-  type: string // issue_new | issue_update | issue_comment | board_new | board_reply | board_hidden | report_new | report_actioned | announcement_urgent
+  type: string // issue_new | issue_update | issue_comment | board_new | board_reply | board_hidden | report_new | report_actioned | announcement_urgent | event_published | event_cancelled | event_waitlist_promoted
   title: string
   body: string
   entity_type: string | null // issue | piri_board | piri_board_comment | piri_board_report
@@ -50,6 +57,7 @@ export const GROUP_TABS: Array<{ value: '' | NotificationGroup; label: string; i
   { value: 'board', label: 'PIRI Boards', icon: 'bi bi-columns-gap' },
   { value: 'report', label: 'จัดการรายงาน', icon: 'bi bi-flag-fill' },
   { value: 'announcement', label: 'ประกาศฉุกเฉิน', icon: 'bi bi-megaphone-fill' },
+  { value: 'event', label: 'กิจกรรม', icon: 'bi bi-calendar-event' },
 ]
 
 // ⚙️ ตั้งค่าการแจ้งเตือนรายกลุ่ม
@@ -66,14 +74,20 @@ export interface NotificationPreferencesResponse {
 //
 // 🚨 **`announcement` ไม่อยู่ในลิสต์นี้โดยเจตนา — ห้ามเพิ่ม**
 //    ประกาศฉุกเฉิน (น้ำท่วม/ไฟดับ/งดเรียนกะทันหัน) ที่ปิดได้ = ประกาศที่ล้มเหลวในหน้าที่ของมัน
-//    ⇒ ฝั่ง backend ไม่มีทางสร้างแถว preference ของกลุ่มนี้ได้ (pattern ของ PUT มี 4 กลุ่ม)
+//    ⇒ ฝั่ง backend ไม่มีทางสร้างแถว preference ของกลุ่มนี้ได้ (pattern ของ PUT มี 5 กลุ่ม)
 //      การเพิ่มที่นี่จะทำให้ UI โชว์สวิตช์ที่ **กดแล้วได้ 422** — แย่กว่าไม่มีสวิตช์
 //
 // ⚠️ **เดิมทีค่านี้มาจาก `GROUP_TABS.filter(t => t.value !== '')`** ซึ่งพอเพิ่มแท็บที่ 5
 //    จะลาก `announcement` เข้ามาเป็นสวิตช์ที่ปิดได้ทันทีแบบเงียบ ๆ ⇒ เปลี่ยนมาใช้ลิสต์ที่
 //    **ระบุชื่อกลุ่มตรง ๆ** (allowlist) แล้วให้ GROUP_TABS เป็นตัวให้ label/icon
 //    ⇒ เพิ่มกลุ่มใหม่ = ต้องแก้ **2 ที่เสมอ** (`GROUP_TABS` สำหรับแท็บ + ลิสต์นี้ถ้าปิดได้)
-export const PREFERENCE_GROUP_VALUES = ['issue_mine', 'issue_received', 'board', 'report'] as const
+export const PREFERENCE_GROUP_VALUES = [
+  'issue_mine',
+  'issue_received',
+  'board',
+  'report',
+  'event',
+] as const
 
 // ⚠️ ห้ามประกาศชื่อ/ไอคอนกลุ่มซ้ำที่ใหม่ — ยืมจาก GROUP_TABS ข้างบนเสมอ
 export const PREFERENCE_GROUPS = GROUP_TABS.filter(
@@ -91,6 +105,7 @@ export const GROUP_DESCRIPTIONS: Record<NotificationGroup, string> = {
   report: 'เมื่อมีคนรายงานเนื้อหา และเมื่อผลการตรวจสอบออก',
   announcement:
     'ประกาศฉุกเฉินจากโรงเรียน — ปิดไม่ได้ เพื่อให้แน่ใจว่าข่าวสำคัญถึงทุกคนทันเวลา',
+  event: 'เมื่อมีกิจกรรมใหม่เปิดรับสมัคร หรือคุณถูกเลื่อนจากคิวสำรองเป็นตัวจริง',
 }
 
 // ไอคอน per type (ใช้หน้าแจ้งเตือน)
@@ -104,6 +119,9 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   report_new: 'bi bi-flag-fill',
   report_actioned: 'bi bi-check2-circle',
   announcement_urgent: 'bi bi-megaphone-fill',
+  event_published: 'bi bi-calendar-plus',
+  event_cancelled: 'bi bi-calendar-x',
+  event_waitlist_promoted: 'bi bi-hourglass-split',
 }
 
 // ============================================================

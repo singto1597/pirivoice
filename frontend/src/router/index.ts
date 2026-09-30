@@ -128,6 +128,30 @@ const router = createRouter({
           name: 'board-detail',
           component: () => import('@/views/boards/BoardDetail.vue'),
         },
+        // 📅 กิจกรรม (D1) — สามหน้า สองระดับสิทธิ์
+        //    ⚠️ `events/manage` **ต้องมาก่อน** `events/:id` — ไม่งั้น "manage" ถูกจับเป็น `:id`
+        //       แล้วหน้า detail จะได้ eventId = "manage" ⇒ ยิง API ด้วย NaN
+        {
+          // รายการกิจกรรมที่เผยแพร่แล้ว — นักเรียนทุกคนเห็น (ต้องล็อกอิน แต่ไม่ต้องมี MANAGE_EVENTS)
+          path: 'events',
+          name: 'events',
+          component: () => import('@/views/events/EventList.vue'),
+          meta: { requiresAuth: true },
+        },
+        {
+          // หน้าจัดการของสภา — ★ permission ตรวจที่ **route meta** ด้วย ไม่ใช่พึ่ง backend อย่างเดียว
+          //   (backend ยังตรวจซ้ำใน service เสมอ — อันนี้เพื่อไม่ให้เมนู/หน้าโผล่โดยไม่มีสิทธิ์)
+          path: 'events/manage',
+          name: 'event-management',
+          component: () => import('@/views/events/EventManagement.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+        },
+        {
+          path: 'events/:id',
+          name: 'event-detail',
+          component: () => import('@/views/events/EventDetail.vue'),
+          meta: { requiresAuth: true },
+        },
         {
           path: 'playbooks',
           name: 'playbooks',

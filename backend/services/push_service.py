@@ -73,6 +73,16 @@ BOARD_REPORTS_URL = "/app/boards/reports"
 #      "เพิ่มกลุ่มใหม่แล้วลืมนิยามปลายทาง" ทั้งสองฝั่ง
 ANNOUNCEMENT_URL = "/app/home"
 
+# ── D1 (ระบบกิจกรรม) — ปลายทางคือ **ตัวกิจกรรมนั้น** ──────────────────────────
+# ⭐ **ต่างจาก E2 โดยเจตนา**: ประกาศโชว์ทั้งก้อนบน Home ⇒ ไม่มี "ใบ" ให้เจาะจง
+#    แต่กิจกรรมมีหน้ารายละเอียดของตัวเอง ⇒ ต้องพาไปที่ใบนั้น ไม่งั้นผู้ใช้ต้อง
+#    ไปค้นในลิสต์อีกที ซึ่งขัดกับเหตุผลที่แจ้งตั้งแต่แรก ("เปิดรับสมัครแล้ว")
+# · `event_waitlist_promoted` ก็ใช้ปลายทางเดียวกัน — "คุณได้ที่นั่งแล้ว" ต้องพาไปที่
+#   ใบนั้นเพื่อกดยืนยัน/ดูรายละเอียด ไม่ใช่พาไปลิสต์
+# ⚠️ **ต้องมี `entity_id` ถึงจะใช้ได้** — ไม่มี = ถอยไป `/app/events` (ลิสต์)
+#    ห้ามประกอบเป็น `/app/events/None` (บทเรียนเดียวกับที่ docstring ด้านล่างเตือนไว้)
+EVENTS_URL = "/app/events"
+
 # เวลารอสูงสุดต่อ 1 คำขอ — FCM/APNs ปกติตอบใน <1 วิ, 10 วิคือ "ปลายทางตายแล้ว"
 _SEND_TIMEOUT_SECONDS = 10.0
 
@@ -184,7 +194,7 @@ def _field(row: Any, key: str) -> Any:
 def _deep_link_url(row: Any) -> str:
     """ปลายทางเมื่อผู้ใช้กด notification — **ฟังก์ชันบริสุทธิ์**
 
-    ลำดับการตัดสินลอกจาก `NotificationCenter.go()` ตรง ๆ (5 ขั้น) — **ลำดับมีความหมาย**:
+    ลำดับการตัดสินลอกจาก `NotificationCenter.go()` ตรง ๆ (6 ขั้น) — **ลำดับมีความหมาย**:
 
       1. กลุ่ม `report` + ชนิด `report_new` → **คิวรายงาน** (`/app/boards/reports`)
          ★ ต้องมาก่อนข้อ 3 เพราะ notification นี้พก `board_id` มาด้วย — ถ้าตกไปข้อ 3
@@ -192,8 +202,12 @@ def _deep_link_url(row: Any) -> str:
       2. กลุ่ม `report` ชนิดอื่น ที่มี `board_id` → **บอร์ดนั้น** (`report_actioned`
          ส่งถึง *ผู้แจ้ง* ซึ่งอาจเป็นนักเรียน — ต้องไปดูบอร์ด ไม่ใช่คิวของสภา)
       3. กลุ่ม `announcement` (E2) → **Home** (`/app/home`) ซึ่งเป็นที่แสดงตัวประกาศ
-      4. `entity_type == 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
-      5. มี `board_id` → **หน้าบอร์ด**
+      4. กลุ่ม `event` (D1) + `entity_id` → **ตัวกิจกรรมนั้น** (`/app/events/{id}`)
+         ★ **ต้องมาก่อนข้อ 5** เพราะกิจกรรมใช้ `entity_type='event'` ไม่ใช่ `'issue'`
+         แต่ถ้าวันหน้าฝั่ง service ส่ง `board_id` มาด้วยไม่ว่าด้วยเหตุใด ข้อ 6 จะแย่งไป
+         · ไม่มี `entity_id` → `/app/events` (ลิสต์) — **ห้าม** `/app/events/None`
+      5. `entity_type == 'issue'` + `entity_id` → **หน้ารายละเอียดเรื่อง**
+      6. มี `board_id` → **หน้าบอร์ด**
 
     ไม่เข้าเงื่อนไขใด → `/app/notifications` (ปลอดภัยเสมอ: ไม่พาไปที่ที่ไม่มีอยู่)
 
@@ -204,6 +218,9 @@ def _deep_link_url(row: Any) -> str:
     ⚠️ **ข้อ 3 ต้องไม่ผูกกับ `entity_id`** — ประกาศแสดงทั้งก้อนบน Home ไม่ได้เจาะจงใบ
        ⇒ แม้ `entity_id` เป็น NULL ก็ต้องได้ `/app/home` (ตรึงด้วย `test_T21i` เคสที่ 2)
        ต่างจากข้อ 4 ที่ *ต้อง* มี `entity_id` ไม่งั้นจะได้ `/app/issues/None`
+
+    ⚠️ **ข้อ 3 กับข้อ 4 ใช้กฎ "มี entity_id ไหม" ต่างกันโดยเจตนา** — announcement
+       ไม่เจาะจงใบ (Home โชว์ทั้งก้อน) แต่ event เจาะจงใบ ⇒ กติกาเดียวกันใช้แทนกันไม่ได้
     """
     group_type = _field(row, "group_type")
     notif_type = _field(row, "type")
@@ -218,11 +235,17 @@ def _deep_link_url(row: Any) -> str:
             return f"/app/boards/{board_id}"
         return DEFAULT_PUSH_URL
 
-    # 5. ประกาศฉุกเฉิน (E2) → Home ซึ่งเป็นที่แสดงตัวประกาศ
-    #    ★ มาก่อนข้อ 3/4 โดยไม่จำเป็นต้องมี เพราะ announcement ไม่มี entity_type='issue'
+    # 3. ประกาศฉุกเฉิน (E2) → Home ซึ่งเป็นที่แสดงตัวประกาศ
+    #    ★ มาก่อนข้อ 4/5/6 โดยไม่จำเป็นต้องมี เพราะ announcement ไม่มี entity_type='issue'
     #      และไม่มี board_id — แต่วางไว้ให้ชัดว่าเป็นกฎ *เจตนา* ไม่ใช่การตกหล่นไป fallback
     if group_type == "announcement":
         return ANNOUNCEMENT_URL
+
+    # 4. กิจกรรม (D1) → ตัวกิจกรรมนั้น — "เปิดรับสมัครแล้ว" ต้องกดแล้วถึงใบนั้นเลย
+    if group_type == "event":
+        if entity_id is not None:
+            return f"{EVENTS_URL}/{entity_id}"
+        return EVENTS_URL
 
     if entity_type == "issue" and entity_id is not None:
         return f"/app/issues/{entity_id}"
