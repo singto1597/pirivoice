@@ -124,6 +124,19 @@ describe('formatThaiDateTimeInput — คำอ่าน พ.ศ. ใต้ช�
     expect(formatThaiDateTimeInput('2026-12-31T23:59')).toContain('2569')
   })
 
+  it('★ กลางคืนต้องอ่านเป็น 00:xx / 23:xx (ไม่ใช่ 24:xx)', () => {
+    // ⚠️ เคสปีใหม่ข้างบนแตะ 00:00 กับ 23:59 แล้ว แต่ **ตรวจแค่ปี** ⇒ เพิ่มเคสนี้ให้ตรึง *ชั่วโมง*
+    //    ที่ขอบเที่ยงคืน ซึ่งเป็นค่าที่ผู้ใช้เห็นในคำอ่านโดยตรง
+    //
+    // ⚠️ **เทสต์นี้ไม่จับการถอด `hourCycle: 'h23'` ออก บนเครื่องนี้** — ตรวจด้วย mutation แล้ว
+    //    ยังเขียว เพราะ Node 22 + full ICU ให้ `h23` โดยปริยายอยู่แล้ว ⇒ ตัวที่กันจริงคือ
+    //    บรรทัดในไฟล์ impl (ดูคอมเมนต์ที่ `BKK_PARTS`) · เทสต์นี้จะทำหน้าที่จับ *ทันที*
+    //    ที่ย้ายไปรันไทม์ซึ่ง default เป็น `h24`
+    expect(formatThaiDateTimeInput('2026-10-15T00:30')).toContain('00:30')
+    expect(formatThaiDateTimeInput('2026-10-15T00:30')).not.toContain('24:30')
+    expect(formatThaiDateTimeInput('2026-10-15T23:30')).toContain('23:30')
+  })
+
   it('ค่าที่ไม่ถูกต้อง ⇒ สตริงว่าง (ไม่ใช่ "Invalid Date" บนหน้าจอ)', () => {
     expect(formatThaiDateTimeInput('')).toBe('')
     expect(formatThaiDateTimeInput('2026-02-31T09:00')).toBe('')
