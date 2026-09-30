@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import { changePassword } from '@/services/profile';
 import { useAuthStore } from '@/stores/auth';
+import { REDIRECT_QUERY, safeRedirect } from '@/router/redirect';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const oldPass = ref('');
@@ -51,7 +53,14 @@ async function submit() {
       timer: 1500,
       showConfirmButton: false,
     }).then(() => {
-      router.push({ name: homeRouteName() });
+      // 🔗 ปลายทางที่ตั้งใจไว้ตั้งแต่ก่อนล็อกอิน (§30 ข้อ 3) — ถูกส่งต่อมาทาง `?redirect=`
+      //    ทั้งจากหน้า Login และจาก guard (`mustChangePassword`)
+      //    ⚠️ **เปลี่ยนรหัสเสร็จแล้วเท่านั้นจึงใช้ค่านี้** ⇒ ไม่ขัดเจตนาเดิมที่ห้ามไปที่อื่นก่อน
+      //       เปลี่ยนรหัส (ตอนนั้น guard จะเด้งกลับมาอยู่ดี)
+      //    ⚠️ `safeRedirect()` กรองซ้ำเสมอ — ค่ามาจาก URL ที่ใครก็เขียนได้ (ด่านเดิม ห้ามผ่อน)
+      const target = safeRedirect(route.query[REDIRECT_QUERY]);
+      if (target) router.replace(target);
+      else router.push({ name: homeRouteName() });
     });
   } catch (e: unknown) {
     Swal.fire({ icon: 'error', title: 'เปลี่ยนรหัสไม่สำเร็จ', text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' });
