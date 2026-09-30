@@ -14,7 +14,7 @@ export type NotificationGroup =
 export interface NotificationItem {
   id: number
   group_type: NotificationGroup
-  type: string // issue_new | issue_update | issue_comment | board_new | board_reply | board_hidden | report_new | report_actioned | announcement_urgent | event_published | event_cancelled | event_waitlist_promoted
+  type: string // issue_new | issue_update | issue_comment | board_new | board_reply | board_hidden | report_new | report_actioned | announcement_urgent | event_published | event_cancelled | event_waitlist_joined | event_waitlist_promoted
   title: string
   body: string
   entity_type: string | null // issue | piri_board | piri_board_comment | piri_board_report
@@ -121,7 +121,12 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   announcement_urgent: 'bi bi-megaphone-fill',
   event_published: 'bi bi-calendar-plus',
   event_cancelled: 'bi bi-calendar-x',
-  event_waitlist_promoted: 'bi bi-hourglass-split',
+  // ⚠️ สองตัวนี้ **ต้องคนละไอคอน** — ความหมายตรงข้ามกัน ("ยังรออยู่" กับ "ได้ที่นั่งแล้ว")
+  //    · `joined` ใช้ตัวเดียวกับป้าย `waitlisted` ใน `types/event.ts:75` โดยเจตนา
+  //      ⇒ คำว่า "คิวสำรอง" ในแอพนี้หน้าตาเหมือนกันทุกที่
+  //    · `promoted` เดิมเป็น `bi-hourglass-split` ซึ่งเท่ากับ `joined` พอดี ⇒ เปลี่ยนเป็นถ้วย
+  event_waitlist_joined: 'bi bi-hourglass-split',
+  event_waitlist_promoted: 'bi bi-trophy',
 }
 
 // ============================================================
