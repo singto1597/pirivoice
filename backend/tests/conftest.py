@@ -28,6 +28,27 @@ settings.SEED_CREDENTIALS_FILE = os.path.join(
     tempfile.mkdtemp(prefix="piri_seed_test_"), "seed_credentials.txt"
 )
 
+# 🧹 ตารางที่ต้องถูกล้างก่อนทุก test — **แหล่งความจริงเดียวของรายการนี้**
+#
+# ⚠️ ทำไมต้องเป็นค่าคงที่ตัวเดียว: รายการนี้ถูกใช้ **สองที่** — `clean_database` (ล้างจริง)
+#    และ post-condition ของ `test_db_url` (พิสูจน์ว่า schema สร้างครบ) ⇒ ถ้าเขียนซ้ำสองที่
+#    วันที่เพิ่มตารางใหม่แล้วลืมที่หนึ่ง จะได้ "ตารางที่ไม่เคยถูกล้าง" ซึ่งอ่านไม่ออกว่า
+#    เป็นเพราะอะไร (เทสต์ผ่านบ้างไม่ผ่านบ้างตามลำดับการรัน) — คลาสเดียวกับ skills.md เรื่อง
+#    "สำนวน SQL เดียวกันเขียนสองที่"
+#
+# 📌 เพิ่มตารางใหม่ ⇒ **เพิ่มที่นี่ที่เดียว** (ทั้งการล้างและการตรวจ schema ได้พร้อมกัน)
+_TABLES = (
+    "users", "rooms", "students", "issues",
+    "issue_steps", "issue_escalations", "issue_countdowns",
+    "issue_status_history", "audit_logs", "student_import_jobs",
+    "issue_comments", "piri_boards", "piri_board_comments",
+    "piri_vote_choices", "piri_votes", "piri_board_reactions",
+    "piri_board_reports", "piri_board_views", "notifications",
+    "notification_preferences", "academic_terms", "announcements",
+    "push_subscriptions", "push_outbox", "bookmarks", "app_settings",
+    "event_registrations", "events",
+)
+
 
 @pytest_asyncio.fixture(scope="session")
 async def test_db_url():
@@ -50,15 +71,35 @@ async def test_db_url():
     original_db_url = settings.DATABASE_URL
     settings.DATABASE_URL = new_db_url
 
-    temp_pool = None
+    # ⚠️⚠️ **ห้ามครอบด้วย try/except ที่แค่ print** — เคยเป็นแบบนั้นและมันกลืนความล้มเหลว
+    #    ของ `init_db` ทิ้ง ⇒ session เดินต่อด้วย DB ที่ **ว่างเปล่า** แล้วเทสต์ 250 ตัว
+    #    ล้มด้วย `relation "issues" does not exist` ซึ่งชี้ไปที่เทสต์ ไม่ได้ชี้ที่ต้นเหตุ
+    #    (และถ้าเทสต์ไหนไม่แตะตารางที่หาย มันจะ **ผ่าน** ทั้งที่ schema ไม่ครบ)
+    #    ⇒ ปล่อยให้ exception หลุดออกไปเลย · งานเก็บกวาดยังอยู่ใน `finally` ตามเดิม
     try:
         temp_pool = await asyncpg.create_pool(new_db_url)
-        await init_db(temp_pool)
-    except Exception as e:
-        print(f"⚠️ Error initializing test database schema: {e}")
-    finally:
-        if temp_pool:
+        try:
+            await init_db(temp_pool)   # ← สร้างตาราง + รัน migrations ทั้งหมด
+
+            # 🔎 Post-condition: พิสูจน์ว่า schema สร้าง **ครบ** ไม่ใช่แค่ "ไม่ throw"
+            #    `init_db` รัน `CREATE TABLE IF NOT EXISTS` ทีละตาราง ⇒ ถ้ามีอะไรผิดกลางทาง
+            #    (หรือ migration ที่เพิ่มตารางถูกลบ/เปลี่ยนชื่อ) มันจะจบแบบ "สำเร็จ" ทั้งที่ขาด
+            #    ⇒ ตรวจรายการเดียวกับที่ `clean_database` จะใช้จริง — ตรงกับอาการที่เกิดขึ้นจริง
+            existing = {
+                r["tablename"]
+                for r in await temp_pool.fetch(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+                )
+            }
+            missing = [t for t in _TABLES if t not in existing]
+            assert not missing, (
+                f"⚠️ init_db สร้าง schema ไม่ครบ — ขาดตาราง: {', '.join(missing)}\n"
+                f"   (สร้างได้ {len(existing)} ตาราง) — ต้นเหตุอยู่ที่ core/init_db.py "
+                f"หรือ migrations/ ไม่ใช่ที่เทสต์"
+            )
+        finally:
             await temp_pool.close()
+    finally:
         settings.DATABASE_URL = original_db_url
 
     yield new_db_url
@@ -86,20 +127,11 @@ async def db_pool(test_db_url):
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def clean_database(db_pool):
-    """ล้างข้อมูลทุกตารางก่อนแต่ละ test"""
+    """ล้างข้อมูลทุกตารางก่อนแต่ละ test (รายการมาจาก `_TABLES` — ดูคอมเมนต์ที่นั่น)"""
     async with db_pool.acquire() as conn:
-        await conn.execute("""
-            TRUNCATE TABLE users, rooms, students, issues,
-                issue_steps, issue_escalations, issue_countdowns,
-                issue_status_history, audit_logs, student_import_jobs,
-                issue_comments, piri_boards, piri_board_comments,
-                piri_vote_choices, piri_votes, piri_board_reactions,
-                piri_board_reports, piri_board_views, notifications,
-                notification_preferences, academic_terms, announcements,
-                push_subscriptions, push_outbox, bookmarks, app_settings,
-                event_registrations, events
-            CASCADE
-        """)
+        # ⚠️ `TRUNCATE` รับได้แค่ชื่อตารางที่ **ไม่ใช่** ค่าที่ผูกเป็น parameter ($1)
+        #    ⇒ ต้องประกอบสตริง · ปลอดภัยเพราะ `_TABLES` เป็นค่าคงที่ในไฟล์นี้ ไม่มีทางมาจากผู้ใช้
+        await conn.execute(f"TRUNCATE TABLE {', '.join(_TABLES)} CASCADE")
     yield
 
 
