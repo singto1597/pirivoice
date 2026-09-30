@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { REDIRECT_QUERY, safeRedirect } from '@/router/redirect';
 
 /**
  * Error ที่พก HTTP status มาด้วย
@@ -40,6 +41,32 @@ api.interceptors.request.use(
   }
 );
 
+/**
+ * 🔗 สร้าง URL ของหน้า Login **พร้อมจำปลายทางที่ผู้ใช้ตั้งใจจะไป** (§30)
+ *
+ * ⚠️ **ทำไมต้องมี** — 401 เป็นเส้นทางที่ **อยู่นอก router ทั้งหมด**: เกิดตอนที่ผู้ใช้
+ *   *มี* token อยู่แล้วแต่มันหมดอายุ ⇒ guard (`router/index.ts`) เห็น `isAuthenticated = true`
+ *   ⇒ **ไม่ยิง** ⇒ ผู้ใช้เข้าหน้าเป้าหมายได้ ⇒ พอยิง API ก็ได้ 401 ⇒ ถูกพาออกไปหน้า Login
+ *   **โดยไม่มีใครรู้ว่าเขาจะไปไหน** ⇒ ล็อกอินเสร็จได้ `route.query.redirect === undefined`
+ *   ⇒ `safeRedirect()` คืน `null` ⇒ ตกลงที่หน้าแรก (Home) — ซึ่งเป็นอาการที่ผู้ใช้รายงานตรง ๆ:
+ *   *"มันจะเด้งไป login แล้วพอ login เสร็จ มันก็จะเข้าหน้า home"*
+ *   ⇒ เส้นทางนี้ **guard ไม่มีทางแก้ให้ได้** เพราะมันไม่เคยถูกเรียกเลย
+ *
+ * 🔒 **ค่าที่เขียนต้องผ่านด่าน `safeRedirect()` ตัวเดียวกับที่หน้า Login ใช้** — ไม่ใช่
+ *   "กติกาเดียวกันที่เขียนซ้ำ" แต่เป็น **ฟังก์ชันเดียวกัน** ⇒ สองฝั่งเพี้ยนจากกันไม่ได้
+ *   (`pathname` มาจากเบราว์เซอร์ = ข้อมูลที่ผู้ใช้ควบคุมได้ เช่นเดียวกับ `?redirect=`)
+ *   ⇒ หน้าที่ไม่ผ่านด่าน (ไม่ขึ้นต้น `/app/` เช่นหน้า public, หรือมี `\`) จะได้ `/login` เปล่า ๆ
+ *     ตามพฤติกรรมเดิม — **ไม่ใช่ค่าแปลก ๆ ที่หน้า Login ต้องมาปฏิเสธเอง**
+ *
+ * ⚠️ `search` ต้องติดไปด้วย — ไม่งั้น deep link ที่พา query มา (`?tab=comments`) จะถึงหน้า
+ *   ปลายทางแต่ **ไม่ถึงแท็บที่ตั้งใจ** = "เกือบถูก" ซึ่งดูเหมือนบั๊กของปลายทาง
+ */
+export function loginUrlRemembering(pathname: string, search: string): string {
+  const target = safeRedirect(pathname + search);
+  if (!target) return '/login';
+  return `/login?${REDIRECT_QUERY}=${encodeURIComponent(target)}`;
+}
+
 // Interceptor ขาเข้า: จัดการ Error และดักจับ 401
 let isRedirectingToLogin = false;
 
@@ -54,7 +81,7 @@ api.interceptors.response.use(
 
         if (!isRedirectingToLogin && !window.location.pathname.startsWith('/login')) {
           isRedirectingToLogin = true;
-          window.location.href = '/login';
+          window.location.href = loginUrlRemembering(window.location.pathname, window.location.search);
         }
       }
 

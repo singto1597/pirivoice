@@ -17,9 +17,9 @@
  *    เป็นโครงสร้างภายในที่เปลี่ยนได้between เวอร์ชัน · การแทน adapter ทำให้ route
  *    ทั้งเส้น (transform → interceptor → caller) ทำงานเหมือนของจริง
  *
- * ⚠️ **ไม่ทดสอบ 401 โดยเจตนา** — สาขานั้นตั้ง `window.location.href = '/login'` ซึ่ง jsdom
- *    ไม่รองรับ (ขึ้น "Not implemented: navigation") ⇒ เทสจะผ่านแต่มี noise ที่กลบสัญญาณจริง
- *    · พฤติกรรม 401 ถูกครอบด้วย `notifications`/หน้า Login อยู่แล้วและไม่เกี่ยวกับ A4
+ * ⚠️ **ไม่ทดสอบ 401 ในไฟล์นี้** — สาขานั้นเขียน `window.location` (jsdom ไม่รองรับ navigation)
+ *    ซึ่งต้องคุมทั้งใบ ⇒ แยกไปที่ `apiRedirect.spec.ts` พร้อมเหตุผลว่าทำไมต้องแยก
+ *    (สำคัญ: `isRedirectingToLogin` เป็นสถานะระดับโมดูล ⇒ ต้องโหลดโมดูลใหม่ต่อเทสต์)
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios'
