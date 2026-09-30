@@ -1,89 +1,40 @@
 <!-- eslint-disable vue/multi-word-component-names -- ชื่อตาม route/spec -->
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import Swal from 'sweetalert2';
-import { BRAND } from '@/constants/brand';
-import { getMyProfile, type MyProfile } from '@/services/profile';
-import {
-  getNotificationPreferences,
-  updateNotificationPreferences,
-} from '@/services/notification';
-import {
-  PREFERENCE_GROUPS,
-  GROUP_DESCRIPTIONS,
-  type NotificationGroup,
-} from '@/types/notification';
-import { getMyStats } from '@/services/me';
-import type { PersonalStats } from '@/types/me';
-import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
-import PushSettingsCard from '@/components/PushSettingsCard.vue';
-import QuietHoursCard from '@/components/QuietHoursCard.vue';
-import { useAuthStore } from '@/stores/auth';
-import {
-  canPromptInstall,
-  installDiagnostics,
-  installHint,
-  installNow,
-  isIosSafari,
-  isStandalone,
-} from '@/pwa';
-
-const router = useRouter();
-const authStore = useAuthStore();
-
-// ===== 📱 ติดตั้งแอป =====
-// ⚠️ การ์ดนี้คือ **ทางกลับมา** ของคนที่เคยกด ✕ ปิดแบนเนอร์ติดตั้งไว้ — แบนเนอร์จำการปิด
-//    แล้วไม่ขึ้นอีก ส่วนการ์ดนี้ไม่ผูกกับค่านั้น เพราะการที่ผู้ใช้เปิดมาหาเองคือการเปลี่ยนใจ
-const installing = ref(false);
-
 /**
- * แถวข้อมูลวินิจฉัย — แสดงเฉพาะในกิ่ง "ติดตั้งอัตโนมัติไม่ได้"
+ * 👤 โปรไฟล์ — "ฉันเป็นใคร" (อ่านเป็นหลัก)
  *
- * ใช้คำว่า "ใช่/ไม่" ไม่ใช่ true/false เพราะคนที่อ่านเป็นผู้ใช้ทั่วไป ไม่ใช่ช่าง
- * ⚠️ `installDiagnostics` เป็น `computed` ⇒ ค่าจะอัปเดตเองเมื่อสถานะเปลี่ยน
- *    (เช่นผู้ใช้กดปิดแบนเนอร์ระหว่างเปิดหน้านี้อยู่)
+ * ⭐ **แยกออกจาก `Settings.vue` โดยเจตนา** (R3.3) — เดิมไฟล์นี้บรรจุทั้ง *ตัวตน* และ
+ *    *การตั้งค่า* ปนกัน ⇒ คนที่เปิดมาดูชื่อ/ห้องตัวเองต้องเลื่อนผ่านสวิตช์ 5 ตัว
+ *    หน้าตั้งค่าย้ายไป `/app/settings` แล้ว ⇒ **หนึ่งหน้า หนึ่งงานหลัก**
+ *
+ * 🔴 **ไม่มีเมนู `⋮` ที่นี่อีกแล้ว — และนั่นคือประเด็นของ R3.3** เดิมมุมขวาบนมี dropdown
+ *    ที่บรรจุ *แก้ไขโปรไฟล์ · เปลี่ยนรหัสผ่าน · ออกจากระบบ* ซึ่งเป็น **ทางเข้าชุดที่สอง
+ *    ของปลายทางเดียวกัน** กับกลุ่ม "บัญชี" ในหน้า More (R1) — สิ่งที่ผู้ใช้เรียกว่า
+ *    "เยอะเกินไป" คือของแบบนี้พอดี
+ *
+ *    ⚠️ แต่ `profile-edit` และ `profile-password` เป็น `hiddenFromMenu: true` ใน
+ *       `constants/nav.ts` ⇒ **ถอด dropdown ทิ้งเฉย ๆ จะทำให้สอง route นั้นไม่มีทางเข้าเลย**
+ *       จึงต้องมีที่อยู่ใหม่ครบทั้งคู่ (นี่คือเหตุผลที่ทั้งสองบรรทัดถัดจากนี้มีอยู่):
+ *         · "แก้ไขโปรไฟล์"  → ปุ่มเดียวในหน้านี้ (งานหลักของหน้านี้คือ *ดู* แล้ว *แก้*)
+ *         · "เปลี่ยนรหัสผ่าน" → **อยู่ที่หน้าตั้งค่า** เพราะเป็นเรื่อง credential/บัญชี
+ *           ไม่ใช่ตัวตน ⇒ ไม่ยัดกลับมาที่นี่เพื่อความสมมาตร
+ *
+ * 🔴 **ห้ามใส่ `<h1>` ในไฟล์นี้** — `<h1>` ของหน้าอยู่ที่ `AppHeader` แล้ว (R0.3)
+ *    ⇒ ชื่อผู้ใช้ใช้ `<h2>` ซึ่งเป็น "หัวเรื่องของการ์ด" ใบเดียวกับที่การ์ดอื่นใช้
  */
-const diagRows = computed(() => {
-  const d = installDiagnostics.value;
-  return [
-    { label: 'เปิดในโหมดแอพแล้ว', on: d.standalone },
-    { label: 'เบราว์เซอร์พร้อมติดตั้ง', on: d.promptReady },
-    { label: 'ตัวช่วยแอพทำงาน (SW)', on: d.swRegistered },
-    { label: 'เคยกดปิดแบนเนอร์', on: d.dismissed },
-    { label: 'เครื่องนี้เคยติดตั้งมาก่อน', on: d.installedBefore },
-  ];
-});
+import { ref, onMounted, computed } from 'vue'
+import { getMyProfile, type MyProfile } from '@/services/profile'
+import { getMyStats } from '@/services/me'
+import type { PersonalStats } from '@/types/me'
+import { avatarCharOf } from '@/utils/avatar'
+import PersonalStatsCard from '@/components/PersonalStatsCard.vue'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
-async function onInstall() {
-  if (installing.value) return;
-  installing.value = true;
-  try {
-    const outcome = await installNow();
-    if (outcome === 'accepted') {
-      await Swal.fire({
-        icon: 'success',
-        title: 'ติดตั้งแล้ว',
-        text: 'เปิด PIRIvoice ได้จากไอคอนบนหน้าจอเลย',
-        confirmButtonColor: BRAND,
-      });
-    } else if (outcome === 'unavailable') {
-      await Swal.fire({
-        icon: 'info',
-        title: 'เครื่องนี้ติดตั้งอัตโนมัติไม่ได้',
-        text: 'เปิดด้วย Chrome แล้วเลือก "ติดตั้งแอป" จากเมนู ⋮ มุมขวาบน',
-        confirmButtonColor: BRAND,
-      });
-    }
-  } finally {
-    installing.value = false;
-  }
-}
-
-const profile = ref<MyProfile | null>(null);
-const isLoading = ref(true);
-const hasError = ref(false);
-const menuOpen = ref(false);
+const profile = ref<MyProfile | null>(null)
+const isLoading = ref(true)
+const hasError = ref(false)
 
 const ROLE_LABELS: Record<string, string> = {
   student: 'นักเรียน',
@@ -98,452 +49,212 @@ const ROLE_LABELS: Record<string, string> = {
   teacher: 'ครู',
   teacher_council: 'ครูสภา',
   admin: 'แอดมิน',
-};
+}
 
-const avatarChar = computed(() => {
-  // ตัวแรกของชื่อจริง (first_name) — ไม่เอาคำนำหน้า (prefix)/ชื่อเล่น (nickname)
-  const name = profile.value?.first_name || profile.value?.username || '';
-  return name ? name.charAt(0).toUpperCase() : 'ส';
-});
+/**
+ * ตัวอักษรใน avatar — ใช้ `avatarCharOf()` จาก `@/utils/avatar` **ไม่ใช่ `charAt(0)`**
+ *
+ * 🐛 ของเดิมเป็น `name.charAt(0).toUpperCase()` ⇒ "แอดมิน" ได้ **"แ"** ซึ่งเป็น *สระนำหน้า*
+ *    ลอย ๆ ที่อ่านไม่ออก (ต้องมีพยัญชนะฐานต่อท้าย) — ผู้ใช้เห็นเป็นตัวอักษรแปลก ๆ
+ *    ในวงกลมของตัวเองโดยไม่รู้ว่ามันคือบั๊ก · helper ตัวนี้แก้เรื่องนั้นแล้วและมีเทสต์คุม
+ *    ⚠️ และ **อย่าเขียนตรรกะนี้ซ้ำที่นี่** — `useIdentity` (ผู้ใช้ปัจจุบัน) ใช้ตัวเดียวกัน
+ *       ⇒ แก้ที่เดียวต้องมีผลทั้งสองที่
+ */
+const avatarChar = computed(() =>
+  avatarCharOf(profile.value?.first_name || profile.value?.username),
+)
 
 const fullName = computed(() => {
-  const p = profile.value;
-  if (!p) return '';
-  return [p.prefix, p.first_name, p.last_name].filter(Boolean).join(' ').trim();
-});
+  const p = profile.value
+  if (!p) return ''
+  return [p.prefix, p.first_name, p.last_name].filter(Boolean).join(' ').trim()
+})
 
 const roleLabel = computed(() => {
-  const r = profile.value?.class_role || '';
-  return ROLE_LABELS[r] || r || 'สมาชิก';
-});
+  const r = profile.value?.class_role || ''
+  return ROLE_LABELS[r] || r || 'สมาชิก'
+})
 
 async function load() {
-  isLoading.value = true;
-  hasError.value = false;
+  isLoading.value = true
+  hasError.value = false
   try {
-    profile.value = await getMyProfile();
-  } catch (e: unknown) {
-    hasError.value = true;
-    Swal.fire({ icon: 'error', title: 'โหลดโปรไฟล์ไม่สำเร็จ', text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' });
-  } finally {
-    isLoading.value = false;
-  }
-}
-onMounted(load);
-
-// ===== ⚙️ ตั้งค่าการแจ้งเตือนรายกลุ่ม (A2) =====
-// สร้างคีย์จาก PREFERENCE_GROUPS → ไม่ต้องพิมพ์ชื่อกลุ่มซ้ำในไฟล์นี้
-// ค่าตั้งต้น = เปิดหมด (ตรงกับ backend: "ไม่มีแถว = เปิด")
-const prefs = ref<Record<string, boolean>>(
-  Object.fromEntries(PREFERENCE_GROUPS.map((g) => [g.value, true])),
-);
-const prefsLoading = ref(true);
-const prefsError = ref(false);
-const savingGroup = ref<NotificationGroup | null>(null);
-
-// คีย์ที่ไม่มี = เปิด (ตรงกับ backend) — และกัน noUncheckedIndexedAccess ที่ทำให้เป็น boolean|undefined
-const isOn = (group: NotificationGroup): boolean => prefs.value[group] ?? true;
-
-async function loadPrefs() {
-  prefsLoading.value = true;
-  prefsError.value = false;
-  try {
-    const res = await getNotificationPreferences();
-    const next = { ...prefs.value };
-    for (const p of res.preferences) next[p.group_type] = p.enabled;
-    prefs.value = next;
+    profile.value = await getMyProfile()
   } catch {
-    // ไม่เด้ง Swal ตอนเปิดหน้า (กวนเกินไป) — โชว์ในตัวการ์ดพร้อมปุ่มลองใหม่แทน
-    prefsError.value = true;
+    // ⚠️ ไม่เด้ง Swal ที่นี่ — กล่อง error ในการ์ดมีปุ่ม "ลองใหม่" ของตัวเองอยู่แล้ว
+    //    การเด้งทั้ง Swal และกล่อง = บอกผู้ใช้สองครั้งเรื่องเดียวกัน
+    hasError.value = true
   } finally {
-    prefsLoading.value = false;
+    isLoading.value = false
   }
 }
-onMounted(loadPrefs);
-
-async function toggleGroup(group: NotificationGroup) {
-  const next = !isOn(group);
-
-  // ปิดกลุ่ม "เรื่องของฉัน" = เงียบเมื่อเรื่องที่ตัวเองแจ้งมีความเคลื่อนไหว → ถามก่อน
-  if (!next && group === 'issue_mine') {
-    const res = await Swal.fire({
-      icon: 'warning',
-      title: 'ปิดการแจ้งเตือนเรื่องของฉัน?',
-      text: 'คุณจะไม่รู้เมื่อเรื่องที่คุณแจ้งไว้ถูกตอบกลับ หรือมีการเปลี่ยนสถานะ',
-      showCancelButton: true,
-      confirmButtonText: 'ปิดการแจ้งเตือน',
-      cancelButtonText: 'ยกเลิก',
-      confirmButtonColor: BRAND,
-    });
-    if (!res.isConfirmed) return;
-  }
-
-  const prev = isOn(group);
-  prefs.value[group] = next; // optimistic — กดแล้วต้องเห็นผลทันที
-  savingGroup.value = group;
-  try {
-    await updateNotificationPreferences([{ group_type: group, enabled: next }]);
-  } catch (e: unknown) {
-    prefs.value[group] = prev; // ยิงไม่ผ่าน → คืนค่าที่ถูกต้องให้ผู้ใช้เห็น
-    Swal.fire({
-      icon: 'error',
-      title: 'บันทึกไม่สำเร็จ',
-      text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่',
-    });
-  } finally {
-    savingGroup.value = null;
-  }
-}
-
-const goActivity = () => { menuOpen.value = false; router.push({ name: 'my-activity' }); };
-const goEdit = () => { menuOpen.value = false; router.push({ name: 'profile-edit' }); };
-const goPassword = () => { menuOpen.value = false; router.push({ name: 'profile-password' }); };
-
-function logout() {
-  menuOpen.value = false;
-  Swal.fire({
-    icon: 'question',
-    title: 'ออกจากระบบ?',
-    showCancelButton: true,
-    confirmButtonText: 'ออกจากระบบ',
-    cancelButtonText: 'ยกเลิก',
-  }).then((result) => {
-    if (result.isConfirmed) {
-      authStore.logout();
-      router.push({ name: 'login' });
-    }
-  });
-}
+onMounted(load)
 
 // แถวข้อมูลส่วนตัว (icon + label + value) — กันเบียด/ตัดคำบนจอเล็ก
 const infoRows = computed(() => {
-  const p = profile.value;
-  if (!p) return [];
+  const p = profile.value
+  if (!p) return []
   const rows: { icon: string; label: string; value: string }[] = [
     { icon: 'bi-person-badge', label: 'รหัสนักเรียน', value: p.student_id },
     { icon: 'bi-hash', label: 'เลขที่', value: p.student_no ? String(p.student_no) : '-' },
     { icon: 'bi-emoji-smile', label: 'ชื่อเล่น', value: p.nickname || '-' },
     { icon: 'bi-telephone', label: 'เบอร์โทร', value: p.phone_number || '-' },
     { icon: 'bi-envelope', label: 'อีเมล', value: p.email || '-' },
-    { icon: 'bi-door-closed', label: 'ห้องเรียน', value: p.room_code ? `${p.room_code}${p.level ? ` (${p.level})` : ''}` : '-' },
-  ];
+    {
+      icon: 'bi-door-closed',
+      label: 'ห้องเรียน',
+      value: p.room_code ? `${p.room_code}${p.level ? ` (${p.level})` : ''}` : '-',
+    },
+  ]
   // ชื่อผู้ใช้ (login) — แสดงเฉพาะเมื่อต่างจากรหัสนักเรียน (เช่น admin/ครู ที่ใช้ username ยาว)
   if (p.username && p.username !== p.student_id) {
-    rows.push({ icon: 'bi-person-vcard', label: 'ชื่อผู้ใช้', value: p.username });
+    rows.push({ icon: 'bi-person-vcard', label: 'ชื่อผู้ใช้', value: p.username })
   }
-  return rows;
-});
+  return rows
+})
 
 // ===== 📊 สถิติของฉัน (C3) =====
-// โหลดแยกจากการ์ดอื่นโดยเจตนา — ถ้า /api/me/stats ล่ม ผู้ใช้ยังเห็นโปรไฟล์และการตั้งค่าได้
-const stats = ref<PersonalStats | null>(null);
-const statsLoading = ref(true);
-const statsError = ref(false);
+// โหลดแยกจากการ์ดอื่นโดยเจตนา — ถ้า /api/me/stats ล่ม ผู้ใช้ยังเห็นโปรไฟล์ได้
+const stats = ref<PersonalStats | null>(null)
+const statsLoading = ref(true)
+const statsError = ref(false)
 
 async function loadStats() {
-  statsLoading.value = true;
-  statsError.value = false;
+  statsLoading.value = true
+  statsError.value = false
   try {
-    stats.value = await getMyStats();
+    stats.value = await getMyStats()
   } catch {
     // ไม่เด้ง Swal — การ์ดมีปุ่ม "ลองใหม่" ของตัวเองอยู่แล้ว
-    statsError.value = true;
+    statsError.value = true
   } finally {
-    statsLoading.value = false;
+    statsLoading.value = false
   }
 }
-onMounted(loadStats);
+onMounted(loadStats)
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto">
+  <div class="mx-auto max-w-3xl space-y-4 pb-4">
     <!-- Loading skeleton -->
     <div v-if="isLoading" class="space-y-4" aria-busy="true">
-      <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-        <div class="h-28 sm:h-36 animate-pulse bg-stone-100"></div>
+      <AppCard :padded="false">
+        <div class="h-28 animate-pulse rounded-t-card bg-canvas sm:h-36"></div>
         <div class="px-5 py-6 sm:px-8">
           <div class="flex items-center gap-4">
-            <div class="h-16 w-16 rounded-2xl animate-pulse bg-stone-100 sm:h-20 sm:w-20"></div>
+            <div class="h-16 w-16 animate-pulse rounded-card bg-canvas sm:h-20 sm:w-20"></div>
             <div class="flex-1 space-y-2.5">
-              <div class="h-5 w-52 animate-pulse rounded bg-stone-100"></div>
-              <div class="h-4 w-32 animate-pulse rounded bg-stone-100"></div>
+              <div class="h-5 w-52 animate-pulse rounded bg-canvas"></div>
+              <div class="h-4 w-32 animate-pulse rounded bg-canvas"></div>
             </div>
           </div>
         </div>
-      </div>
-      <div class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
-        <div class="mb-6 h-5 w-28 animate-pulse rounded bg-stone-100"></div>
+      </AppCard>
+      <AppCard :padded="false" class="p-6 sm:p-8">
+        <div class="mb-6 h-5 w-28 animate-pulse rounded bg-canvas"></div>
         <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2">
           <div v-for="i in 6" :key="i" class="flex items-center gap-3">
-            <div class="h-9 w-9 animate-pulse rounded-xl bg-stone-100"></div>
+            <div class="h-9 w-9 animate-pulse rounded-control bg-canvas"></div>
             <div class="flex-1 space-y-2">
-              <div class="h-3 w-20 animate-pulse rounded bg-stone-100"></div>
-              <div class="h-4 w-32 animate-pulse rounded bg-stone-100"></div>
+              <div class="h-3 w-20 animate-pulse rounded bg-canvas"></div>
+              <div class="h-4 w-32 animate-pulse rounded bg-canvas"></div>
             </div>
           </div>
         </div>
-      </div>
+      </AppCard>
     </div>
 
-    <!-- Error + retry -->
-    <div v-else-if="hasError" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center">
-      <i class="bi bi-person-exclamation mb-3 block text-3xl text-stone-400"></i>
-      <p class="text-[15px] font-semibold text-stone-700">ไม่สามารถโหลดโปรไฟล์ได้ในขณะนี้</p>
-      <p class="mt-1 text-sm text-stone-500">ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
-      <button
-        type="button"
-        @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+    <!-- Error + retry — 「ไม่มีการ์ดเส้นประ」 (R0: empty state ห้ามใช้ border-dashed) -->
+    <AppCard v-else-if="hasError" :padded="false" class="py-4">
+      <AppEmptyState
+        icon="bi-person-exclamation"
+        title="ไม่สามารถโหลดโปรไฟล์ได้ในขณะนี้"
+        description="ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง"
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
-    </div>
+        <AppButton variant="secondary" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
-    <div v-else-if="profile" class="space-y-4">
-      <!-- ===== การ์ดหลัก: cover + ตัวตน (avatar ทับ cover เฉพาะตัว, ชื่ออยู่บนพื้นขาวเสมอ) ===== -->
-      <div class="relative">
-        <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-          <!-- Cover banner (พื้นหินเรียบ + hairline) -->
-          <div class="h-28 border-b border-stone-200 bg-stone-100 sm:h-36"></div>
+    <template v-else-if="profile">
+      <!-- ===== การ์ดหลัก: ตัวตน ===== -->
+      <AppCard :padded="false">
+        <!-- แถบพื้นหลังบาง ๆ ให้ avatar มีที่ยืน — ไม่ใช่ภาพ ไม่ใช่ gradient (R0: สงบ) -->
+        <div class="h-24 rounded-t-card border-b border-line bg-canvas sm:h-28"></div>
 
-          <!-- ตัวตน: relative z-10 → avatar/ชื่อวาดอยู่บนสุด เหนือ cover -->
-          <div class="relative z-10 px-4 pb-5 sm:px-6 sm:pb-6">
-            <div class="flex items-start gap-3 sm:gap-4">
-              <!-- avatar: มี -mt เท่านั้น เพื่อให้ทับ cover มุมซ้าย (ไม่ดึงชื่อขึ้นด้วย) -->
-              <div class="-mt-10 shrink-0 sm:-mt-14">
-                <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand text-2xl font-bold text-white ring-2 ring-stone-200 sm:h-24 sm:w-24 sm:rounded-3xl sm:text-4xl">
-                  {{ avatarChar }}
-                </div>
+        <div class="px-4 pb-5 sm:px-6 sm:pb-6">
+          <div class="flex items-start gap-3 sm:gap-4">
+            <!-- avatar: `-mt` อย่างเดียว เพื่อให้ทับแถบพื้น โดยไม่ดึงชื่อขึ้นไปด้วย -->
+            <div class="-mt-10 shrink-0 sm:-mt-12">
+              <div
+                class="flex h-16 w-16 items-center justify-center rounded-card bg-brand text-2xl font-bold text-white ring-2 ring-surface sm:h-20 sm:w-20 sm:text-3xl"
+              >
+                {{ avatarChar }}
               </div>
-              <!-- ชื่อ + ตำแหน่ง: pt ชัดเจน → อยู่ใต้ cover บนพื้นขาว อ่านง่ายเสมอ -->
-              <div class="min-w-0 flex-1 pt-3 sm:pt-5">
-                <h1 class="text-2xl font-bold text-stone-900 break-words leading-snug sm:text-3xl">{{ fullName }}</h1>
-                <div class="flex flex-wrap gap-1.5 mt-2.5">
-                  <span class="px-2.5 py-1 bg-brand/10 text-brand text-xs font-semibold rounded-full">
-                    <i class="bi bi-mortarboard mr-1"></i>{{ roleLabel }}
-                  </span>
-                  <span v-if="profile.staff_level" class="px-2.5 py-1 bg-stone-100 text-stone-600 text-xs font-semibold rounded-full">
-                    <i class="bi bi-clipboard-check mr-1"></i>ระดับ {{ profile.staff_level }}
-                  </span>
-                  <span v-if="profile.room_code" class="px-2.5 py-1 bg-stone-100 text-stone-600 text-xs font-medium rounded-full">
-                    <i class="bi bi-door-closed mr-1"></i>{{ profile.room_code }}
-                  </span>
-                </div>
+            </div>
+            <!-- ชื่อ + ป้าย: `pt` ชัดเจน ⇒ อยู่ใต้แถบพื้น บนพื้นขาว อ่านง่ายเสมอ -->
+            <div class="min-w-0 flex-1 pt-3 sm:pt-4">
+              <h2 class="text-2xl leading-snug font-bold break-words text-ink-1">{{ fullName }}</h2>
+              <div class="mt-2.5 flex flex-wrap gap-1.5">
+                <span class="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+                  <i class="bi bi-mortarboard mr-1" aria-hidden="true" />{{ roleLabel }}
+                </span>
+                <span
+                  v-if="profile.staff_level"
+                  class="rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold text-ink-2"
+                >
+                  <i class="bi bi-clipboard-check mr-1" aria-hidden="true" />ระดับ
+                  {{ profile.staff_level }}
+                </span>
+                <span
+                  v-if="profile.room_code"
+                  class="rounded-full bg-canvas px-2.5 py-1 text-xs font-medium text-ink-2"
+                >
+                  <i class="bi bi-door-closed mr-1" aria-hidden="true" />{{ profile.room_code }}
+                </span>
               </div>
             </div>
           </div>
         </div>
-
-        <!-- เมนู ⋮ (อยู่ข้างนอก overflow-hidden → dropdown ไม่ถูกตัด) -->
-        <div class="absolute right-3 top-3 z-50">
-          <button
-            @click="menuOpen = !menuOpen"
-            aria-label="เมนูโปรไฟล์"
-            class="flex h-9 w-9 items-center justify-center rounded-full bg-stone-200/90 text-stone-700 transition hover:bg-stone-300"
-            :class="{ 'bg-stone-300': menuOpen }"
-          >
-            <i class="bi bi-three-dots-vertical text-lg"></i>
-          </button>
-
-          <transition name="fade-up">
-            <div v-if="menuOpen" class="absolute right-0 top-11 z-50 w-56 rounded-2xl border border-stone-200 bg-white py-2 shadow-lg shadow-stone-900/5">
-              <div class="mb-1 border-b border-stone-100 px-4 py-1.5">
-                <p class="text-[10px] font-bold text-stone-400">การจัดการบัญชี</p>
-              </div>
-              <button @click="goEdit" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 hover:text-brand">
-                <i class="bi bi-pencil-square text-lg"></i> แก้ไขโปรไฟล์
-              </button>
-              <button @click="goPassword" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 hover:text-brand">
-                <i class="bi bi-shield-lock text-lg"></i> เปลี่ยนรหัสผ่าน
-              </button>
-              <div class="my-1 h-px bg-stone-200"></div>
-              <button @click="logout" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-bold text-brand transition-colors hover:bg-brand/5 hover:text-brand-strong">
-                <i class="bi bi-box-arrow-right text-lg"></i> ออกจากระบบ
-              </button>
-            </div>
-          </transition>
-        </div>
-
-        <!-- Overlay ปิดเมนู: z-40 → อยู่ใต้ dropdown (z-50) แต่เหนือ header มือถือ (z-30) → แตะที่ไหนก็ปิดได้ -->
-        <div v-if="menuOpen" class="fixed inset-0 z-40" @click="menuOpen = false"></div>
-      </div>
+      </AppCard>
 
       <!-- ===== ข้อมูลส่วนตัว ===== -->
-      <div class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
+      <AppCard :padded="false" class="p-6 sm:p-8">
         <div class="mb-5 flex items-center gap-3">
-          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
-            <i class="bi bi-person-lines-fill"></i>
+          <span
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-canvas text-ink-2"
+            aria-hidden="true"
+          >
+            <i class="bi bi-person-lines-fill" />
           </span>
-          <div>
-            <h2 class="text-lg font-bold text-stone-900">ข้อมูลส่วนตัว</h2>
-            <p class="text-xs text-stone-500 mt-0.5">ข้อมูลและช่องทางการติดต่อของคุณ</p>
+          <div class="min-w-0">
+            <h2 class="text-lg font-bold text-ink-1">ข้อมูลส่วนตัว</h2>
+            <p class="mt-0.5 text-xs text-ink-2">ข้อมูลและช่องทางการติดต่อของคุณ</p>
           </div>
         </div>
         <div class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           <div
             v-for="row in infoRows"
             :key="row.label"
-            class="flex items-center gap-3 py-1.5 min-w-0"
+            class="flex min-w-0 items-center gap-3 py-1.5"
           >
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
-              <i :class="['bi', row.icon]"></i>
+            <span
+              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-canvas text-ink-2"
+              aria-hidden="true"
+            >
+              <i :class="['bi', row.icon]" />
             </span>
             <div class="min-w-0">
-              <p class="text-[11px] text-stone-500 font-medium leading-tight">{{ row.label }}</p>
-              <p class="text-sm text-stone-800 font-semibold break-words leading-snug">{{ row.value }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ===== ⚙️ การแจ้งเตือน ===== -->
-      <div class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
-        <div class="mb-5 flex items-center gap-3">
-          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
-            <i class="bi bi-bell"></i>
-          </span>
-          <div>
-            <h2 class="text-lg font-bold text-stone-900">การแจ้งเตือน</h2>
-            <p class="text-xs text-stone-500 mt-0.5">
-              เลือกว่าจะรับเรื่องอะไร — ปิดแล้วเรื่องนั้นจะไม่ขึ้นทั้งในแอพและการแจ้งเตือน
-            </p>
-          </div>
-        </div>
-
-        <!-- โหลดไม่สำเร็จ: ไม่ปิดกั้นทั้งหน้า แค่การ์ดนี้ -->
-        <div v-if="prefsError" class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center">
-          <i class="bi bi-cloud-slash mb-2 block text-2xl text-stone-400"></i>
-          <p class="text-sm font-semibold text-stone-700">โหลดการตั้งค่าไม่ได้</p>
-          <button
-            type="button"
-            @click="loadPrefs"
-            class="mt-3 inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2 text-[13px] font-bold text-stone-700 transition-colors hover:bg-stone-100"
-          >
-            <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-          </button>
-        </div>
-
-        <div v-else-if="prefsLoading" class="space-y-4" aria-busy="true">
-          <div v-for="i in 4" :key="i" class="flex items-center gap-3">
-            <div class="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-stone-100"></div>
-            <div class="flex-1 space-y-2">
-              <div class="h-4 w-28 animate-pulse rounded bg-stone-100"></div>
-              <div class="h-3 w-44 animate-pulse rounded bg-stone-100"></div>
-            </div>
-            <div class="h-6 w-11 shrink-0 animate-pulse rounded-full bg-stone-100"></div>
-          </div>
-        </div>
-
-        <div v-else class="divide-y divide-stone-100">
-          <div
-            v-for="g in PREFERENCE_GROUPS"
-            :key="g.value"
-            class="flex items-start gap-3 py-3.5 first:pt-0 last:pb-0"
-          >
-            <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
-              <i :class="g.icon"></i>
-            </span>
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-stone-800">{{ g.label }}</p>
-              <p class="mt-0.5 text-xs leading-snug text-stone-500">{{ GROUP_DESCRIPTIONS[g.value] }}</p>
-            </div>
-            <!-- role="switch" + aria-checked → screen reader อ่านสถานะออก ไม่ต้องเดาจากสี -->
-            <button
-              type="button"
-              role="switch"
-              :aria-checked="isOn(g.value)"
-              :aria-label="`${isOn(g.value) ? 'ปิด' : 'เปิด'}การแจ้งเตือน ${g.label}`"
-              :disabled="savingGroup === g.value"
-              @click="toggleGroup(g.value)"
-              class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
-              :class="isOn(g.value) ? 'bg-brand' : 'bg-stone-300'"
-            >
-              <span
-                class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none"
-                :class="isOn(g.value) ? 'translate-x-[22px]' : 'translate-x-0.5'"
-              ></span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ===== 🔔 แจ้งเตือนถึงมือถือ (A3) ===== -->
-      <!-- วางต่อจากการ์ดตั้งค่ากลุ่มโดยเจตนา — สองการ์ดนี้เป็นเรื่องเดียวกันคนละชั้น:
-           การ์ดบน = "รับเรื่องอะไร" (ทั้ง in-app และ push) · การ์ดนี้ = "เครื่องนี้รับไหม" -->
-      <PushSettingsCard />
-
-      <!-- ===== 🔇 ช่วงเวลาไม่ส่งแจ้งเตือน (A8) ===== -->
-      <!-- ต่อจาก A3 โดยเจตนา — สองการ์ดนี้เป็นเรื่องของ push ทั้งคู่:
-           A3 = "เครื่องนี้รับ push ไหม" (รายคน) · การ์ดนี้ = "โรงเรียนพัก push ช่วงไหน" (ทั้งโรงเรียน)
-           ⚠️ แสดงให้ทุกคนเห็น แต่แก้ได้เฉพาะผู้มี MANAGE_SETTINGS — ห้ามซ่อนจากนักเรียน
-              (นักเรียนต้องรู้ว่าทำไมมือถือเงียบ ดูคอมเมนต์หัวไฟล์ QuietHoursCard.vue) -->
-      <QuietHoursCard />
-
-      <!-- ===== 📱 ติดตั้งแอป ===== -->
-      <!-- ซ่อนเมื่อเปิดในโหมดแอพที่ติดตั้งแล้ว — ไม่มีอะไรให้ติดตั้งอีก -->
-      <div v-if="!isStandalone" class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
-        <div class="mb-5 flex items-center gap-3">
-          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
-            <i class="bi bi-phone"></i>
-          </span>
-          <div>
-            <h2 class="text-lg font-bold text-stone-900">ติดตั้งแอป</h2>
-            <p class="text-xs text-stone-500 mt-0.5">
-              เพิ่ม PIRIvoice ลงหน้าจอ เปิดได้เร็วเหมือนแอพ ไม่ต้องพิมพ์ที่อยู่เว็บอีก
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-start gap-3">
-          <div class="min-w-0 flex-1">
-            <p v-if="canPromptInstall" class="text-sm font-semibold text-stone-800">
-              เครื่องนี้ติดตั้งได้เลย
-            </p>
-            <template v-else-if="isIosSafari">
-              <p class="text-sm font-semibold text-stone-800">iPhone / iPad ต้องติดตั้งเอง</p>
-              <ol class="mt-1.5 space-y-0.5 text-xs font-medium text-stone-600">
-                <li>1. แตะปุ่ม <i class="bi bi-box-arrow-up text-stone-800"></i> แชร์ ที่แถบล่างจอ</li>
-                <li>2. เลือก “เพิ่มไปที่หน้าจอ”</li>
-              </ol>
-            </template>
-            <template v-else>
-              <p class="text-sm font-semibold text-stone-800">เครื่องนี้ติดตั้งอัตโนมัติไม่ได้</p>
-              <!-- เบราว์เซอร์ในแอพอื่น (LINE/Facebook) ไม่มีเมนูติดตั้ง ⇒ ต้องบอกให้เปิด Chrome จริง -->
-              <p class="mt-1.5 text-xs font-medium text-stone-600">
-                เปิดหน้านี้ด้วย <b>Chrome</b> แล้วเลือก “ติดตั้งแอป” จากเมนู
-                <i class="bi bi-three-dots-vertical"></i> มุมขวาบน
+              <p class="text-[11px] leading-tight font-medium text-ink-2">{{ row.label }}</p>
+              <p class="text-sm leading-snug font-semibold break-words text-ink-1">
+                {{ row.value }}
               </p>
-              <!-- 🔎 วินิจฉัย: อาการ "ไม่เห็นแบนเนอร์" เกิดได้จาก 5 สาเหตุที่หน้าตาเหมือนกัน
-                   และแก้คนละทาง ⇒ โชว์ค่าจริงเฉพาะตอนที่ติดตั้งไม่ได้ (คนที่ติดตั้งได้ไม่เห็นความยุ่งเหยิงนี้) -->
-              <p class="mt-2.5 text-xs text-stone-500">{{ installHint }}</p>
-              <details class="mt-1.5">
-                <summary class="cursor-pointer text-[11px] font-semibold text-stone-400 hover:text-stone-600">
-                  รายละเอียดทางเทคนิค
-                </summary>
-                <dl class="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-[11px] text-stone-500">
-                  <template v-for="row in diagRows" :key="row.label">
-                    <dt>{{ row.label }}</dt>
-                    <dd :class="row.on ? 'font-semibold text-stone-700' : ''">
-                      {{ row.on ? 'ใช่' : 'ไม่' }}
-                    </dd>
-                  </template>
-                </dl>
-              </details>
-            </template>
+            </div>
           </div>
-
-          <button
-            v-if="canPromptInstall"
-            type="button"
-            :disabled="installing"
-            @click="onInstall"
-            class="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-60"
-          >
-            <i v-if="installing" class="bi bi-arrow-repeat animate-spin"></i>
-            <span v-else>ติดตั้งเลย</span>
-          </button>
         </div>
-      </div>
+      </AppCard>
 
       <!-- ===== 📊 สถิติของฉัน (C3) ===== -->
       <PersonalStatsCard
@@ -554,33 +265,35 @@ onMounted(loadStats);
       />
 
       <!-- ===== 🧭 กิจกรรมของฉัน + บันทึกไว้ (C1/C2) ===== -->
-      <button
-        type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-6 text-left transition-colors hover:bg-stone-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 sm:p-8"
-        @click="goActivity"
-      >
-        <div class="flex min-w-0 items-center gap-3">
-          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
-            <i class="bi bi-clock-history"></i>
+      <!-- ⚠️ การ์ดทั้งใบเป็นทางเข้าเดียว ⇒ ใช้ `AppCard interactive` ไม่ใช่ปุ่มซ้อนในปุ่ม -->
+      <AppCard :padded="false" interactive class="p-6 sm:p-8">
+        <RouterLink
+          :to="{ name: 'my-activity' }"
+          class="flex items-center justify-between gap-3 rounded-control focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+        >
+          <div class="flex min-w-0 items-center gap-3">
+            <span
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-canvas text-ink-2"
+              aria-hidden="true"
+            >
+              <i class="bi bi-clock-history" />
+            </span>
+            <div class="min-w-0">
+              <h2 class="text-lg font-bold text-ink-1">กิจกรรมของฉัน</h2>
+              <p class="mt-1 text-sm text-ink-2">
+                ทุกอย่างที่คุณเคยแจ้ง โหวต และแสดงความคิดเห็น · พร้อมเรื่องที่บันทึกไว้
+              </p>
+            </div>
           </div>
-          <div class="min-w-0">
-            <h2 class="text-lg font-bold text-stone-900">กิจกรรมของฉัน</h2>
-            <p class="mt-1 text-sm text-stone-500">
-              ทุกอย่างที่คุณเคยแจ้ง โหวต และแสดงความคิดเห็น · พร้อมเรื่องที่บันทึกไว้
-            </p>
-          </div>
-        </div>
-        <i class="bi bi-chevron-right shrink-0 text-stone-400"></i>
-      </button>
+          <i class="bi bi-chevron-right shrink-0 text-ink-3" aria-hidden="true" />
+        </RouterLink>
+      </AppCard>
 
-      <p class="text-center text-[11px] text-stone-400 pb-4">
-        แก้ไขโปรไฟล์หรือเปลี่ยนรหัสผ่านได้จากเมนู <i class="bi bi-three-dots-vertical"></i> มุมขวาบน
-      </p>
-    </div>
+      <!-- 🎯 งานหลักของหน้านี้ — ปุ่มเดียว อยู่ล่างสุดของเนื้อหา (โซนนิ้วโป้งบนมือถือ) -->
+      <AppButton variant="secondary" block :to="{ name: 'profile-edit' }">
+        <template #icon><i class="bi bi-pencil-square" aria-hidden="true" /></template>
+        แก้ไขโปรไฟล์
+      </AppButton>
+    </template>
   </div>
 </template>
-
-<style scoped>
-.fade-up-enter-active, .fade-up-leave-active { transition: all 0.18s ease; }
-.fade-up-enter-from, .fade-up-leave-to { opacity: 0; transform: translateY(6px) scale(0.98); }
-</style>

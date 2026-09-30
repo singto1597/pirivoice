@@ -182,6 +182,11 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'bi-person-circle',
     items: [
       { key: 'profile', label: 'โปรไฟล์', icon: 'bi-person-circle', to: { name: 'profile' } },
+      // ⚙️ ตั้งค่า — ทางเข้าเดียวของ `/app/settings` (R3.3)
+      //    🔴 แถวนี้ **และ** ปุ่ม "แก้ไขโปรไฟล์" ในหน้าโปรไฟล์ (Profile.vue) **และ** แถว
+      //       "เปลี่ยนรหัสผ่าน" ในหน้าตั้งค่า คือของสามชิ้นที่ *แทน* dropdown `⋮` เดิม
+      //       ถอดชิ้นใดชิ้นหนึ่งออก = มี route ที่ไม่มีทางเข้าเลย (ดูคอมเมนต์หัว Profile.vue)
+      { key: 'settings', label: 'ตั้งค่า', icon: 'bi-sliders', to: { name: 'settings' } },
       { key: 'profile-edit', label: 'แก้ไขโปรไฟล์', icon: 'bi-person-badge', to: { name: 'profile-edit' }, hiddenFromMenu: true },
       { key: 'profile-password', label: 'เปลี่ยนรหัสผ่าน', icon: 'bi-key', to: { name: 'profile-password' }, hiddenFromMenu: true },
       { key: 'logout', label: 'ออกจากระบบ', icon: 'bi-box-arrow-right', action: 'logout' },
