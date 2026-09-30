@@ -64,10 +64,24 @@ const avatarChar = computed(() =>
   avatarCharOf(profile.value?.first_name || profile.value?.username),
 )
 
+/**
+ * ชื่อที่แสดง — ประกอบจาก prefix/first_name/last_name เป็นหลัก
+ *
+ * 🔴 **ห้ามตัด fallback `full_name` ทิ้ง** — `first_name`/`last_name` เป็น `''` (ไม่ใช่ `null`)
+ *    สำหรับผู้ใช้ที่ยังไม่เคยแก้โปรไฟล์ ⇒ `[..].filter(Boolean).join(' ')` ได้ **สตริงว่าง**
+ *    แล้วหัวเรื่องที่ใหญ่ที่สุดของหน้านี้จะ **ว่างเปล่า** — หน้าที่มีคำถามเดียวว่า "ฉันเป็นใคร"
+ *    ตอบไม่ได้ · `users.full_name` มีค่าอยู่แล้วและ backend ส่งมาใน `MyProfileOut.full_name`
+ *    (เจอจริงบน staging: บัญชีที่ seed ตรงเข้า DB ผ่าน `first_name=''` ทั้งคู่)
+ *    ⚠️ และไม่ใช่ regression ของ R3.3 — เวอร์ชันก่อนหน้าก็เขียนแบบเดียวกัน
+ */
 const fullName = computed(() => {
   const p = profile.value
   if (!p) return ''
-  return [p.prefix, p.first_name, p.last_name].filter(Boolean).join(' ').trim()
+  return (
+    [p.prefix, p.first_name, p.last_name].filter(Boolean).join(' ').trim() ||
+    p.full_name ||
+    p.username
+  )
 })
 
 const roleLabel = computed(() => {
