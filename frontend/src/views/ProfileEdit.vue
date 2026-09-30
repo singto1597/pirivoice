@@ -69,7 +69,7 @@ async function saveProfile() {
 
 const goBack = () => router.push({ name: 'profile' });
 
-const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm mt-1 bg-white transition focus:ring-2 focus:ring-[#B91C1C]/25 focus:border-[#B91C1C]';
+const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm mt-1 bg-white transition focus:ring-2 focus:ring-brand/25 focus:border-brand';
 </script>
 
 <template>
@@ -93,7 +93,7 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
       <button
         type="button"
         @click="loadProfile"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -102,12 +102,12 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
     <form v-else @submit.prevent="saveProfile" class="space-y-4">
       <!-- Header -->
       <div class="flex items-start gap-3">
-        <button type="button" @click="goBack" aria-label="กลับไปหน้าโปรไฟล์" class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-[#B91C1C]/30 hover:bg-[#B91C1C]/5 hover:text-[#B91C1C]">
+        <button type="button" @click="goBack" aria-label="กลับไปหน้าโปรไฟล์" class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand">
           <i class="bi bi-arrow-left text-lg"></i>
         </button>
         <div>
           <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">ข้อมูลส่วนตัว</p>
-          <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-pencil-square mr-1 text-[#B91C1C]"></i> แก้ไขโปรไฟล์</h1>
+          <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-pencil-square mr-1 text-brand"></i> แก้ไขโปรไฟล์</h1>
           <p class="mt-1 text-sm text-stone-500">แก้ข้อมูลส่วนตัวของคุณ</p>
         </div>
       </div>
@@ -120,11 +120,11 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
             <input v-model="editPrefix" :class="inputCls" placeholder="นาย / นางสาว" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-stone-700">ชื่อ <span class="text-[#B91C1C]">*</span></label>
+            <label class="block text-xs font-semibold text-stone-700">ชื่อ <span class="text-brand">*</span></label>
             <input v-model="editFirstName" :class="inputCls" required />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-stone-700">นามสกุล <span class="text-[#B91C1C]">*</span></label>
+            <label class="block text-xs font-semibold text-stone-700">นามสกุล <span class="text-brand">*</span></label>
             <input v-model="editLastName" :class="inputCls" required />
           </div>
         </div>
@@ -151,7 +151,7 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
         <button
           type="submit"
           :disabled="isSaving || !canSave"
-          class="flex-1 py-3 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] disabled:opacity-50 font-semibold transition-colors"
+          class="flex-1 py-3 bg-brand text-white rounded-xl hover:bg-brand-strong disabled:opacity-50 font-semibold transition-colors"
         >
           <i class="bi bi-check-lg mr-1"></i> {{ isSaving ? 'กำลังบันทึก...' : 'บันทึก' }}
         </button>

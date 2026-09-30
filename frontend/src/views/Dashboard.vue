@@ -111,13 +111,13 @@ const CATEGORY_THEMES: Record<string, CategoryTheme> = {
   },
   report: {
     icon: 'bi-megaphone',
-    iconBg: 'bg-[#B91C1C]',
-    countColor: 'text-[#B91C1C]',
-    barColor: 'bg-[#B91C1C]',
-    headerBg: 'bg-[#B91C1C]/5 border-b border-[#B91C1C]/10',
-    rowHover: 'hover:bg-[#B91C1C]/5',
-    leaderHighlight: 'bg-[#B91C1C]/10 ring-1 ring-[#B91C1C]/20',
-    chevron: 'group-hover:text-[#B91C1C]',
+    iconBg: 'bg-brand',
+    countColor: 'text-brand',
+    barColor: 'bg-brand',
+    headerBg: 'bg-brand/5 border-b border-brand/10',
+    rowHover: 'hover:bg-brand/5',
+    leaderHighlight: 'bg-brand/10 ring-1 ring-brand/20',
+    chevron: 'group-hover:text-brand',
   },
 };
 
@@ -140,10 +140,10 @@ function themeFor(code: string): CategoryTheme {
 const statCards = computed(() => [
   { label: 'เรื่องทั้งหมด', value: data.value?.total_issues ?? 0, dot: 'bg-stone-500' },
   { label: 'รอรับเรื่อง', value: data.value?.pending ?? 0, dot: 'bg-stone-400' },
-  { label: 'กำลังดำเนินการ', value: data.value?.in_progress ?? 0, dot: 'bg-[#B91C1C]' },
-  { label: 'ส่งต่อระดับบน', value: data.value?.escalated ?? 0, dot: 'bg-[#991B1B]' },
+  { label: 'กำลังดำเนินการ', value: data.value?.in_progress ?? 0, dot: 'bg-brand' },
+  { label: 'ส่งต่อระดับบน', value: data.value?.escalated ?? 0, dot: 'bg-brand-strong' },
   { label: 'แก้ไขเสร็จ', value: data.value?.resolved ?? 0, dot: 'bg-emerald-500' },
-  { label: 'งานเกินเวลา', value: data.value?.overdue ?? 0, dot: 'bg-[#B91C1C]', alert: true },
+  { label: 'งานเกินเวลา', value: data.value?.overdue ?? 0, dot: 'bg-brand', alert: true },
 ]);
 
 // ===== 🧮 ตัวช่วยตัวเลข/เปอร์เซ็นต์ =====
@@ -284,7 +284,7 @@ const hasTrafficData = computed(
     <!-- ===== Header ===== -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
-        <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]"><i class="bi bi-bar-chart mr-1"></i> ระบบสถิติ</p>
+        <p class="text-[11px] font-bold uppercase tracking-widest text-brand"><i class="bi bi-bar-chart mr-1"></i> ระบบสถิติ</p>
         <h1 class="mt-0.5 text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">แดชบอร์ด</h1>
         <p v-if="lastUpdated" class="text-xs text-stone-400 mt-1.5">
           อัปเดตล่าสุด <span class="font-medium text-stone-500">{{ fmtDateTime(lastUpdated) }}</span>
@@ -297,7 +297,7 @@ const hasTrafficData = computed(
           กำลังแสดงสถิติเฉพาะระดับชั้น <b class="ml-0.5">{{ data.scope_label }}</b>
         </div>
         <div v-else-if="data && data.scope === 'none'"
-          class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#B91C1C]/5 border border-[#B91C1C]/20 text-[#991B1B] text-sm">
+          class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-brand/5 border border-brand/20 text-brand-strong text-sm">
           <i class="bi bi-exclamation-triangle"></i>
           ยังไม่ได้กำหนดระดับชั้นที่รับผิดชอบ
         </div>
@@ -309,7 +309,7 @@ const hasTrafficData = computed(
           @click="loadDashboard"
           :disabled="isLoading"
           title="รีเฟรชข้อมูล"
-          class="w-9 h-9 rounded-xl bg-white border border-stone-200 text-stone-500 hover:text-[#B91C1C] hover:border-[#B91C1C]/40 flex items-center justify-center transition disabled:opacity-50"
+          class="w-9 h-9 rounded-xl bg-white border border-stone-200 text-stone-500 hover:text-brand hover:border-brand/40 flex items-center justify-center transition disabled:opacity-50"
         >
           <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoading }"></i>
         </button>
@@ -382,13 +382,13 @@ const hasTrafficData = computed(
             v-for="s in statCards"
             :key="s.label"
             class="bg-white p-4 sm:p-5"
-            :class="s.alert ? 'bg-[#B91C1C]/5' : ''"
+            :class="s.alert ? 'bg-brand/5' : ''"
           >
             <div class="mb-1 flex items-center gap-1.5">
               <span class="h-2 w-2 shrink-0 rounded-full" :class="s.dot"></span>
               <span class="truncate text-xs text-stone-500">{{ s.label }}</span>
             </div>
-            <p class="font-display text-2xl font-bold text-stone-900 tabular-nums" :class="s.alert ? 'text-[#991B1B]' : ''">
+            <p class="font-display text-2xl font-bold text-stone-900 tabular-nums" :class="s.alert ? 'text-brand-strong' : ''">
               {{ fmtNum(s.value) }}
             </p>
           </div>
@@ -429,7 +429,7 @@ const hasTrafficData = computed(
                 {{ cat.label }}
                 <span
                   v-if="cat.overdue > 0"
-                  class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-full bg-[#B91C1C]/10 text-[#B91C1C]"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-full bg-brand/10 text-brand"
                   title="งานที่เกินกำหนดเวลาในหมวดนี้"
                 >
                   <i class="bi bi-alarm"></i> เกินเวลา {{ fmtNum(cat.overdue) }}
@@ -444,7 +444,7 @@ const hasTrafficData = computed(
             </p>
             <p class="text-[11px] text-stone-500 mt-1 inline-flex items-center gap-1">
               เรื่อง · เสร็จ {{ resolvedRate(cat) }}%
-              <span class="text-[#B91C1C] font-medium group-hover:underline inline-flex items-center gap-0.5">
+              <span class="text-brand font-medium group-hover:underline inline-flex items-center gap-0.5">
                 ดูทั้งหมด <i class="bi bi-arrow-right"></i>
               </span>
             </p>
@@ -475,7 +475,7 @@ const hasTrafficData = computed(
                 <RouterLink
                   v-if="sc.category !== '_other'"
                   :to="{ name: 'received-issues', query: { main_category: cat.code, category: sc.category } }"
-                  class="group flex flex-wrap items-center gap-3 rounded-xl p-3 transition focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:outline-none"
+                  class="group flex flex-wrap items-center gap-3 rounded-xl p-3 transition focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
                   :class="idx === 0 ? themeFor(cat.code).leaderHighlight : themeFor(cat.code).rowHover"
                 >
                   <span
@@ -558,7 +558,7 @@ const hasTrafficData = computed(
                 v-for="r in cat.recent_issues"
                 :key="r.id"
                 :to="{ name: 'issue-detail', params: { id: r.id } }"
-                class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-stone-50 transition group focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:outline-none"
+                class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-stone-50 transition group focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
               >
                 <span class="w-2 h-2 rounded-full shrink-0" :class="STATUS_DOT[r.status] ?? 'bg-stone-300'"></span>
                 <div class="flex-1 min-w-0">
@@ -584,14 +584,14 @@ const hasTrafficData = computed(
       <section v-if="data.scope === 'all'" class="rounded-2xl border border-stone-200 bg-white overflow-hidden">
         <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-stone-100">
           <h3 class="font-semibold text-stone-800">
-            <i class="bi bi-activity mr-1 text-[#B91C1C]"></i> การเข้าใช้งาน (30 วัน)
+            <i class="bi bi-activity mr-1 text-brand"></i> การเข้าใช้งาน (30 วัน)
           </h3>
           <button
             type="button"
             @click="loadTraffic"
             :disabled="isLoadingTraffic"
             title="รีเฟรชสถิติการใช้งาน"
-            class="w-8 h-8 rounded-lg bg-stone-100 text-stone-500 hover:text-[#B91C1C] hover:bg-[#B91C1C]/5 flex items-center justify-center transition disabled:opacity-50"
+            class="w-8 h-8 rounded-lg bg-stone-100 text-stone-500 hover:text-brand hover:bg-brand/5 flex items-center justify-center transition disabled:opacity-50"
           >
             <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoadingTraffic }"></i>
           </button>
@@ -651,7 +651,7 @@ const hasTrafficData = computed(
               <div class="h-56"><Line :data="trafficLoginsChart" :options="chartOptions" /></div>
             </div>
             <div>
-              <h4 class="text-sm font-semibold text-stone-700 mb-2"><i class="bi bi-lightning-charge mr-1 text-[#B91C1C]"></i> กิจกรรมทั้งระบบต่อวัน</h4>
+              <h4 class="text-sm font-semibold text-stone-700 mb-2"><i class="bi bi-lightning-charge mr-1 text-brand"></i> กิจกรรมทั้งระบบต่อวัน</h4>
               <div class="h-56"><Bar :data="trafficActionsChart" :options="chartOptions" /></div>
             </div>
             <div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 import { addComment, reportComment, hideComment } from '@/services/board'
 import { REPORT_REASON_LABELS, type BoardComment, type ReportReason } from '@/types/board'
 import { useAuthStore } from '@/stores/auth'
@@ -105,7 +106,7 @@ async function handleHide() {
     inputAttributes: { maxlength: '200' },
     showCancelButton: true,
     confirmButtonText: 'ซ่อนคอมเมนต์',
-    confirmButtonColor: '#b91c1c',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ยกเลิก',
   })
   if (!value || !String(value).trim()) {
@@ -130,7 +131,7 @@ async function handleHide() {
     <!-- ตัวคอมเมนต์ -->
     <div class="flex gap-2.5">
       <div
-        class="w-8 h-8 rounded-full bg-[#B91C1C]/10 text-[#B91C1C] flex items-center justify-center font-bold text-sm shrink-0"
+        class="w-8 h-8 rounded-full bg-brand/10 text-brand flex items-center justify-center font-bold text-sm shrink-0"
       >
         {{ (comment.commenter_first_name || comment.commenter_name || '?').charAt(0) }}
       </div>
@@ -147,7 +148,7 @@ async function handleHide() {
             type="button"
             data-testid="reply-btn"
             @click="replying = !replying"
-            class="text-stone-400 hover:text-[#B91C1C] font-medium flex items-center gap-1"
+            class="text-stone-400 hover:text-brand font-medium flex items-center gap-1"
           >
             <i class="bi bi-reply"></i> ตอบกลับ
           </button>
@@ -157,7 +158,7 @@ async function handleHide() {
             data-testid="report-btn"
             @click="handleReport"
             :disabled="acting"
-            class="text-stone-400 hover:text-[#B91C1C] font-medium flex items-center gap-1 disabled:opacity-40"
+            class="text-stone-400 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
           >
             <i class="bi bi-flag"></i> แจ้ง
           </button>
@@ -167,7 +168,7 @@ async function handleHide() {
             data-testid="hide-btn"
             @click="handleHide"
             :disabled="acting"
-            class="text-stone-400 hover:text-[#B91C1C] font-medium flex items-center gap-1 disabled:opacity-40"
+            class="text-stone-400 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
           >
             <i class="bi bi-eye-slash"></i> ซ่อน
           </button>
@@ -187,7 +188,7 @@ async function handleHide() {
             type="button"
             :disabled="posting || !replyBody.trim()"
             @click="submitReply"
-            class="px-3.5 py-2 bg-[#B91C1C] text-white rounded-xl text-sm hover:bg-[#991B1B] disabled:opacity-50"
+            class="px-3.5 py-2 bg-brand text-white rounded-xl text-sm hover:bg-brand-strong disabled:opacity-50"
           >
             {{ posting ? '...' : 'ตอบ' }}
           </button>

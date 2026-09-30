@@ -91,9 +91,9 @@ select:focus {
   }
   /* ปุ่มหลัก flat cardinal (เดิมเคยเป็น gradient — รีแบรนด์แล้ว) */
   .btn-gradient {
-    @apply inline-flex items-center justify-center gap-1.5 py-2.5 px-4 bg-[#B91C1C]
+    @apply inline-flex items-center justify-center gap-1.5 py-2.5 px-4 bg-brand
            text-white rounded-xl font-semibold
-           hover:bg-[#991B1B] transition-all disabled:opacity-50 disabled:pointer-events-none;
+           hover:bg-brand-strong transition-all disabled:opacity-50 disabled:pointer-events-none;
   }
   /* ปุ่มรอง (ขอบบาง stone) */
   .btn-ghost-ui {

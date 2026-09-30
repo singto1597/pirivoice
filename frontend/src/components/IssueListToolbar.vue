@@ -72,15 +72,15 @@ watch(sort, () => emit('change'))
         class="relative flex items-center gap-1.5 px-3 py-2.5 border rounded-xl text-sm transition"
         :class="
           open
-            ? 'border-[#B91C1C] bg-red-50 text-[#B91C1C]'
-            : 'border-stone-300 bg-white text-stone-600 hover:border-[#B91C1C] hover:text-[#B91C1C]'
+            ? 'border-brand bg-red-50 text-brand'
+            : 'border-stone-300 bg-white text-stone-600 hover:border-brand hover:text-brand'
         "
       >
         <i class="bi bi-sliders text-base"></i>
         <span class="hidden sm:inline">กรอง</span>
         <span
           v-if="activeFilters > 0"
-          class="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#B91C1C] text-white text-[10px] font-bold flex items-center justify-center"
+          class="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10px] font-bold flex items-center justify-center"
         >
           {{ activeFilters }}
         </span>
@@ -102,7 +102,7 @@ watch(sort, () => emit('change'))
               <button
                 type="button"
                 @click="sort = 'desc'"
-                :class="sort === 'desc' ? 'bg-white border border-stone-200 text-[#B91C1C]' : 'border border-transparent text-stone-500 hover:text-stone-700'"
+                :class="sort === 'desc' ? 'bg-white border border-stone-200 text-brand' : 'border border-transparent text-stone-500 hover:text-stone-700'"
                 class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
               >
                 ใหม่ไปเก่า
@@ -110,7 +110,7 @@ watch(sort, () => emit('change'))
               <button
                 type="button"
                 @click="sort = 'asc'"
-                :class="sort === 'asc' ? 'bg-white border border-stone-200 text-[#B91C1C]' : 'border border-transparent text-stone-500 hover:text-stone-700'"
+                :class="sort === 'asc' ? 'bg-white border border-stone-200 text-brand' : 'border border-transparent text-stone-500 hover:text-stone-700'"
                 class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
               >
                 เก่าไปใหม่

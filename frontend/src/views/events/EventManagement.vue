@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 import PaginationBar from '@/components/PaginationBar.vue'
 // 🕐 เวลามาจากโมดูลกลาง — **ห้ามประกาศซ้ำในไฟล์นี้** (เดิมก๊อปอยู่ 4 ไฟล์แล้วเพี้ยนจากกัน)
 import { fmtDateTime } from '@/datetime'
@@ -162,7 +163,7 @@ async function runAction(e: Event, kind: 'publish' | 'cancel' | 'delete' | 'rest
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'เผยแพร่เลย',
-        confirmButtonColor: '#B91C1C',
+        confirmButtonColor: BRAND,
         cancelButtonText: 'ยกเลิก',
       })
       if (!res.isConfirmed) return
@@ -180,7 +181,7 @@ async function runAction(e: Event, kind: 'publish' | 'cancel' | 'delete' | 'rest
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'ยกเลิกกิจกรรม',
-        confirmButtonColor: '#B91C1C',
+        confirmButtonColor: BRAND,
         cancelButtonText: 'ไม่ยกเลิก',
       })
       if (!res.isConfirmed) return
@@ -196,7 +197,7 @@ async function runAction(e: Event, kind: 'publish' | 'cancel' | 'delete' | 'rest
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'ลบกิจกรรม',
-        confirmButtonColor: '#b91c1c',
+        confirmButtonColor: BRAND,
         cancelButtonText: 'ไม่ลบ',
       })
       if (!res.isConfirmed) return
@@ -226,7 +227,7 @@ function capacityText(e: Event): string {
     <!-- Editorial header -->
     <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div class="w-full min-w-0 sm:w-auto sm:flex-1">
-        <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1.5">
+        <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
           <i class="bi bi-calendar-event mr-1"></i> Events
         </p>
         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">
@@ -240,7 +241,7 @@ function capacityText(e: Event): string {
         type="button"
         data-testid="add-event"
         @click="router.push({ name: 'event-create' })"
-        class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] hover:shadow-lg active:scale-[0.97] sm:w-auto sm:shrink-0"
+        class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97] sm:w-auto sm:shrink-0"
       >
         <i class="bi bi-plus-lg"></i> สร้างกิจกรรม
       </button>
@@ -257,7 +258,7 @@ function capacityText(e: Event): string {
           class="rounded-lg px-3.5 py-2 text-sm font-medium transition"
           :class="
             statusFilter === s
-              ? 'border border-stone-200 bg-white text-[#B91C1C]'
+              ? 'border border-stone-200 bg-white text-brand'
               : 'text-stone-500 hover:text-stone-700'
           "
         >
@@ -270,7 +271,7 @@ function capacityText(e: Event): string {
         v-model="categoryFilter"
         aria-label="กรองตามหมวดกิจกรรม"
         data-testid="category-filter"
-        class="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        class="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
         @change="onCategoryChange"
       >
         <option value="">ทุกหมวด</option>
@@ -303,7 +304,7 @@ function capacityText(e: Event): string {
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองอีกครั้ง
       </button>
@@ -346,7 +347,7 @@ function capacityText(e: Event): string {
                 :class="{
                   'bg-stone-100 text-stone-600': e.status === 'draft',
                   'bg-emerald-50 text-emerald-700': e.status === 'published',
-                  'bg-red-50 text-red-700': e.status === 'cancelled',
+                  'bg-red-50 text-brand': e.status === 'cancelled',
                 }"
               >
                 <i :class="`bi ${STATUS_ICONS[e.status]}`"></i> {{ STATUS_LABELS[e.status] }}
@@ -394,7 +395,7 @@ function capacityText(e: Event): string {
               type="button"
               :disabled="actingId !== null"
               @click="runAction(e, 'publish')"
-              class="rounded-lg bg-[#B91C1C] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
+              class="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
             >
               <i :class="busy(e, 'publish') ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-megaphone'"></i>
               เผยแพร่

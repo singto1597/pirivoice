@@ -80,7 +80,7 @@ function actionLabel(action: string): string {
 
 const STATUS_BADGE: Record<string, string> = {
   success: 'bg-emerald-100 text-emerald-700',
-  error: 'bg-[#B91C1C]/10 text-[#B91C1C]',
+  error: 'bg-brand/10 text-brand',
   partial: 'bg-stone-100 text-stone-600',
 };
 
@@ -225,7 +225,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
       <div>
         <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Audit Trail</p>
         <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
-          <i class="bi bi-clock-history mr-1 text-[#B91C1C]"></i> บันทึกการใช้งาน
+          <i class="bi bi-clock-history mr-1 text-brand"></i> บันทึกการใช้งาน
         </h1>
         <p class="mt-1 text-xs text-stone-500">ประวัติทุกการกระทำในระบบ (เข้าสู่ระบบ / เพิ่ม / ดึงข้อมูล / แก้ไข / ลบ)</p>
       </div>
@@ -234,7 +234,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
         @click="load"
         :disabled="isLoading"
         title="รีเฟรช"
-        class="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-[#B91C1C]/30 hover:bg-[#B91C1C]/5 hover:text-[#B91C1C] disabled:opacity-50"
+        class="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand disabled:opacity-50"
       >
         <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoading }"></i>
       </button>
@@ -306,7 +306,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
       <button
         type="button"
         @click="load"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#991B1B]"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white transition hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise mr-1"></i> ลองใหม่
       </button>
@@ -371,7 +371,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                     v-if="hasPayload(e)"
                     type="button"
                     @click="toggleExpand(e.id)"
-                    class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition hover:bg-[#B91C1C]/5 hover:text-[#B91C1C]"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition hover:bg-brand/5 hover:text-brand"
                     :title="expanded.has(e.id) ? 'ย่อรายละเอียด' : 'ดูรายละเอียด'"
                   >
                     <i class="bi" :class="expanded.has(e.id) ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
@@ -391,8 +391,8 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                       <pre class="overflow-x-auto rounded-lg border border-stone-200 bg-white p-2.5 text-[11px] text-stone-600">{{ fmtPayload(e.new_values) }}</pre>
                     </div>
                     <div v-if="!isBlank(e.error_detail)" class="lg:col-span-2">
-                      <p class="mb-1 text-xs font-semibold text-[#B91C1C]">ข้อผิดพลาด</p>
-                      <pre class="overflow-x-auto rounded-lg border border-[#B91C1C]/15 bg-[#B91C1C]/5 p-2.5 text-[11px] text-[#B91C1C]">{{ e.error_detail }}</pre>
+                      <p class="mb-1 text-xs font-semibold text-brand">ข้อผิดพลาด</p>
+                      <pre class="overflow-x-auto rounded-lg border border-brand/15 bg-brand/5 p-2.5 text-[11px] text-brand">{{ e.error_detail }}</pre>
                     </div>
                   </div>
                 </td>

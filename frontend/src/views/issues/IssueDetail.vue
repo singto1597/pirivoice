@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 import {
   getIssue,
   acceptIssue,
@@ -258,7 +259,7 @@ async function handleDeleteComment(commentId: number) {
     text: 'คอมเมนต์ของคุณจะถูกลบ',
     showCancelButton: true,
     confirmButtonText: 'ลบ',
-    confirmButtonColor: '#B91C1C',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ยกเลิก',
   })
   if (!isConfirmed) return
@@ -413,7 +414,7 @@ async function handleCancel() {
     inputPlaceholder: 'เหตุผล (ไม่บังคับ)',
     showCancelButton: true,
     confirmButtonText: reporterCancel ? 'ยกเลิกเรื่อง' : 'ปัดตก',
-    confirmButtonColor: '#B91C1C',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'กลับไป',
   })
   if (value === undefined) return
@@ -516,7 +517,7 @@ function countdownLabel(deadline: string): string {
     <p class="text-stone-600 px-6">{{ loadError }}</p>
     <button
       type="button"
-      class="mt-4 rounded-lg bg-[#B91C1C] px-5 py-2 text-[13px] font-bold text-white hover:bg-[#991B1B]"
+      class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
       @click="load"
     >
       ลองอีกครั้ง
@@ -526,7 +527,7 @@ function countdownLabel(deadline: string): string {
   <div v-else-if="issue" class="max-w-3xl mx-auto space-y-5">
     <!-- Header -->
     <div class="rounded-2xl border border-stone-200 bg-white p-5">
-      <p class="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+      <p class="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
         <i class="bi bi-folder2-open text-[12px]"></i> Issue Dossier
       </p>
       <div class="flex items-start justify-between gap-3">
@@ -588,7 +589,7 @@ function countdownLabel(deadline: string): string {
       <button
         v-if="canReceive"
         @click="handleAccept"
-        class="px-4 py-2.5 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] text-sm font-medium"
+        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
       >
         <i class="bi bi-hand-thumbs-up mr-1"></i> รับเรื่อง + ตั้งเวลา
       </button>
@@ -597,7 +598,7 @@ function countdownLabel(deadline: string): string {
         v-if="canApprove"
         @click="approveOpen = true"
         data-testid="approve-public-btn"
-        class="px-4 py-2.5 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] text-sm font-medium"
+        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
       >
         <i class="bi bi-people-fill mr-1"></i> อนุมัติเผยแพร่สาธารณะ
       </button>
@@ -606,7 +607,7 @@ function countdownLabel(deadline: string): string {
         v-if="canChangeDestination"
         @click="handleChangeDestination"
         data-testid="change-dest-btn"
-        class="px-4 py-2.5 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] text-sm font-medium"
+        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
       >
         <i class="bi bi-arrow-repeat mr-1"></i> แก้ไขปลายทาง
       </button>
@@ -622,7 +623,7 @@ function countdownLabel(deadline: string): string {
       <button
         v-if="canManage && canEscalate"
         @click="handleEscalate"
-        class="px-4 py-2.5 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] text-sm font-medium"
+        class="px-4 py-2.5 bg-brand text-white rounded-xl hover:bg-brand-strong text-sm font-medium"
       >
         <i class="bi bi-arrow-up-circle mr-1"></i> ส่งต่อไประดับบน
       </button>
@@ -653,11 +654,11 @@ function countdownLabel(deadline: string): string {
     <!-- Countdown -->
     <div
       v-if="issue.countdown"
-      class="bg-white rounded-2xl border border-stone-200 border-l-4 border-l-[#B91C1C] p-5"
+      class="bg-white rounded-2xl border border-stone-200 border-l-4 border-l-brand p-5"
     >
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <i class="bi bi-hourglass-split text-xl text-[#B91C1C]"></i>
+          <i class="bi bi-hourglass-split text-xl text-brand"></i>
           <div>
             <p class="text-sm font-medium text-stone-700">การนับถอยหลัง</p>
             <p class="text-xs text-stone-500">
@@ -666,7 +667,7 @@ function countdownLabel(deadline: string): string {
             </p>
           </div>
         </div>
-        <div class="text-lg font-bold font-display text-[#B91C1C]">
+        <div class="text-lg font-bold font-display text-brand">
           {{
             issue.countdown.is_overdue
               ? 'เกินเวลา!'
@@ -691,10 +692,10 @@ function countdownLabel(deadline: string): string {
           <button
             v-if="canManage && !s.is_completed"
             @click="handleCompleteStep(s.id)"
-            class="w-6 h-6 rounded-full border-2 border-stone-300 hover:border-[#B91C1C] hover:bg-stone-50 flex items-center justify-center text-xs transition"
+            class="w-6 h-6 rounded-full border-2 border-stone-300 hover:border-brand hover:bg-stone-50 flex items-center justify-center text-xs transition"
             title="ทำขั้นตอนนี้สำเร็จ"
           >
-            <i class="bi bi-check text-[#B91C1C]"></i>
+            <i class="bi bi-check text-brand"></i>
           </button>
           <div
             v-else
@@ -787,7 +788,7 @@ function countdownLabel(deadline: string): string {
               <button
                 @click="handleDeleteComment(c.id)"
                 title="ลบคอมเมนต์"
-                class="w-8 h-8 rounded-lg hover:bg-red-50 text-[#B91C1C] text-sm"
+                class="w-8 h-8 rounded-lg hover:bg-red-50 text-brand text-sm"
               >
                 <i class="bi bi-trash"></i>
               </button>
@@ -810,7 +811,7 @@ function countdownLabel(deadline: string): string {
         />
         <button
           @click="handleAddComment"
-          class="px-4 py-2.5 bg-[#B91C1C] text-white rounded-lg text-sm hover:bg-[#991B1B] disabled:opacity-50 disabled:pointer-events-none"
+          class="px-4 py-2.5 bg-brand text-white rounded-lg text-sm hover:bg-brand-strong disabled:opacity-50 disabled:pointer-events-none"
           :disabled="!newComment.trim()"
         >
           <i class="bi bi-send mr-1"></i> ส่ง
@@ -828,7 +829,7 @@ function countdownLabel(deadline: string): string {
         class="relative pl-5 border-l-2 border-stone-200 space-y-4"
       >
         <div v-for="h in issue.status_history" :key="h.id" class="relative">
-          <div class="absolute -left-[25px] top-1 w-3 h-3 rounded-full bg-[#B91C1C]"></div>
+          <div class="absolute -left-[25px] top-1 w-3 h-3 rounded-full bg-brand"></div>
           <span
             class="px-2 py-0.5 text-[11px] font-medium rounded-full"
             :class="STATUS_BADGE[h.status] || 'bg-stone-100 text-stone-500'"

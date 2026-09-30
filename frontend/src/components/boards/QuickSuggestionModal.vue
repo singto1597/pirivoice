@@ -79,7 +79,7 @@ async function handleSubmit() {
         <div class="relative w-full max-w-lg bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
           <div class="flex items-start justify-between gap-3 mb-4">
             <div>
-              <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1">
+              <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">
                 <i class="bi bi-lightbulb-fill mr-1"></i> Quick Suggestion
               </p>
               <h2 class="text-xl font-bold text-stone-900 leading-tight">เสนอไอเดีย</h2>
@@ -108,7 +108,7 @@ async function handleSubmit() {
               data-testid="suggestion-title"
               placeholder="เช่น อยากให้มีน้ำดื่มฟรีที่โรงอาหาร"
               maxlength="200"
-              class="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-[#B91C1C]"
+              class="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-brand"
             />
             <p class="text-xs text-stone-400 mt-1 text-right tabular-nums">{{ title.length }}/200</p>
           </div>
@@ -124,7 +124,7 @@ async function handleSubmit() {
               rows="5"
               maxlength="2000"
               placeholder="อธิบายเหตุผลหรือประโยชน์ที่คิดว่าจะได้..."
-              class="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-[#B91C1C] resize-y"
+              class="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-brand resize-y"
             ></textarea>
             <p class="text-xs text-stone-400 mt-1 text-right tabular-nums">{{ description.length }}/2000</p>
           </div>
@@ -134,7 +134,7 @@ async function handleSubmit() {
               v-model="isAnonymous"
               type="checkbox"
               data-testid="suggestion-anonymous"
-              class="mt-0.5 w-4 h-4 rounded bg-white border-stone-300 text-[#B91C1C] focus:ring-[#B91C1C] accent-[#B91C1C]"
+              class="mt-0.5 w-4 h-4 rounded bg-white border-stone-300 text-brand focus:ring-brand accent-brand"
             />
             <span>
               ไม่แสดงชื่อผู้เสนอ
@@ -155,7 +155,7 @@ async function handleSubmit() {
               :disabled="submitting"
               data-testid="suggestion-submit"
               @click="handleSubmit"
-              class="flex-1 py-2.5 rounded-xl bg-[#B91C1C] text-white hover:bg-[#991B1B] disabled:opacity-50 text-sm font-medium"
+              class="flex-1 py-2.5 rounded-xl bg-brand text-white hover:bg-brand-strong disabled:opacity-50 text-sm font-medium"
             >
               {{ submitting ? 'กำลังส่ง...' : 'เผยแพร่ข้อเสนอ' }}
             </button>

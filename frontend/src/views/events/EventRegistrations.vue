@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 import PaginationBar from '@/components/PaginationBar.vue'
 import { fmtDateTime, fmtTime } from '@/datetime'
 import { checkInRegistration, getEvent, listRegistrations } from '@/services/event'
@@ -198,7 +199,7 @@ async function handleCheckIn(r: EventRegistration) {
         title: 'คนนี้เช็คอินไปแล้ว',
         text: when ? `${who} · ${when} · เวลาเดิม ไม่ได้นับซ้ำ` : who,
         confirmButtonText: 'เข้าใจแล้ว',
-        confirmButtonColor: '#B91C1C',
+        confirmButtonColor: BRAND,
       })
     } else {
       await Swal.fire({
@@ -240,7 +241,7 @@ const goBack = () => router.push({ name: 'event-management' })
       <button
         type="button"
         @click="goBack"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-left"></i> กลับหน้าจัดการกิจกรรม
       </button>
@@ -257,7 +258,7 @@ const goBack = () => router.push({ name: 'event-management' })
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -270,12 +271,12 @@ const goBack = () => router.push({ name: 'event-management' })
           type="button"
           @click="goBack"
           aria-label="กลับหน้าจัดการกิจกรรม"
-          class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-[#B91C1C]/30 hover:bg-[#B91C1C]/5 hover:text-[#B91C1C]"
+          class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand"
         >
           <i class="bi bi-arrow-left text-lg"></i>
         </button>
         <div class="min-w-0 flex-1">
-          <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-[#B91C1C]">
+          <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-brand">
             <i class="bi bi-people mr-1"></i> Registrations
           </p>
           <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">
@@ -287,7 +288,7 @@ const goBack = () => router.push({ name: 'event-management' })
         <RouterLink
           v-if="event"
           :to="{ name: 'event-check-in', params: { id: event.id } }"
-          class="mt-1 shrink-0 rounded-xl border border-[#B91C1C]/30 bg-white px-3 py-2 text-[12px] font-bold text-[#B91C1C] transition-colors hover:bg-red-50"
+          class="mt-1 shrink-0 rounded-xl border border-brand/30 bg-white px-3 py-2 text-[12px] font-bold text-brand transition-colors hover:bg-red-50"
           data-testid="open-scanner-link"
         >
           <i class="bi bi-qr-code-scan mr-1"></i>สแกน
@@ -382,7 +383,7 @@ const goBack = () => router.push({ name: 'event-management' })
                 v-if="r.status === 'registered'"
                 type="button"
                 :disabled="actingId !== null"
-                class="shrink-0 rounded-lg bg-[#B91C1C] px-2.5 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
+                class="shrink-0 rounded-lg bg-brand px-2.5 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
                 :data-testid="`checkin-btn-${r.id}`"
                 @click="handleCheckIn(r)"
               >

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 import {
   cancelMyRegistration,
   getMyRegistration,
@@ -166,7 +167,7 @@ async function handleRegister() {
           `คุณเป็น<b>คิวที่ ${res.queue_position ?? '-'}</b> ของกิจกรรมนี้<br>` +
           '<span class="text-sm text-stone-500">ถ้ามีคนถอน ที่นั่งจะเลื่อนให้คนแรกในคิวอัตโนมัติ</span>',
         confirmButtonText: 'เข้าใจแล้ว',
-        confirmButtonColor: '#B91C1C',
+        confirmButtonColor: BRAND,
       })
     } else {
       Swal.fire({ icon: 'success', title: 'ลงทะเบียนสำเร็จ', timer: 1200, showConfirmButton: false })
@@ -190,7 +191,7 @@ async function handleCancel() {
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: 'ถอนการลงทะเบียน',
-    confirmButtonColor: '#b91c1c',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ไม่ถอน',
   })
   if (!res.isConfirmed) return
@@ -260,7 +261,7 @@ function fmtTime(iso: string): string {
       <button
         type="button"
         @click="load()"
-        class="px-5 py-2.5 bg-[#B91C1C] text-white rounded-xl text-sm font-bold hover:bg-[#991B1B]"
+        class="px-5 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise mr-1"></i> ลองอีกครั้ง
       </button>
@@ -279,7 +280,7 @@ function fmtTime(iso: string): string {
     <button
       type="button"
       @click="router.push({ name: 'events' })"
-      class="flex items-center gap-1 text-sm text-stone-500 hover:text-[#B91C1C] font-medium"
+      class="flex items-center gap-1 text-sm text-stone-500 hover:text-brand font-medium"
     >
       <i class="bi bi-arrow-left"></i> กิจกรรมทั้งหมด
     </button>
@@ -298,7 +299,7 @@ function fmtTime(iso: string): string {
       <div class="flex flex-wrap items-center gap-2 mb-2">
         <span
           v-if="event.status === 'cancelled'"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-[11px] font-semibold"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-brand text-[11px] font-semibold"
         >
           <i class="bi bi-x-octagon"></i> ยกเลิกแล้ว
         </span>
@@ -427,13 +428,13 @@ function fmtTime(iso: string): string {
               type="text"
               readonly
               data-testid="share-url"
-              class="w-full min-w-0 flex-1 rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-xs text-stone-600 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+              class="w-full min-w-0 flex-1 rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-xs text-stone-600 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
               @focus="($event.target as HTMLInputElement).select()"
             />
             <button
               type="button"
               data-testid="copy-share-url"
-              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#991B1B]"
+              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
               @click="copyShareUrl"
             >
               <i class="bi bi-clipboard"></i> คัดลอก
@@ -458,7 +459,7 @@ function fmtTime(iso: string): string {
       <!-- ยกเลิกกิจกรรม — บอกก่อนปุ่มอื่น เพื่อไม่ให้ผู้ใช้สงสัยว่าทำไมกดไม่ได้ -->
       <div
         v-if="event.status === 'cancelled'"
-        class="mb-4 px-3.5 py-3 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl"
+        class="mb-4 px-3.5 py-3 bg-red-50 border border-red-100 text-brand text-sm rounded-xl"
       >
         <i class="bi bi-x-octagon-fill mr-1"></i>
         กิจกรรมนี้ถูกยกเลิกแล้ว — การลงทะเบียนปิดโดยอัตโนมัติ
@@ -533,7 +534,7 @@ function fmtTime(iso: string): string {
         :disabled="acting"
         data-testid="register-btn"
         @click="handleRegister"
-        class="w-full py-3 bg-[#B91C1C] text-white rounded-xl font-bold hover:bg-[#991B1B] disabled:opacity-50 transition-colors"
+        class="w-full py-3 bg-brand text-white rounded-xl font-bold hover:bg-brand-strong disabled:opacity-50 transition-colors"
       >
         <i :class="acting ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check2-circle'" class="mr-1"></i>
         {{ acting ? 'กำลังดำเนินการ...' : isFull ? 'เข้าคิวสำรอง' : 'ลงทะเบียนเข้าร่วม' }}

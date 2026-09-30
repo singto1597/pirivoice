@@ -87,12 +87,12 @@ async function toggle() {
     :aria-pressed="bookmarked"
     :aria-label="label"
     :title="label"
-    class="inline-flex shrink-0 items-center justify-center rounded-xl border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    class="inline-flex shrink-0 items-center justify-center rounded-xl border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
     :class="[
       size === 'sm' ? 'h-7 w-7 text-[13px]' : 'h-9 w-9 text-base',
       bookmarked
-        ? 'border-[#B91C1C]/30 bg-[#B91C1C]/5 text-[#B91C1C]'
-        : 'border-stone-200 bg-white text-stone-500 hover:bg-stone-50 hover:text-[#B91C1C]',
+        ? 'border-brand/30 bg-brand/5 text-brand'
+        : 'border-stone-200 bg-white text-stone-500 hover:bg-stone-50 hover:text-brand',
     ]"
     @click="toggle"
   >

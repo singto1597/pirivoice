@@ -94,7 +94,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
       </div>
       <div class="h-0.5 bg-stone-100">
         <div
-          class="h-full bg-[#B91C1C] transition-[width] duration-150 ease-out"
+          class="h-full bg-brand transition-[width] duration-150 ease-out"
           :style="{ width: `${progress}%` }"
         ></div>
       </div>
@@ -111,7 +111,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
           @load="coverLoaded = true"
         />
         <div v-if="!coverLoaded" class="absolute inset-0 flex items-center justify-center">
-          <div class="animate-spin w-8 h-8 border-4 border-[#B91C1C] border-t-transparent rounded-full"></div>
+          <div class="animate-spin w-8 h-8 border-4 border-brand border-t-transparent rounded-full"></div>
         </div>
       </div>
 
@@ -131,8 +131,8 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
       </div>
 
       <!-- หน้าที่ไฟล์ไม่ครบ -->
-      <div v-if="failedPages.size > 0" class="mt-4 rounded-xl bg-[#B91C1C]/10 border border-[#B91C1C]/20 px-4 py-3 text-center">
-        <p class="text-sm text-[#B91C1C]">
+      <div v-if="failedPages.size > 0" class="mt-4 rounded-xl bg-brand/10 border border-brand/20 px-4 py-3 text-center">
+        <p class="text-sm text-brand">
           <i class="bi bi-exclamation-triangle mr-1.5"></i>
           หน้ายังมาไม่ครบตามที่ระบุ ({{ failedPages.size }} หน้า) — รอผู้ดูแลอัปเดตไฟล์ก่อน
         </p>
@@ -155,10 +155,10 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
           <img :src="nextPlaybook.coverImage" :alt="`ปก ${nextPlaybook.title}`" loading="lazy" class="w-full h-full object-cover" />
         </div>
         <div class="min-w-0 flex-1">
-          <p class="text-[10px] text-[#B91C1C] font-bold uppercase tracking-widest mb-0.5">อ่านเล่มถัดไป</p>
+          <p class="text-[10px] text-brand font-bold uppercase tracking-widest mb-0.5">อ่านเล่มถัดไป</p>
           <p class="font-semibold text-stone-800 truncate">{{ nextPlaybook.title }}</p>
         </div>
-        <i class="bi bi-arrow-right text-xl text-[#B91C1C] shrink-0"></i>
+        <i class="bi bi-arrow-right text-xl text-brand shrink-0"></i>
       </RouterLink>
 
       <!-- กลับขึ้นบน -->

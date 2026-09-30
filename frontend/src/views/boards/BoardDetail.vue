@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import { BRAND } from '@/constants/brand'
 import { getBoard, submitVote, addComment, hideBoard } from '@/services/board'
 import {
   boardTypeIcon,
@@ -113,7 +114,7 @@ async function handleHideBoard() {
     inputAttributes: { maxlength: '200' },
     showCancelButton: true,
     confirmButtonText: 'ซ่อนบอร์ด',
-    confirmButtonColor: '#b91c1c',
+    confirmButtonColor: BRAND,
     cancelButtonText: 'ยกเลิก',
   })
   if (!value || !String(value).trim()) {
@@ -174,7 +175,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
     <div class="text-4xl text-stone-300 mb-3"><i class="bi bi-file-earmark-x"></i></div>
     <p class="text-stone-600 font-medium">{{ loadError }}</p>
     <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
-      <button @click="load" class="px-5 py-2.5 bg-[#B91C1C] text-white rounded-xl text-sm font-bold hover:bg-[#991B1B]">
+      <button @click="load" class="px-5 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong">
         <i class="bi bi-arrow-clockwise mr-1"></i> ลองอีกครั้ง
       </button>
       <button @click="router.push({ name: 'boards' })" class="px-5 py-2.5 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200">
@@ -185,7 +186,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
 
   <div v-else-if="board" class="max-w-3xl mx-auto space-y-5">
     <!-- ปุ่มกลับ -->
-    <button @click="router.push({ name: 'boards' })" class="flex items-center gap-1 text-sm text-stone-500 hover:text-[#B91C1C] font-medium">
+    <button @click="router.push({ name: 'boards' })" class="flex items-center gap-1 text-sm text-stone-500 hover:text-brand font-medium">
       <i class="bi bi-arrow-left"></i> PIRI Boards
     </button>
 
@@ -205,7 +206,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
             @click="handleHideBoard"
             :disabled="hidingBoard"
             data-testid="hide-board-btn"
-            class="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-[#B91C1C]/25 text-[#B91C1C] hover:bg-[#B91C1C]/5 disabled:opacity-40"
+            class="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-brand/25 text-brand hover:bg-brand/5 disabled:opacity-40"
             title="ซ่อนบอร์ดนี้ (สภา/แอดมิน)"
           >
             <i class="bi bi-eye-slash mr-1"></i> ซ่อนบอร์ด
@@ -245,7 +246,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           class="w-full text-left p-4 rounded-xl border-2 transition"
           :class="[
             !myVoted && selectedChoice === c.id
-              ? 'border-[#B91C1C] bg-[#B91C1C]/5'
+              ? 'border-brand bg-brand/5'
               : 'border-stone-200 hover:border-stone-300',
             board.my_vote_choice_id === c.id ? 'ring-2 ring-emerald-400 border-emerald-400' : '',
             myVoted ? 'cursor-default' : 'cursor-pointer',
@@ -264,7 +265,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           <div class="h-2.5 bg-stone-100 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-500"
-              :class="board.my_vote_choice_id === c.id ? 'bg-emerald-500' : 'bg-[#B91C1C]'"
+              :class="board.my_vote_choice_id === c.id ? 'bg-emerald-500' : 'bg-brand'"
               :style="{ width: choicePercent(c) + '%' }"
             ></div>
           </div>
@@ -279,7 +280,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
         :disabled="selectedChoice === null || voting"
         data-testid="vote-submit"
         @click="handleVote"
-        class="mt-4 w-full py-3 bg-[#B91C1C] text-white rounded-xl hover:bg-[#991B1B] disabled:opacity-50 font-medium"
+        class="mt-4 w-full py-3 bg-brand text-white rounded-xl hover:bg-brand-strong disabled:opacity-50 font-medium"
       >
         {{ voting ? 'กำลังส่งเสียง...' : selectedChoice === null ? 'เลือกตัวเลือกก่อนโหวต' : 'ส่งเสียงโหวต' }}
       </button>
@@ -305,7 +306,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           data-testid="comment-input"
           placeholder="ร่วมแสดงความเห็น..."
           maxlength="1000"
-          class="flex-1 px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#B91C1C]"
+          class="flex-1 px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-brand"
           @keyup.enter="submitComment"
         />
         <button
@@ -313,7 +314,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           :disabled="postingComment || !commentBody.trim()"
           data-testid="comment-submit"
           @click="submitComment"
-          class="px-4 py-2.5 bg-[#B91C1C] text-white rounded-xl text-sm hover:bg-[#991B1B] disabled:opacity-50"
+          class="px-4 py-2.5 bg-brand text-white rounded-xl text-sm hover:bg-brand-strong disabled:opacity-50"
         >
           {{ postingComment ? '...' : 'ส่ง' }}
         </button>

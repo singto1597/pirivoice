@@ -263,7 +263,7 @@ const goHome = () => {
 
 <template>
   <div
-    class="relative flex h-screen overflow-hidden bg-[#F5F5F7] font-sans text-stone-900 selection:bg-[#B91C1C]/15 selection:text-[#B91C1C]"
+    class="relative flex h-screen overflow-hidden bg-[#F5F5F7] font-sans text-stone-900 selection:bg-brand/15 selection:text-brand"
   >
     <!-- 🟢 SVG Filter สำหรับ Liquid Glass Distortion -->
     <svg style="display: none">
@@ -335,7 +335,7 @@ const goHome = () => {
               </div>
               <div class="leading-none">
                 <span class="text-[15px] font-bold tracking-tight text-stone-900">
-                  PIRI<span class="text-[#B91C1C]">voice</span>
+                  PIRI<span class="text-brand">voice</span>
                 </span>
                 <p class="mt-1 text-[10px] font-medium tracking-wide text-stone-500">
                   เสียงจากชาวพิริยาลัย
@@ -359,8 +359,8 @@ const goHome = () => {
                 class="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-all duration-300"
                 :class="
                   isActive(item.path)
-                    ? 'bg-[#B91C1C] text-white shadow-md'
-                    : 'text-stone-600 hover:bg-white/50 hover:shadow-sm hover:text-[#B91C1C]'
+                    ? 'bg-brand text-white shadow-md'
+                    : 'text-stone-600 hover:bg-white/50 hover:shadow-sm hover:text-brand'
                 "
               >
                 <i :class="['bi', item.icon, 'text-[17px]']"></i>
@@ -369,7 +369,7 @@ const goHome = () => {
                   v-if="item.badge > 0"
                   class="min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold"
                   :class="
-                    isActive(item.path) ? 'bg-white/20 text-white' : 'bg-[#B91C1C] text-white'
+                    isActive(item.path) ? 'bg-white/20 text-white' : 'bg-brand text-white'
                   "
                 >
                   {{ item.badge > 99 ? '99+' : item.badge }}
@@ -388,7 +388,7 @@ const goHome = () => {
             >
               <button
                 @click="goHome"
-                class="h-11 w-11 shrink-0 rounded-xl bg-gradient-to-br from-[#B91C1C] to-[#991B1B] text-sm font-black text-white shadow-sm ring-2 ring-white/50 transition-transform hover:scale-105"
+                class="h-11 w-11 shrink-0 rounded-xl bg-gradient-to-br from-brand to-brand-strong text-sm font-black text-white shadow-sm ring-2 ring-white/50 transition-transform hover:scale-105"
               >
                 {{ avatarChar }}
               </button>
@@ -406,7 +406,7 @@ const goHome = () => {
               <button
                 @click="logout"
                 title="ออกจากระบบ"
-                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-white/60 hover:text-[#B91C1C]"
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-white/60 hover:text-brand"
               >
                 <i class="bi bi-box-arrow-right text-lg"></i>
               </button>
@@ -473,7 +473,7 @@ const goHome = () => {
           <div class="flex shrink-0 items-center gap-2">
             <RouterLink
               to="/app/issues/new"
-              class="hidden items-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-[#991B1B] hover:shadow-lg active:scale-[0.97] xl:flex"
+              class="hidden items-center gap-1.5 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97] xl:flex"
             >
               <i class="bi bi-pencil-square"></i> แจ้งเรื่อง
             </RouterLink>
@@ -485,7 +485,7 @@ const goHome = () => {
               <i class="bi bi-bell text-xl"></i>
               <span
                 v-if="notificationsStore.total > 0"
-                class="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[10px] font-bold text-white shadow-sm ring-2 ring-white/80"
+                class="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white shadow-sm ring-2 ring-white/80"
               >
                 {{ notificationsStore.total > 99 ? '99+' : notificationsStore.total }}
               </span>
@@ -493,7 +493,7 @@ const goHome = () => {
 
             <RouterLink
               to="/app/profile"
-              class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#B91C1C] to-[#991B1B] text-sm font-black text-white shadow-md ring-2 ring-white/50 transition-transform hover:scale-105 active:scale-95"
+              class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-strong text-sm font-black text-white shadow-md ring-2 ring-white/50 transition-transform hover:scale-105 active:scale-95"
             >
               {{ avatarChar }}
             </RouterLink>
@@ -542,7 +542,7 @@ const goHome = () => {
             class="flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 text-[10px] font-bold transition-colors"
             :class="
               route.path === '/app/home'
-                ? 'text-[#B91C1C] drop-shadow-sm'
+                ? 'text-brand drop-shadow-sm'
                 : 'text-stone-500 hover:text-stone-700'
             "
           >
@@ -560,7 +560,7 @@ const goHome = () => {
             class="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 text-[10px] font-bold transition-colors"
             :class="
               isActive('/app/issues/mine')
-                ? 'text-[#B91C1C] drop-shadow-sm'
+                ? 'text-brand drop-shadow-sm'
                 : 'text-stone-500 hover:text-stone-700'
             "
           >
@@ -575,7 +575,7 @@ const goHome = () => {
               ></i>
               <span
                 v-if="unread('issue_mine') > 0"
-                class="absolute -right-2.5 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[9px] font-bold text-white shadow-sm ring-2 ring-white/60"
+                class="absolute -right-2.5 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand px-1 text-[9px] font-bold text-white shadow-sm ring-2 ring-white/60"
               >
                 {{ unread('issue_mine') > 99 ? '99+' : unread('issue_mine') }}
               </span>
@@ -586,10 +586,10 @@ const goHome = () => {
           <!-- ➕ FAB กลาง -->
           <RouterLink
             to="/app/issues/new"
-            class="relative flex min-w-0 flex-1 flex-col items-center gap-1 pb-0.5 text-[9px] font-bold text-[#B91C1C]"
+            class="relative flex min-w-0 flex-1 flex-col items-center gap-1 pb-0.5 text-[9px] font-bold text-brand"
           >
             <span
-              class="-mt-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#B91C1C] to-[#991B1B] text-lg text-white shadow-[0_8px_16px_rgba(185,28,28,0.3)] ring-[3px] ring-white/50 transition-transform active:scale-95"
+              class="-mt-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand to-brand-strong text-lg text-white shadow-[0_8px_16px_rgba(185,28,28,0.3)] ring-[3px] ring-white/50 transition-transform active:scale-95"
             >
               <i class="bi bi-plus-lg drop-shadow-md"></i>
             </span>
@@ -601,7 +601,7 @@ const goHome = () => {
             class="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 text-[10px] font-bold transition-colors"
             :class="
               isActive('/app/boards')
-                ? 'text-[#B91C1C] drop-shadow-sm'
+                ? 'text-brand drop-shadow-sm'
                 : 'text-stone-500 hover:text-stone-700'
             "
           >
@@ -609,7 +609,7 @@ const goHome = () => {
               <i class="bi text-xl bi-columns-gap"></i>
               <span
                 v-if="unread('board') > 0"
-                class="absolute -right-2.5 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[9px] font-bold text-white shadow-sm ring-2 ring-white/60"
+                class="absolute -right-2.5 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand px-1 text-[9px] font-bold text-white shadow-sm ring-2 ring-white/60"
               >
                 {{ unread('board') > 99 ? '99+' : unread('board') }}
               </span>
@@ -622,7 +622,7 @@ const goHome = () => {
             @click="isMoreOpen = true"
             class="flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 text-[10px] font-bold transition-colors"
             :class="
-              isMoreOpen ? 'text-[#B91C1C] drop-shadow-sm' : 'text-stone-500 hover:text-stone-700'
+              isMoreOpen ? 'text-brand drop-shadow-sm' : 'text-stone-500 hover:text-stone-700'
             "
           >
             <i :class="['bi text-xl', isMoreOpen ? 'bi-x-lg' : 'bi-grid-3x3-gap-fill']"></i>
@@ -663,7 +663,7 @@ const goHome = () => {
             <div class="flex items-center gap-3 px-6 pb-4 pt-4">
               <button
                 @click="isMoreOpen = false; router.push({ name: 'profile' })"
-                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#B91C1C] to-[#991B1B] text-base font-black text-white shadow-md"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-strong text-base font-black text-white shadow-md"
               >
                 {{ avatarChar }}
               </button>
@@ -699,7 +699,7 @@ const goHome = () => {
                 class="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm font-semibold transition-colors"
                 :class="
                   isActive(item.path)
-                    ? 'bg-white/60 text-[#B91C1C] shadow-sm'
+                    ? 'bg-white/60 text-brand shadow-sm'
                     : 'text-stone-700 hover:bg-white/40'
                 "
               >
@@ -708,13 +708,13 @@ const goHome = () => {
                     'bi',
                     item.icon,
                     'text-lg',
-                    isActive(item.path) ? 'text-[#B91C1C]' : 'text-stone-400',
+                    isActive(item.path) ? 'text-brand' : 'text-stone-400',
                   ]"
                 ></i>
                 <span class="min-w-0 flex-1 truncate">{{ item.name }}</span>
                 <span
                   v-if="item.badge > 0"
-                  class="min-w-[20px] rounded-full bg-[#B91C1C] px-1.5 py-0.5 text-center text-[10px] font-bold text-white shadow-sm"
+                  class="min-w-[20px] rounded-full bg-brand px-1.5 py-0.5 text-center text-[10px] font-bold text-white shadow-sm"
                 >
                   {{ item.badge > 99 ? '99+' : item.badge }}
                 </span>
@@ -731,7 +731,7 @@ const goHome = () => {
                 </p>
                 <button
                   type="button"
-                  class="text-[11px] font-bold text-[#B91C1C]"
+                  class="text-[11px] font-bold text-brand"
                   @click="isMoreOpen = false; router.push({ name: 'playbooks' })"
                 >
                   ดูทั้งหมด
@@ -742,7 +742,7 @@ const goHome = () => {
                   v-for="pb in PLAYBOOKS"
                   :key="pb.id"
                   @click="isMoreOpen = false; router.push({ name: 'playbook-reader', params: { id: pb.id } })"
-                  class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-white/40 hover:text-[#B91C1C]"
+                  class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-white/40 hover:text-brand"
                 >
                   <span
                     class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/5 text-stone-600"
@@ -770,7 +770,7 @@ const goHome = () => {
               </button>
               <button
                 @click="logout"
-                class="col-span-2 flex w-full items-center justify-center gap-2 rounded-xl bg-stone-800/5 py-3 text-sm font-bold text-[#B91C1C] transition-colors hover:bg-stone-800/10"
+                class="col-span-2 flex w-full items-center justify-center gap-2 rounded-xl bg-stone-800/5 py-3 text-sm font-bold text-brand transition-colors hover:bg-stone-800/10"
               >
                 <i class="bi bi-box-arrow-right text-base"></i> ออกจากระบบ
               </button>

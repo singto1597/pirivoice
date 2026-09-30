@@ -33,24 +33,24 @@ const isPollError = ref(false);
 // ป้ายสถานะ / หลอดความคืบหน้า (daisyUI badge-* เดิม → stone/cardinal/emerald แบบ Civic)
 const jobBadgeCls: Record<ImportJobStatus, string> = {
   PENDING: 'bg-stone-100 text-stone-600',
-  QUEUED: 'bg-[#B91C1C]/10 text-[#B91C1C]',
-  PROCESSING: 'bg-[#B91C1C]/10 text-[#B91C1C]',
+  QUEUED: 'bg-brand/10 text-brand',
+  PROCESSING: 'bg-brand/10 text-brand',
   COMPLETED: 'bg-emerald-100 text-emerald-700',
-  FAILED: 'bg-[#B91C1C]/10 text-[#B91C1C]',
+  FAILED: 'bg-brand/10 text-brand',
 };
 
 const barFillCls: Record<ImportJobStatus, string> = {
   PENDING: 'bg-stone-300',
-  QUEUED: 'bg-[#B91C1C]',
-  PROCESSING: 'bg-[#B91C1C]',
+  QUEUED: 'bg-brand',
+  PROCESSING: 'bg-brand',
   COMPLETED: 'bg-emerald-600',
   FAILED: 'bg-stone-400',
 };
 
 const barTextCls: Record<ImportJobStatus, string> = {
   PENDING: 'text-stone-500',
-  QUEUED: 'text-[#B91C1C]',
-  PROCESSING: 'text-[#B91C1C]',
+  QUEUED: 'text-brand',
+  PROCESSING: 'text-brand',
   COMPLETED: 'text-emerald-700',
   FAILED: 'text-stone-600',
 };
@@ -222,7 +222,7 @@ onBeforeUnmount(stopPolling);
       <div>
         <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Excel Import</p>
         <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
-          <i class="bi bi-file-earmark-excel mr-1 text-[#B91C1C]"></i> นำเข้านักเรียนจาก Excel
+          <i class="bi bi-file-earmark-excel mr-1 text-brand"></i> นำเข้านักเรียนจาก Excel
         </h1>
         <p class="mt-1 text-sm text-stone-500">อัปโหลดรายชื่อ + ตำแหน่งในห้องเรียนเป็นชุด</p>
       </div>
@@ -240,7 +240,7 @@ onBeforeUnmount(stopPolling);
     <!-- รูปแบบไฟล์ — อธิบายชัดเจนว่าคอลัมน์ต้องเป๊ะ -->
     <div class="mb-5 rounded-2xl border border-stone-200 bg-white p-5 text-sm sm:p-6">
       <p class="mb-3 font-semibold text-stone-900">
-        <i class="bi bi-info-circle mr-1.5 text-[#B91C1C]"></i>
+        <i class="bi bi-info-circle mr-1.5 text-brand"></i>
         ไฟล์ต้องมีคอลัมน์และข้อมูลในลักษณะนี้ ระบบถึงจะอ่านได้แน่นอน — <span class="underline">คอลัมน์ต้องเป๊ะ</span>
         (ห้ามเพิ่ม / ลบ / เปลี่ยนชื่อ / ซ้ำ):
       </p>
@@ -310,7 +310,7 @@ onBeforeUnmount(stopPolling);
             type="file"
             accept=".xlsx"
             @change="onFileChange"
-            class="min-w-[200px] flex-1 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#B91C1C] file:px-4 file:py-2 file:text-white hover:file:bg-[#991B1B]"
+            class="min-w-[200px] flex-1 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-white hover:file:bg-brand-strong"
           />
           <!-- แสดงชื่อไฟล์ที่เลือก — custom file input ซ่อนข้อความ "No file chosen" ของ browser -->
           <span
@@ -318,9 +318,9 @@ onBeforeUnmount(stopPolling);
             class="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-sm text-stone-700"
             :title="file.name"
           >
-            <i class="bi bi-file-earmark-excel text-[#B91C1C]"></i>
+            <i class="bi bi-file-earmark-excel text-brand"></i>
             <span class="max-w-[260px] truncate">{{ file.name }}</span>
-            <button type="button" class="text-stone-400 transition hover:text-[#B91C1C]" title="ล้างไฟล์ที่เลือก" @click="file = null">
+            <button type="button" class="text-stone-400 transition hover:text-brand" title="ล้างไฟล์ที่เลือก" @click="file = null">
               <i class="bi bi-x-lg"></i>
             </button>
           </span>
@@ -330,7 +330,7 @@ onBeforeUnmount(stopPolling);
       <button
         @click="handleUpload"
         :disabled="isUploading"
-        class="w-full rounded-lg bg-[#B91C1C] py-3 font-medium text-white transition hover:bg-[#991B1B] disabled:opacity-50"
+        class="w-full rounded-lg bg-brand py-3 font-medium text-white transition hover:bg-brand-strong disabled:opacity-50"
       >
         <span v-if="isUploading" class="mr-1 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px]"></span>
         {{ isUploading ? 'กำลังตรวจสอบและอัปโหลดเข้า Queue...' : 'อัปโหลดเข้า Queue' }}
@@ -346,11 +346,11 @@ onBeforeUnmount(stopPolling);
     <div class="mt-5 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 class="text-lg font-bold text-stone-900">
-          <i class="bi bi-list-ul mr-1 text-[#B91C1C]"></i> Queue List — คิวนำเข้านักเรียน
+          <i class="bi bi-list-ul mr-1 text-brand"></i> Queue List — คิวนำเข้านักเรียน
           <span v-if="jobs.length" class="ml-1 text-sm font-normal text-stone-400">({{ jobs.length }})</span>
         </h2>
         <div class="flex items-center gap-2">
-          <span v-if="runningJobs.length" class="inline-flex items-center gap-1.5 rounded-full bg-[#B91C1C]/10 px-2.5 py-1 text-xs font-semibold text-[#B91C1C]">
+          <span v-if="runningJobs.length" class="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
             <span class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
             กำลังทำงาน {{ runningJobs.length }} งาน
           </span>
@@ -369,16 +369,16 @@ onBeforeUnmount(stopPolling);
       <!-- poll ติดขัดต่อเนื่อง → บอก user ว่าระบบยังพยายามเชื่อมต่อ (bar ไม่ได้ค้างเงียบๆ) -->
       <div
         v-if="isPollError"
-        class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#B91C1C]/20 bg-[#B91C1C]/5 px-3 py-2.5 text-sm text-stone-700"
+        class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand/20 bg-brand/5 px-3 py-2.5 text-sm text-stone-700"
         role="alert"
       >
-        <i class="bi bi-wifi-off mr-1 text-[#B91C1C]"></i>
+        <i class="bi bi-wifi-off mr-1 text-brand"></i>
         เชื่อมต่อกับระบบไม่เสถียร — สถานะอาจไม่ทันสมัย ระบบกำลังลองเชื่อมต่อใหม่ทุก
         {{ POLL_INTERVAL_MS / 1000 }} วินาที
         <button
           @click="refreshJobs(true)"
           :disabled="isRefreshing"
-          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[#B91C1C]/20 bg-white px-3 py-1 text-xs font-bold text-[#B91C1C] transition hover:bg-[#B91C1C]/5 disabled:opacity-50"
+          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-brand/20 bg-white px-3 py-1 text-xs font-bold text-brand transition hover:bg-brand/5 disabled:opacity-50"
         >
           <span v-if="isRefreshing" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
           <i v-else class="bi bi-arrow-clockwise"></i>
@@ -408,7 +408,7 @@ onBeforeUnmount(stopPolling);
         <button
           @click="refreshJobs(true)"
           :disabled="isRefreshing"
-          class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#991B1B] disabled:opacity-50"
+          class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-strong disabled:opacity-50"
         >
           <span v-if="isRefreshing" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
           <i v-else class="bi bi-arrow-clockwise"></i>
@@ -446,7 +446,7 @@ onBeforeUnmount(stopPolling);
                     {{ IMPORT_STATUS_LABELS[job.status] }}
                   </span>
                   <!-- error_message โชว์เฉพาะ FAILED — กัน error เก่าค้างเมื่อลองใหม่แล้วสำเร็จ -->
-                  <div v-if="job.status === 'FAILED' && job.error_message" class="mt-1 max-w-[180px] text-xs text-[#B91C1C]">
+                  <div v-if="job.status === 'FAILED' && job.error_message" class="mt-1 max-w-[180px] text-xs text-brand">
                     {{ job.error_message }}
                   </div>
                 </td>
@@ -485,7 +485,7 @@ onBeforeUnmount(stopPolling);
                     v-if="job.status === 'PENDING'"
                     @click="handleStart(job.id)"
                     :disabled="isStartingJobId !== null"
-                    class="inline-flex items-center gap-1.5 rounded-lg bg-[#B91C1C] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#991B1B] disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-brand-strong disabled:opacity-50"
                   >
                     <span v-if="isStartingJobId === job.id" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
                     <i v-else class="bi bi-play-fill"></i>
@@ -496,14 +496,14 @@ onBeforeUnmount(stopPolling);
                     v-else-if="job.status === 'FAILED'"
                     @click="handleStart(job.id)"
                     :disabled="isStartingJobId !== null"
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-[#B91C1C]/30 bg-white px-3.5 py-2 text-xs font-semibold text-[#B91C1C] transition hover:bg-[#B91C1C]/5 disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-brand/30 bg-white px-3.5 py-2 text-xs font-semibold text-brand transition hover:bg-brand/5 disabled:opacity-50"
                   >
                     <span v-if="isStartingJobId === job.id" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
                     <i v-else class="bi bi-arrow-counterclockwise"></i>
                     ลองใหม่
                   </button>
                   <!-- กำลังทำงาน/รอ worker → spinner -->
-                  <span v-else-if="isImportJobRunning(job.status)" class="inline-flex items-center gap-1.5 text-xs font-medium text-[#B91C1C]">
+                  <span v-else-if="isImportJobRunning(job.status)" class="inline-flex items-center gap-1.5 text-xs font-medium text-brand">
                     <span class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span> ทำงานอยู่
                   </span>
                   <span v-else class="text-xs text-stone-400">—</span>
@@ -512,11 +512,11 @@ onBeforeUnmount(stopPolling);
               <!-- error_logs รายแถว (แถวที่ข้อมูลผิด/ถูกข้าม) -->
               <tr v-if="job.error_logs.length" :key="'err-' + job.id" class="border-t-0">
                 <td colspan="5" class="px-4 py-2">
-                  <details class="rounded-xl border border-[#B91C1C]/15 bg-[#B91C1C]/5 p-3 text-xs">
-                    <summary class="cursor-pointer font-semibold text-[#B91C1C]">
+                  <details class="rounded-xl border border-brand/15 bg-brand/5 p-3 text-xs">
+                    <summary class="cursor-pointer font-semibold text-brand">
                       {{ job.file_name }} — ข้อผิดพลาด {{ job.error_logs.length }} รายการ
                     </summary>
-                    <ul class="mt-2 max-h-40 list-disc space-y-1 pl-4 text-[#B91C1C]/90">
+                    <ul class="mt-2 max-h-40 list-disc space-y-1 pl-4 text-brand/90">
                       <li v-for="(e, idx) in job.error_logs" :key="idx">{{ e }}</li>
                     </ul>
                   </details>

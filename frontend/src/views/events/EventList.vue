@@ -123,7 +123,7 @@ function seatsText(e: PublicEvent): string {
   <div>
     <!-- Editorial header -->
     <div class="mb-6">
-      <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1.5">
+      <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
         <i class="bi bi-calendar-event mr-1"></i> Activities
       </p>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">กิจกรรม</h1>
@@ -139,7 +139,7 @@ function seatsText(e: PublicEvent): string {
           type="button"
           @click="switchScope(s)"
           class="px-3.5 py-2 rounded-lg text-sm font-medium transition"
-          :class="scope === s ? 'bg-white border border-stone-200 text-[#B91C1C]' : 'text-stone-500 hover:text-stone-700'"
+          :class="scope === s ? 'bg-white border border-stone-200 text-brand' : 'text-stone-500 hover:text-stone-700'"
         >
           {{ SCOPE_LABELS[s] }}
         </button>
@@ -149,7 +149,7 @@ function seatsText(e: PublicEvent): string {
         v-model="category"
         aria-label="กรองตามหมวดกิจกรรม"
         data-testid="public-category-filter"
-        class="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        class="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
         @change="onCategoryChange"
       >
         <option value="">ทุกหมวด</option>
@@ -179,7 +179,7 @@ function seatsText(e: PublicEvent): string {
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#991B1B] transition-colors"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-strong transition-colors"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองอีกครั้ง
       </button>
@@ -236,7 +236,7 @@ function seatsText(e: PublicEvent): string {
 
             <span
               v-if="e.status === 'cancelled'"
-              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-[11px] font-semibold"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-brand text-[11px] font-semibold"
             >
               <i class="bi bi-x-octagon"></i> ยกเลิกแล้ว
             </span>

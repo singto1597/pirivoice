@@ -94,7 +94,7 @@ function fmtDate(iso: string): string {
   <div>
     <!-- Editorial header -->
     <div class="mb-6">
-      <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1.5">
+      <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
         <i class="bi bi-columns-gap mr-1"></i> Public Forum
       </p>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">PIRI Boards</h1>
@@ -108,7 +108,7 @@ function fmtDate(iso: string): string {
       type="button"
       data-testid="open-suggestion"
       @click="showSuggestionModal = true"
-      class="mb-5 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-3 text-sm font-bold text-white hover:bg-[#991B1B] transition-colors"
+      class="mb-5 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white hover:bg-brand-strong transition-colors"
     >
       <i class="bi bi-lightbulb"></i> เสนอไอเดีย
     </button>
@@ -122,7 +122,7 @@ function fmtDate(iso: string): string {
           type="button"
           @click="switchType(t.value)"
           class="px-3.5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5"
-          :class="typeFilter === t.value ? 'bg-white border border-stone-200 text-[#B91C1C]' : 'text-stone-500 hover:text-stone-700'"
+          :class="typeFilter === t.value ? 'bg-white border border-stone-200 text-brand' : 'text-stone-500 hover:text-stone-700'"
         >
           <i :class="t.icon"></i> {{ t.label }}
         </button>
@@ -134,7 +134,7 @@ function fmtDate(iso: string): string {
           v-model="q"
           type="search"
           placeholder="ค้นหาบอร์ด..."
-          class="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-[#B91C1C]"
+          class="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-brand"
         />
       </div>
 
@@ -162,7 +162,7 @@ function fmtDate(iso: string): string {
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#991B1B] transition-colors"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-strong transition-colors"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองอีกครั้ง
       </button>

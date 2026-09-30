@@ -95,7 +95,7 @@ async function handleConfirm() {
         <div class="relative w-full max-w-lg bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
           <div class="flex items-start justify-between gap-3 mb-4">
             <div>
-              <p class="text-[11px] font-bold uppercase tracking-widest text-[#B91C1C] mb-1">
+              <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">
                 <i class="bi bi-people-fill mr-1"></i> Public Board
               </p>
               <h2 class="text-xl font-bold text-stone-900 leading-tight">อนุมัติเผยแพร่สาธารณะ</h2>
@@ -134,20 +134,20 @@ async function handleConfirm() {
                   :data-testid="'choice-input-' + idx"
                   :placeholder="`ตัวเลือกที่ ${idx + 1}`"
                   maxlength="200"
-                  class="flex-1 px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#B91C1C]"
+                  class="flex-1 px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-brand"
                 />
                 <button
                   type="button"
                   :disabled="voteChoices.length <= 2"
                   @click="removeChoice(idx)"
                   title="ลบตัวเลือก"
-                  class="w-10 h-10 flex items-center justify-center rounded-xl border border-stone-200 text-stone-400 hover:text-[#B91C1C] hover:border-[#B91C1C]/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                  class="w-10 h-10 flex items-center justify-center rounded-xl border border-stone-200 text-stone-400 hover:text-brand hover:border-brand/30 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <i class="bi bi-trash"></i>
                 </button>
               </div>
             </div>
-            <button type="button" @click="addChoice" class="mt-2 text-sm text-[#B91C1C] hover:text-[#991B1B] font-medium flex items-center gap-1">
+            <button type="button" @click="addChoice" class="mt-2 text-sm text-brand hover:text-brand-strong font-medium flex items-center gap-1">
               <i class="bi bi-plus-circle"></i> เพิ่มตัวเลือก
             </button>
           </div>
@@ -155,7 +155,7 @@ async function handleConfirm() {
           <!-- talk board → เปิด/ปิดคอมเมนต์ -->
           <div v-else class="mb-4">
             <label class="flex items-center gap-2 text-sm text-stone-700 cursor-pointer select-none">
-              <input v-model="allowComments" type="checkbox" class="w-4 h-4 rounded bg-white border-stone-300 text-[#B91C1C] focus:ring-[#B91C1C] accent-[#B91C1C]" />
+              <input v-model="allowComments" type="checkbox" class="w-4 h-4 rounded bg-white border-stone-300 text-brand focus:ring-brand accent-brand" />
               เปิดให้คอมเมนต์บนบอร์ดได้
             </label>
             <p class="text-xs text-stone-400 mt-1 ml-6">ปิดถ้าอยากให้เป็นบอร์ดอ่านอย่างเดียว (ไม่ให้คอมเมนต์)</p>
@@ -171,7 +171,7 @@ async function handleConfirm() {
               :disabled="submitting"
               data-testid="approve-confirm"
               @click="handleConfirm"
-              class="flex-1 py-2.5 rounded-xl bg-[#B91C1C] text-white hover:bg-[#991B1B] disabled:opacity-50 text-sm font-medium"
+              class="flex-1 py-2.5 rounded-xl bg-brand text-white hover:bg-brand-strong disabled:opacity-50 text-sm font-medium"
             >
               {{ submitting ? 'กำลังอนุมัติ...' : 'อนุมัติเผยแพร่' }}
             </button>

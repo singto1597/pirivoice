@@ -69,7 +69,7 @@ async function changeRole(student: Student) {
     <!-- Header -->
     <div class="mb-5">
       <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Student Directory</p>
-      <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-mortarboard mr-1 text-[#B91C1C]"></i> รายชื่อนักเรียน</h1>
+      <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-mortarboard mr-1 text-brand"></i> รายชื่อนักเรียน</h1>
       <p class="mt-1 text-sm text-stone-500">ค้นหาและจัดการตำแหน่งในห้องเรียน</p>
     </div>
 
@@ -108,7 +108,7 @@ async function changeRole(student: Student) {
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#991B1B]"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -136,7 +136,7 @@ async function changeRole(student: Student) {
             </p>
           </div>
           <button @click="changeRole(s)" class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium"
-            :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-[#B91C1C]/10 text-[#B91C1C]'">
+            :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
             {{ ROLE_LABELS[s.class_role] || s.class_role }} <i class="bi bi-pencil-square text-[10px]"></i>
           </button>
         </div>
@@ -168,7 +168,7 @@ async function changeRole(student: Student) {
               <td class="px-4 py-2.5 text-stone-600">{{ s.room_code }}</td>
               <td class="px-4 py-2.5">
                 <button @click="changeRole(s)" class="rounded-full px-2.5 py-1 text-xs font-medium"
-                  :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-[#B91C1C]/10 text-[#B91C1C]'">
+                  :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
                   {{ ROLE_LABELS[s.class_role] || s.class_role }} <i class="bi bi-pencil-square text-[10px]"></i>
                 </button>
               </td>
