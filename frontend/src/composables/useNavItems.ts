@@ -116,7 +116,15 @@ export function useNavItems() {
     const target = router.resolve(item.to)
     // หน้าที่มี `navTab` ให้ตัดสินด้วยแท็บก่อน ⇒ หน้าย่อย (เช่น issue-detail)
     // สว่างที่แท็บแม่ ไม่ใช่ที่แถวของตัวเอง
-    return route.path === target.path || route.path.startsWith(`${target.path}/`)
+    if (route.path === target.path || route.path.startsWith(`${target.path}/`)) return true
+
+    // 👥 **คู่ segment = หน้าเดียวกัน** (นักเรียน/เจ้าหน้าที่ · ของฉัน/ที่รับผิดชอบ)
+    //    ⇒ แถวเมนูมีแถวเดียวแต่ path ของ segment ที่สองคนละอัน
+    //    ถ้าเทียบแต่ path แถว "สมาชิก" จะดับตอนเปิด segment "เจ้าหน้าที่"
+    //    ⇒ ผู้ใช้เห็นเมนูที่ไม่มีอะไรสว่างเลยทั้งที่อยู่ในหน้านั้น
+    //    ⚠️ ต้อง `?.` เพราะ `router.resolve()` ของ mock ในเทสต์คืนแค่ `{ path }`
+    const group = target.meta?.segmentGroup
+    return group !== undefined && group === route.meta.segmentGroup
   }
 
   /** ออกจากระบบ — ย้ายมาจาก `MainLayout.vue` เพราะทั้ง sidebar และหน้า More ต้องเรียกได้ */
