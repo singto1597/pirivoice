@@ -6,7 +6,6 @@ import { MAIN_CATEGORY_LABELS, subcategoryLabel, LEVEL_LABELS, type Issue } from
 import { statusShort } from '@/constants/status';
 import IssueListToolbar from '@/components/IssueListToolbar.vue';
 import PaginationBar from '@/components/PaginationBar.vue';
-import PageHeader from '@/components/ui/PageHeader.vue';
 import AppCard from '@/components/ui/AppCard.vue';
 import AppChip from '@/components/ui/AppChip.vue';
 import AppButton from '@/components/ui/AppButton.vue';
@@ -123,7 +122,16 @@ function clearFilters() {
 
 <template>
   <div>
-    <PageHeader title="เรื่องของฉัน" description="ติดตามสถานะเรื่องที่คุณแจ้ง" />
+    <!--
+      🔴 **ไม่ใส่ชื่อหน้าซ้ำ** — `AppHeader` แสดง "เรื่องของฉัน" เป็น `<h1>` อยู่แล้ว
+         「วัดบน staging 360dp: ของเดิมโชว์ "เรื่องของฉัน" สองครั้งห่างกัน ~40px」
+         ซึ่งเป็นข้อที่ audit ฟ้องตรง ๆ ("ทุกหน้าใส่ป้ายบอกที่ซ้ำ") ⇒ เหลือแค่บรรทัดนำ
+         ที่ **เพิ่มข้อมูลจริง** (ชื่อหน้าอย่างเดียวไม่บอกว่าหน้านี้ทำอะไรได้)
+
+      ⚠️ ตัด `<h2>` ออกแล้ว **ไม่เสียลำดับ heading** — `h1` อยู่ที่ `AppHeader`
+         ส่วนการ์ดในหน้าใช้ `h3` อยู่แล้ว ⇒ โครงเอกสารยังเป็น h1 → h3 ซึ่งอ่านได้
+    -->
+    <p class="mb-4 text-sm leading-relaxed text-ink-2">ติดตามสถานะเรื่องที่คุณแจ้ง</p>
 
     <!-- แถบเครื่องมือ — ซ่อนทั้งแถบเมื่อไม่มีอะไรให้กรอง (ดู `showToolbar`) -->
     <div v-if="showToolbar" class="mb-3 space-y-3">

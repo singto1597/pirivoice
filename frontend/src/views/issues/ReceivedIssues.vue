@@ -20,7 +20,6 @@ import { useAuthStore } from '@/stores/auth'
 import IssueListToolbar from '@/components/IssueListToolbar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ApproveBoardModal from '@/components/boards/ApproveBoardModal.vue'
-import PageHeader from '@/components/ui/PageHeader.vue'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppChip from '@/components/ui/AppChip.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -350,7 +349,9 @@ async function load() {
 
 <template>
   <div>
-    <PageHeader title="เรื่องที่รับ / ระดับฉัน" description="เรื่องที่รอคุณและทีมรับผิดชอบดำเนินการ" />
+    <!-- 🔴 **ไม่ใส่ชื่อหน้าซ้ำ** — `AppHeader` แสดง "เรื่องที่รับ / ระดับฉัน" เป็น `<h1>` อยู่แล้ว
+         ⇒ เหลือแค่บรรทัดนำที่เพิ่มข้อมูลจริง (เหตุผลเดียวกับ `MyIssues.vue`) -->
+    <p class="mb-4 text-sm leading-relaxed text-ink-2">เรื่องที่รอคุณและทีมรับผิดชอบดำเนินการ</p>
 
     <!-- ⭐ ตัวกรองตามหน้าที่ (เฉพาะ council_member / level_vice_president ที่มีหน้าที่รับผิดชอบ)
          เป็นการกรอง "หมวด" เท่านั้น — ขอบเขตระดับยังเป็น exact-level จาก backend (received=true) เสมอ -->
