@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import { listNotifications } from '@/services/notification'
-import { GROUP_TABS, NOTIFICATION_TYPE_ICONS, type NotificationItem, type NotificationGroup } from '@/types/notification'
+import {
+  GROUP_TABS,
+  NOTIFICATION_TYPE_ICONS,
+  GROUP_DESCRIPTIONS,
+  type NotificationItem,
+  type NotificationGroup,
+} from '@/types/notification'
 import {
   UNAVAILABLE_QUERY,
   UNAVAILABLE_TITLE,
@@ -12,15 +18,32 @@ import {
 } from '@/router/unavailable'
 import { deepLinkTarget } from '@/router/deepLink'
 import { useNotificationsStore } from '@/stores/notifications'
+import { fmtDayGroup, fmtRelative } from '@/datetime'
 import PaginationBar from '@/components/PaginationBar.vue'
+import AppChip from '@/components/ui/AppChip.vue'
+import AppSheet from '@/components/ui/AppSheet.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import AppGroupHeader from '@/components/layout/AppGroupHeader.vue'
 
 /**
- * 🔔 หน้าแจ้งเตือนกลาง (เข้าได้ทุกคน) — badge messenger style
- * - แท็บ: ทั้งหมด / เรื่องของฉัน / เรื่องที่รับ / PIRI Boards / จัดการรายงาน / ประกาศฉุกเฉิน
- * - แถวยังไม่อ่านไฮไลต์แดงอ่อน + ปุ่ม mark-read รายการ
- * - "อ่านทั้งหมด" เคลียร์ทุกกลุ่ม
- * - คลิกแถว → ไปที่เรื่อง/บอร์ด/รายงานที่เกี่ยวข้อง (แล้ว mark อ่าน)
- * - 🚪 ปลายทางของหน้าที่ถูกซ่อน/ลบ (บั๊ก #32) → เด้งกลับมาที่นี่พร้อม `?unavailable=`
+ * 🔔 หน้าแจ้งเตือนกลาง (เข้าได้ทุกคน)
+ *
+ * ⭐ **จัดใหม่ทั้งหน้าใน R3.2 — เดิม 7 ชิปกรอง + 2 ปุ่ม toggle กินพื้นที่ครึ่งจอแรก**
+ *    แล้วตัวกรอง 6 กลุ่มที่ผู้ใช้ส่วนใหญ่ไม่เคยแตะก็ดันเนื้อหาลงไปให้ต้องเลื่อน
+ *
+ * | ก่อน | หลัง |
+ * |---|---|
+ * | 7 ชิปกรอง + 2 ปุ่ม toggle | **2 ชิป** (ทั้งหมด · ยังไม่อ่าน) + **`⋯`** |
+ * | 6 กลุ่มที่เหลือ | เข้า `⋯` → `AppSheet` (ไม่ใช่ตัดออก — ยังกรองได้ แต่อยู่หลังการกดครั้งเดียว) |
+ * | "อ่านทั้งหมด" เป็นปุ่มเด่นคู่ตัวกรอง | ย้ายเข้า `⋯` ⇒ **งานหลักของหน้าคือ "อ่านรายการ"** |
+ * | ลิสต์แบนยาว | **จัดกลุ่มตามวัน** + หัวกลุ่ม `sticky` (วันนี้ / เมื่อวาน / วันที่จริง) |
+ * | `<div>` เปล่า + `border-dashed` | `AppEmptyState` (ไม่มีเส้นประ) |
+ *
+ * ⚠️ **ไม่มี `<h1>`/eyebrow ในหน้านี้** — `AppHeader` แสดง "การแจ้งเตือน" (จาก
+ *    `routeTitles`) เป็น `<h1>` อยู่แล้ว ⇒ หัวข้อซ้ำ 2 ชั้นคือสิ่งที่ audit ฟ้องทั้งฉบับ
+ *
+ * 🚪 ปลายทางของหน้าที่ถูกซ่อน/ลบ (บั๊ก #32) → เด้งกลับมาที่นี่พร้อม `?unavailable=`
  */
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +57,15 @@ const activeTab = ref<'' | NotificationGroup>('')
 const unreadOnly = ref(false)
 const page = ref(1)
 const pageSize = 15
+const sheetOpen = ref(false)
+
+/** กลุ่มที่ผู้ใช้เลือกได้จากแผ่น `⋯` — ตัด `''` (ทั้งหมด) ออกเพราะมีชิปอยู่แล้ว */
+const GROUP_OPTIONS = GROUP_TABS.filter((t) => t.value !== '')
+
+/** กลุ่มที่กรองอยู่ (null = ไม่ได้กรองกลุ่ม) — ใช้ทั้งบนชิปและในแผ่น */
+const activeGroupTab = computed(() =>
+  activeTab.value === '' ? null : (GROUP_TABS.find((t) => t.value === activeTab.value) ?? null),
+)
 
 onMounted(async () => {
   // 🚪 เช็คก่อนโหลด — ผู้ใช้ที่เพิ่งถูกเด้งกลับมาควรเห็น "ทำไม" ทันที ไม่ใช่หลังรายการโผล่
@@ -73,6 +105,31 @@ watch([activeTab, unreadOnly], () => {
   load()
 })
 
+// ── ตัวกรอง ────────────────────────────────────────────────────────────────
+// ⚠️ ทั้งสามตัวเรียก `load()` ทาง `watch` ข้างบน ไม่เรียกเอง — ไม่งั้นกดชิปครั้งเดียว
+//    จะยิง request สองครั้ง (ครั้งหนึ่งจาก watcher อีกครั้งจาก handler)
+
+/** "ทั้งหมด" — ล้างทั้งกลุ่มและตัวกรองยังไม่อ่าน (เป็นสถานะตั้งต้น) */
+function showAll() {
+  activeTab.value = ''
+  unreadOnly.value = false
+}
+
+function toggleUnreadOnly() {
+  unreadOnly.value = !unreadOnly.value
+}
+
+/** เลือกกลุ่มจากแผ่น — ปิดแผ่นด้วย เพื่อให้เห็นผลทันทีว่าเลือกอะไรไป */
+function pickGroup(value: '' | NotificationGroup) {
+  activeTab.value = value
+  sheetOpen.value = false
+}
+
+/** ล้างเฉพาะกลุ่ม ไม่แตะตัวกรองยังไม่อ่าน (ผู้ใช้ที่กด "ยังไม่อ่าน" ไว้น่าจะอยากคงไว้) */
+function clearGroup() {
+  activeTab.value = ''
+}
+
 function onPageChange(n: number) {
   page.value = n
   load()
@@ -98,15 +155,64 @@ async function load() {
   }
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+/**
+ * 🗓️ จัดกลุ่มตามวัน — **เทียบ "ป้าย" ของวัน ไม่ใช่คำนวณคีย์แยก**
+ *
+ * ⭐ ทำไมปลอดภัย: API เรียง `created_at` จากใหม่ไปเก่า **เสมอ** ⇒ รายการของวันเดียวกัน
+ *    อยู่ติดกันเป็นช่วงเดียว · เรา **ยุบเฉพาะช่วงที่ติดกัน** ⇒ สองวันที่จะถูกยุบรวมกันได้
+ *    ต้องมีป้ายเหมือนกัน *และ* ติดกัน ซึ่งเกิดไม่ได้เพราะ `fmtDayGroup` คืน `วันนี้`/
+ *    `เมื่อวาน` อย่างละครั้ง และวันที่จริงมีทั้งวันและเดือน
+ *    (ต่างปีแต่ตรงวัน-เดือนกันจะได้สองกลุ่มแยกกัน ซึ่งถูกต้องกว่า — ไม่ยุบข้ามช่องว่าง)
+ *
+ * ⚠️ ไม่สร้าง "คีย์วันที่" ขึ้นมาเอง (เช่น `YYYY-MM-DD` ในโซนไทย) เพราะจะเป็นการ
+ *    แตกตรรกะเขตเวลาไทยออกเป็นที่ที่สอง — `fmtDayGroup` ใช้ `bangkokDayDiff`
+ *    ตัวเดียวกับ `fmtRelative` อยู่แล้ว
+ */
+interface DayGroup {
+  label: string
+  items: NotificationItem[]
 }
+
+const dayGroups = computed<DayGroup[]>(() => {
+  const out: DayGroup[] = []
+  for (const n of items.value) {
+    const label = fmtDayGroup(n.created_at)
+    const last = out[out.length - 1]
+    if (last && last.label === label) last.items.push(n)
+    else out.push({ label, items: [n] })
+  }
+  return out
+})
+
+/** ข้อความว่างที่ตรงกับตัวกรองจริง — "ไม่มีการแจ้งเตือน" เฉย ๆ ไม่ตอบว่า "แล้วของฉันหายไปไหน" */
+const emptyState = computed(() => {
+  if (unreadOnly.value && activeGroupTab.value) {
+    return {
+      icon: 'bi-check2-circle',
+      title: `ไม่มีรายการที่ยังไม่อ่านใน${activeGroupTab.value.label}`,
+      description: 'กด "ทั้งหมด" เพื่อดูรายการที่อ่านแล้วในกลุ่มนี้',
+    }
+  }
+  if (unreadOnly.value) {
+    return {
+      icon: 'bi-check2-circle',
+      title: 'อ่านครบทุกการแจ้งเตือนแล้ว',
+      description: 'เมื่อมีเรื่องใหม่ จะขึ้นที่นี่และมีตัวเลขบนกระดิ่ง',
+    }
+  }
+  if (activeGroupTab.value) {
+    return {
+      icon: activeGroupTab.value.icon.replace('bi bi-', 'bi-'),
+      title: `ยังไม่มีรายการใน${activeGroupTab.value.label}`,
+      description: GROUP_DESCRIPTIONS[activeGroupTab.value.value as NotificationGroup],
+    }
+  }
+  return {
+    icon: 'bi-bell-slash',
+    title: 'ยังไม่มีการแจ้งเตือน',
+    description: 'เมื่อมีเรื่องใหม่ บอร์ดใหม่ หรือมีคนตอบกลับ จะขึ้นตรงนี้',
+  }
+})
 
 function iconFor(n: NotificationItem): string {
   return NOTIFICATION_TYPE_ICONS[n.type] || 'bi bi-bell'
@@ -127,11 +233,14 @@ async function markOne(n: NotificationItem) {
     })
     return
   }
+  // ค่านี้เป็น **เครื่องหมายว่าอ่านแล้ว** ไม่ได้เอาไปแสดง ⇒ ไม่ต้องผ่าน `src/datetime.ts`
+  // (ทุกที่ที่แสดงเวลาของแถวนี้ใช้ `created_at` ผ่าน `fmtRelative` เท่านั้น)
   n.read_at = new Date().toISOString()
 }
 
 // ✅ อ่านทั้งหมด
 async function markAll() {
+  sheetOpen.value = false
   const { isConfirmed } = await Swal.fire({
     icon: 'question',
     title: 'อ่านทั้งหมด?',
@@ -191,125 +300,247 @@ function go(n: NotificationItem) {
 
 <template>
   <div>
-    <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
-      <div>
-        <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Inbox</p>
-        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
-          <i class="bi bi-bell-fill mr-1 text-brand"></i> การแจ้งเตือน
-        </h1>
-        <p class="mt-1 text-sm text-stone-500">
-          เรื่องที่ยังไม่ได้อ่าน {{ notificationsStore.total > 0 ? `(${notificationsStore.total})` : '' }}
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
-        <button
-          @click="unreadOnly = !unreadOnly"
-          class="rounded-xl border px-3 py-2 text-sm font-semibold transition-colors"
-          :class="unreadOnly ? 'bg-brand text-white border-brand' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'"
-        >
-          <i class="bi bi-envelope mr-1"></i> ยังไม่อ่าน
-        </button>
-        <button
-          v-if="notificationsStore.total > 0"
-          @click="markAll"
-          class="rounded-xl border border-brand/20 bg-white px-3 py-2 text-sm font-bold text-brand transition-colors hover:bg-brand/5"
-        >
-          <i class="bi bi-check2-all mr-1"></i> อ่านทั้งหมด
-        </button>
-      </div>
+    <!--
+      🔴 **ไม่มี `<h1>`/eyebrow** — `AppHeader` แสดง "การแจ้งเตือน" เป็น `<h1>` แล้ว
+         ⇒ ของเดิมที่มีทั้ง eyebrow "Inbox" และ `<h1>🔔 การแจ้งเตือน</h1>` คือหัวข้อ
+         ซ้ำ 2 ชั้นห่างกันไม่กี่พิกเซล ซึ่งเป็นข้อที่ audit ฟ้อง
+    -->
+    <p class="mb-3 text-sm leading-relaxed text-ink-2">
+      <template v-if="notificationsStore.total > 0">
+        ยังไม่ได้อ่าน {{ notificationsStore.total }} รายการ
+      </template>
+      <template v-else>อ่านครบแล้วทุกรายการ</template>
+    </p>
+
+    <!--
+      🔀 แถวกรอง — **2 ชิป + `⋯`** แทน 7 ชิป + 2 ปุ่ม toggle
+      ⚠️ ใช้ `flex-wrap` ไม่ใช่ `chip-row` (แถวเลื่อนแนวนอน) โดยเจตนา — เหลือ 2-3 ชิป
+         ซึ่งพอดีจอ 360dp อยู่แล้ว ⇒ การเลื่อนแนวนอนจะกลายเป็นซ่อนของโดยไม่มีเหตุ
+         (ถ้าวันหนึ่งมีชิปเกิน 3 ให้เปลี่ยนเป็น `chip-row` ซึ่งมีอยู่ใน `main.css`)
+    -->
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <AppChip label="ทั้งหมด" :active="!activeTab && !unreadOnly" @click="showAll" />
+      <AppChip
+        label="ยังไม่อ่าน"
+        :count="notificationsStore.total"
+        :active="unreadOnly"
+        @click="toggleUnreadOnly"
+      />
+      <AppChip
+        v-if="activeGroupTab"
+        :label="activeGroupTab.label"
+        :active="true"
+        @click="clearGroup"
+      />
+
+      <!-- จุดแดงบอกว่ามีตัวกรองกลุ่มทำงานอยู่ ทั้งที่ตัวชิปอยู่นอกจอ/ถูกยุบ -->
+      <IconButton
+        class="relative ml-auto"
+        icon="bi-three-dots"
+        label="กรองตามกลุ่ม และอ่านทั้งหมด"
+        @click="sheetOpen = true"
+      >
+        <span
+          v-if="activeTab"
+          class="absolute top-1 right-1 h-2 w-2 rounded-full bg-brand"
+          aria-hidden="true"
+        />
+      </IconButton>
     </div>
 
-    <!-- แท็บกลุ่ม -->
-    <div class="mb-4 flex flex-wrap gap-2">
-      <button
-        v-for="tab in GROUP_TABS"
-        :key="tab.value"
-        @click="activeTab = tab.value"
-        class="rounded-xl border px-4 py-2 text-sm font-bold transition-all"
-        :class="activeTab === tab.value
-          ? 'bg-brand text-white border-brand'
-          : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'"
-      >
-        <i :class="[tab.icon, 'mr-1.5']"></i> {{ tab.label }}
-        <span v-if="tab.value && (notificationsStore.counts[tab.value] ?? 0) > 0"
-          class="ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold"
-          :class="activeTab === tab.value ? 'bg-white/25' : 'bg-brand/10 text-brand'">
-          {{ notificationsStore.counts[tab.value] ?? 0 }}
-        </span>
-      </button>
-    </div>
+    <!--
+      🪟 แผ่นตัวเลือก — เป็น surface ของ "เลือก/ยืนยัน" เท่านั้น (skills #16: ห้ามใส่ฟอร์ม)
+      🔴 `AppSheet` `<Teleport to="body">` + `z-[60]` อยู่ในตัวคอมโพเนนต์แล้ว
+    -->
+    <AppSheet
+      v-model="sheetOpen"
+      title="กรองตามกลุ่ม"
+      description="เลือกกลุ่มที่ต้องการดู หรือทำเครื่องหมายว่าอ่านแล้วทั้งหมด"
+    >
+      <div class="px-2 pb-2">
+        <button
+          v-for="tab in GROUP_OPTIONS"
+          :key="tab.value"
+          type="button"
+          class="flex min-h-14 w-full items-center gap-3 rounded-control px-2 text-left transition-colors hover:bg-canvas"
+          :class="activeTab === tab.value ? 'bg-brand-tint text-brand' : 'text-ink-1'"
+          :aria-pressed="activeTab === tab.value"
+          @click="pickGroup(tab.value)"
+        >
+          <i
+            :class="[tab.icon, 'shrink-0 text-xl', activeTab === tab.value ? 'text-brand' : 'text-ink-2']"
+            aria-hidden="true"
+          />
+          <span class="min-w-0 flex-1 truncate text-sm font-semibold">{{ tab.label }}</span>
+          <span
+            v-if="(notificationsStore.counts[tab.value] ?? 0) > 0"
+            class="shrink-0 rounded-full bg-brand px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white"
+          >
+            {{ notificationsStore.counts[tab.value] }}
+          </span>
+          <i
+            v-if="activeTab === tab.value"
+            class="bi bi-check-lg shrink-0 text-base text-brand"
+            aria-hidden="true"
+          />
+        </button>
+
+        <!--
+          "อ่านทั้งหมด" อยู่ท้ายสุดของแผ่น และ **แยกด้วยเส้น** — เป็นการกระทำที่แตะ
+          ทั้งบัญชีและย้อนกลับไม่ได้ ⇒ ต้องไม่อยู่ติดกับรายการที่ผู้ใช้กวาดนิ้วผ่าน
+        -->
+        <template v-if="notificationsStore.total > 0">
+          <div class="my-2 border-t border-line" />
+          <button
+            type="button"
+            class="flex min-h-14 w-full items-center gap-3 rounded-control px-2 text-left font-semibold text-brand transition-colors hover:bg-brand-tint"
+            @click="markAll"
+          >
+            <i class="bi bi-check2-all shrink-0 text-xl" aria-hidden="true" />
+            <span class="min-w-0 flex-1">อ่านทั้งหมด ({{ notificationsStore.total }})</span>
+          </button>
+        </template>
+      </div>
+    </AppSheet>
 
     <!-- loading skeleton -->
-    <div v-if="isLoading" class="overflow-hidden rounded-2xl border border-stone-200 bg-white" aria-busy="true">
-      <div class="divide-y divide-stone-100">
+    <div
+      v-if="isLoading"
+      class="overflow-hidden rounded-card border border-line bg-surface"
+      aria-busy="true"
+    >
+      <div class="divide-y divide-line">
         <div v-for="i in 6" :key="i" class="flex items-start gap-3 p-4">
-          <div class="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-stone-100"></div>
+          <div class="h-10 w-10 shrink-0 animate-pulse rounded-control bg-canvas" />
           <div class="flex-1 space-y-2">
-            <div class="h-4 w-1/3 animate-pulse rounded bg-stone-100"></div>
-            <div class="h-3 w-2/3 animate-pulse rounded bg-stone-100"></div>
+            <div class="h-4 w-1/3 animate-pulse rounded bg-canvas" />
+            <div class="h-3 w-2/3 animate-pulse rounded bg-canvas" />
           </div>
         </div>
       </div>
     </div>
 
-    <!-- error -->
-    <div v-else-if="error" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center">
-      <i class="bi bi-bell-slash mb-3 block text-3xl text-stone-300"></i>
-      <p class="text-[15px] font-semibold text-stone-700">ไม่สามารถโหลดการแจ้งเตือนได้ในขณะนี้</p>
-      <p class="mx-auto mt-1 max-w-md text-sm text-stone-500">{{ error }}</p>
+    <!-- error — มีทางออกเสมอ (ปุ่มลองใหม่) ไม่ใช่แค่บอกว่าพัง -->
+    <AppEmptyState
+      v-else-if="error"
+      icon="bi-bell-slash"
+      title="โหลดการแจ้งเตือนไม่สำเร็จ"
+      :description="error"
+    >
       <button
         type="button"
+        class="inline-flex items-center gap-2 rounded-control bg-brand px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
+        <i class="bi bi-arrow-clockwise" aria-hidden="true" /> ลองใหม่
       </button>
-    </div>
+    </AppEmptyState>
 
-    <!-- ว่าง -->
-    <div v-else-if="items.length === 0" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white p-12 text-center text-stone-500">
-      <div class="mb-2 text-4xl"><i class="bi bi-bell-slash text-stone-300"></i></div>
-      <p class="font-semibold">ไม่มีการแจ้งเตือน</p>
-      <p class="text-sm">เมื่อมีเรื่องใหม่/บอร์ดใหม่/คอมเมนต์ตอบกลับ จะขึ้นตรงนี้</p>
-    </div>
+    <!-- ว่าง — ข้อความบอกว่าว่าง *เพราะอะไร* ตามตัวกรองที่เปิดอยู่ -->
+    <AppEmptyState
+      v-else-if="items.length === 0"
+      :icon="emptyState.icon"
+      :title="emptyState.title"
+      :description="emptyState.description"
+    />
 
-    <!-- รายการ -->
-    <div v-else class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-      <div class="divide-y divide-stone-200">
-        <div
-          v-for="n in items"
-          :key="n.id"
-          class="relative flex cursor-pointer items-start gap-3 p-4 transition-colors"
-          :class="n.read_at ? 'hover:bg-stone-50' : 'bg-brand/5 hover:bg-brand/10'"
-          @click="go(n)"
-        >
-          <span v-if="!n.read_at" class="absolute left-2 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-brand" aria-hidden="true"></span>
-          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-            :class="n.read_at ? 'bg-stone-100 text-stone-400' : 'bg-brand/10 text-brand'">
-            <i :class="[iconFor(n), 'text-lg']"></i>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-start justify-between gap-2">
-              <p class="text-sm font-bold leading-snug text-stone-900">{{ n.title }}</p>
-              <span class="shrink-0 whitespace-nowrap text-[11px] text-stone-400">{{ fmtDate(n.created_at) }}</span>
-            </div>
-            <p class="mt-0.5 line-clamp-2 text-sm leading-snug text-stone-500">{{ n.body }}</p>
-            <div class="mt-1.5 flex items-center gap-2">
-              <span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-500">{{ n.actor_name || 'ระบบ' }}</span>
-            </div>
-          </div>
-          <button
-            v-if="!n.read_at"
-            @click.stop="markOne(n)"
-            class="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-brand transition-colors hover:bg-brand/5"
-            title="ทำเครื่องหมายว่าอ่านแล้ว"
+    <!--
+      📋 รายการ — จัดกลุ่มตามวัน (กลุ่มละการ์ด)
+
+      🔴 **หัวกลุ่มต้องเป็น *พี่น้อง* ของการ์ด ไม่ใช่ลูก** — `AppGroupHeader` เป็น `sticky`
+         และ `overflow-hidden` บนบรรพบุรุษจะสร้าง scrollport ใหม่ที่ *ไม่มีการเลื่อน*
+         ⇒ `sticky` จะหยุดทำงาน **เงียบ ๆ** (กลไกเดียวกับ skills #11 แต่เป็น `overflow-hidden`
+         ไม่ใช่ `overflow-x-hidden`) · การ์ดแต่ละใบจึงมี `overflow-hidden` ได้ตามปกติ
+         เพราะไม่มีอะไรข้างในต้อง `sticky` แล้ว — และมุมโค้งยังคมอยู่
+
+      ⚠️ `tone="canvas"` เพราะหน้านี้ทั้งหน้าอยู่บน `bg-canvas` (`MainLayout.vue:121`)
+         ⇒ พื้นหัวกลุ่มต้องเป็นสีเดียวกับหน้า ไม่ใช่สีการ์ด ไม่งั้นจะดูเหมือนการ์ดที่ถูกตัดครึ่ง
+
+      ⚠️ หัวกลุ่ม `sticky` ใช้ได้เพราะ `<main>` เป็น scroll container จริง
+         🔴 **ห้ามเพิ่ม `overflow-x-hidden` ให้ `<main>` หรือ wrapper `max-w-7xl`**
+    -->
+    <div v-else class="space-y-4">
+      <section v-for="(group, gi) in dayGroups" :key="group.label || gi">
+        <AppGroupHeader v-if="group.label" :label="group.label" tone="canvas" />
+
+        <div class="overflow-hidden rounded-card border border-line">
+          <!--
+            ⚠️ **สองปุ่มเป็นพี่น้องกัน ไม่ใช่ปุ่มซ้อนปุ่ม** — `<button>` ซ้อน `<button>` เป็น
+               HTML ที่ไม่ถูกต้อง และโปรแกรมอ่านหน้าจอจะสับสนว่ากำลังอยู่ในปุ่มไหน
+               ⇒ แถวนี้เป็น `<div>` ที่กดไม่ได้ ข้างในมี (1) ปุ่มเปิดปลายทาง ซึ่งกินพื้นที่
+               ที่เหลือทั้งหมด (2) ปุ่มทำเครื่องหมายว่าอ่านแล้ว เฉพาะแถวที่ยังไม่อ่าน
+          -->
+          <div
+            v-for="n in group.items"
+            :key="n.id"
+            class="flex items-stretch border-t border-line first:border-t-0"
+            :class="n.read_at ? 'bg-surface' : 'bg-brand-tint'"
           >
-            อ่านแล้ว
-          </button>
+            <button
+              type="button"
+              class="relative flex min-w-0 flex-1 items-start gap-3 p-4 text-left transition-colors"
+              :class="n.read_at ? 'hover:bg-canvas' : 'hover:bg-brand/10'"
+              @click="go(n)"
+            >
+              <!-- จุดยังไม่อ่าน — ไม่พึ่งสีพื้นอย่างเดียว (ผู้ใช้ที่แยกสีไม่ได้ยังเห็นจุด) -->
+              <span
+                v-if="!n.read_at"
+                class="absolute top-1/2 left-2 h-2 w-2 -translate-y-1/2 rounded-full bg-brand"
+                aria-hidden="true"
+              />
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-control"
+                :class="n.read_at ? 'bg-canvas text-ink-3' : 'bg-brand/10 text-brand'"
+              >
+                <i :class="[iconFor(n), 'text-lg']" aria-hidden="true" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="flex items-start justify-between gap-2">
+                  <span class="text-sm font-bold leading-snug text-ink-1">{{ n.title }}</span>
+                  <!-- เวลาแบบ relative — "3 วันที่แล้ว" ตอบ "อันไหนใหม่" ได้โดยไม่ต้องลบในหัว -->
+                  <span class="shrink-0 whitespace-nowrap text-[11px] text-ink-3">
+                    {{ fmtRelative(n.created_at) }}
+                  </span>
+                </span>
+                <span class="mt-0.5 line-clamp-2 block text-sm leading-snug text-ink-2">
+                  {{ n.body }}
+                </span>
+                <span class="mt-1.5 flex items-center gap-2">
+                  <span
+                    class="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-ink-2"
+                  >
+                    {{ n.actor_name || 'ระบบ' }}
+                  </span>
+                </span>
+              </span>
+              <!--
+                ♿ สถานะอ่าน/ยังไม่อ่าน — จุดสีกับพื้นอ่อนเป็น `aria-hidden` และสื่อด้วยสายตา
+                   เท่านั้น ⇒ ต้องมี *ข้อความจริง* ให้โปรแกรมอ่านหน้าจอ ไม่งั้นผู้ใช้ที่มองไม่เห็น
+                   แยกไม่ได้เลยว่าแถวไหนอ่านแล้ว (แถวที่อ่านแล้วต่างกันแค่สีพื้นกับจุดที่ซ่อนอยู่)
+              -->
+              <span class="sr-only">{{ n.read_at ? 'อ่านแล้ว' : 'ยังไม่อ่าน' }}</span>
+            </button>
+
+            <button
+              v-if="!n.read_at"
+              type="button"
+              class="flex w-12 shrink-0 items-center justify-center text-brand transition-colors hover:bg-brand/10 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset focus-visible:outline-none"
+              aria-label="ทำเครื่องหมายว่าอ่านแล้ว"
+              @click="markOne(n)"
+            >
+              <i class="bi bi-check2 text-lg" aria-hidden="true" />
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
 
-    <PaginationBar :total="total" :page="page" :page-size="pageSize" :loading="isLoading" @page-change="onPageChange" />
+    <PaginationBar
+      :total="total"
+      :page="page"
+      :page-size="pageSize"
+      :loading="isLoading"
+      @page-change="onPageChange"
+    />
   </div>
 </template>
