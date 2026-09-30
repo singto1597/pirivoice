@@ -15,6 +15,11 @@ HTTPException (ตัวเช็คสิทธิ์อยู่ใน service
    ต้องมาก่อน `/events/{event_id}/...` · ตอนนี้ไม่ชนกันเพราะ path ต่างความยาวกัน (`public` อยู่
    ตำแหน่งที่ path อื่นเป็น int) แต่ถ้าวันหน้าเพิ่ม `GET /events/{event_id}` **ต้องย้ายกลุ่ม public
    ขึ้นบนสุดก่อน** ไม่งั้น `public` จะถูก parse เป็น int แล้วได้ 422 แทนที่จะเข้ากิจกรรมได้
+
+✅ **เพิ่ม `GET /{event_id}` แล้ว (รอบ 4)** — กลุ่ม `/public` ย้ายขึ้นบนสุดเรียบร้อยตั้งแต่ต้น
+   ⇒ `/events/public` (1 segment เท่ากับ `/{event_id}`) ถูกจับคู่ที่ `/public` ก่อนเสมอ
+   ⚠️ **ถ้าจะย้าย `GET /{event_id}` ขึ้นไปเหนือกลุ่ม public เมื่อไหร่ หน้ารายการนักเรียนจะพัง**
+      ด้วย 422 ทันที — เทสต์ที่กันเรื่องนี้คือ `test_public_list_survives_adding_by_id_route`
 """
 from typing import Optional
 
@@ -232,6 +237,32 @@ async def list_events(
         page_size=result["page_size"],
         pages=result["pages"],
     )
+
+
+@router.get("/{event_id}", response_model=EventOut)
+async def get_event(
+    event_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """กิจกรรมหนึ่งใบ (หน้าจัดการ) — **เห็นฉบับร่างและใบที่ถูกลบ** ต่างจาก `/public/{id}`
+
+    ⭐ endpoint นี้มีไว้ให้ **หน้าเต็มหน้าเปิดตรงได้** (หน้าแก้ไข + หน้ารายชื่อผู้สมัคร)
+       ⇒ ต้องเรียกซ้ำได้ตอน refresh โดยไม่ต้องพึ่ง state ที่ส่งข้ามหน้าจอมา
+
+    ⚠️ ใบที่ถูกลบ (soft delete) คืน **200 พร้อม `deleted_at`** ไม่ใช่ 404 — ดูเหตุผลเต็ม
+       ที่ `event_service.get_event` (frontend ต้องเห็น `deleted_at` เพื่อปิดปุ่มบันทึก)
+
+    ⚠️ **ประกาศหลังกลุ่ม `/public`** ตามคำเตือนเรื่องลำดับที่หัวไฟล์ — `/events/public`
+       เป็น 1 segment เท่ากันกับ `/{event_id}` ⇒ ถ้าสลับที่ `public` จะถูก parse เป็น int → 422
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await event_service.get_event(pool, uid, event_id)
+    except (ForbiddenError, NotFoundError) as e:
+        raise _err(e)
+
+    return EventOut(**row)
 
 
 @router.post("", response_model=EventOut, status_code=201)

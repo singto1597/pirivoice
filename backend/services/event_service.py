@@ -333,6 +333,31 @@ async def list_events(
     return result
 
 
+async def get_event(pool: asyncpg.Pool, user_id: int, event_id: int) -> dict:
+    """กิจกรรมหนึ่งใบในมุมมองฝั่งจัดการ — **เห็นฉบับร่างด้วย** (ต่างจาก `get_public_event`)
+
+    ⭐ ทำไมต้องมีทั้งที่ `list_events` มีอยู่แล้ว — หน้าแก้ไข/หน้ารายชื่อผู้สมัครเป็น **หน้าเต็มหน้า**
+       ที่เปิดตรงได้และ refresh ได้ ⇒ ต้องมี endpoint ที่หยิบใบเดียวด้วย id
+       (`list_events` ไม่มีตัวกรอง id เลย และ `get_public_event` กรอง `status='published'`
+       ⇒ กิจกรรมที่เป็น**ฉบับร่างจะ 404** ซึ่งเป็นเคสที่สภาต้องแก้บ่อยที่สุด)
+
+    ⚠️ **คืนแถวที่ถูกลบ (soft delete) ตามจริง ไม่กรอง `deleted_at IS NULL`** — ต่างจาก
+       `list_registrations` ที่ต้อง 404 เพราะที่นั่นถามถึง *รายชื่อผู้สมัคร* ของกิจกรรม
+       ที่ไม่มีอยู่จริง · ที่นี่ถามถึง *ตัวกิจกรรม* ซึ่งยังมีอยู่ (แค่ถูกลบ) ⇒ ต้องตอบตามจริง
+       ไม่งั้นหน้าแก้ไขจะบอกว่า "ไม่พบกิจกรรม" ทั้งที่ผู้ใช้เพิ่งเห็นมันในลิสต์ status=deleted
+       **และต้องไม่ 404** เพราะ frontend ต้องเอา `deleted_at` ไปแสดงการ์ด "ถูกลบแล้ว —
+       กู้คืนก่อนจึงจะแก้ได้" (PATCH มี `deleted_at IS NULL` ⇒ ถ้าเปิดให้แก้จะได้ 404 ตอนบันทึก
+       = "แก้แล้วไม่บันทึก" ซึ่งเป็นอาการที่หาสาเหตุยากที่สุด)
+    """
+    async with pool.acquire() as conn:
+        await require_permission_anywhere(conn, user_id, "MANAGE_EVENTS")
+        row = await _fetch_one(conn, event_id)
+
+    if not row:
+        raise NotFoundError("ไม่พบกิจกรรมนี้")
+    return row
+
+
 async def list_registrations(
     pool: asyncpg.Pool,
     user_id: int,
