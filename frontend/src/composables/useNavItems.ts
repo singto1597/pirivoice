@@ -15,6 +15,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { NAV_GROUPS, NAV_TABS, ISSUE_SEGMENTS, MEMBER_SEGMENTS } from '@/constants/nav'
 import type { NavGroup, NavItem, NavTab, SegmentOption } from '@/constants/nav'
 import type { NavKey, SegmentGroupId } from '@/router/meta'
+import type { NotificationGroup } from '@/types/notification'
 
 /** เพดานเลข badge — เท่าเดิมกับที่ MainLayout ใช้อยู่ */
 export const BADGE_CAP = 99
@@ -35,10 +36,15 @@ export function useNavItems() {
     return true
   }
 
+  /** เลข badge ของกลุ่มแจ้งเตือนหนึ่งกลุ่ม — **ที่เดียวที่อ่าน `counts` ตรง ๆ** */
+  function badgeForGroup(group: NotificationGroup): number {
+    return notificationsStore.counts[group] || 0
+  }
+
   /** เลข badge ของแถวนี้ (0 = ไม่แสดง) */
   function badgeOf(item: NavItem): number {
     if (!item.badgeGroup) return 0
-    return notificationsStore.counts[item.badgeGroup] || 0
+    return badgeForGroup(item.badgeGroup)
   }
 
   const activeTab = computed<NavKey | null>(() => route.meta.navTab ?? null)
@@ -135,6 +141,7 @@ export function useNavItems() {
     menuGroups,
     activeTab,
     badgeOf,
+    badgeForGroup,
     tabBadge,
     badgeLabel,
     segmentsOf,

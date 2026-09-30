@@ -30,30 +30,35 @@ body {
   @apply font-sans antialiased;
 }
 
-/* 🔧 ช่องพิมพ์ข้อความ: พื้นหลังขาว + ตัวหนังสือเข้ม + เส้นขอบ stone (กัน daisyUI theme ครอบ) */
+/* 🔧 ค่าเริ่มต้นของช่องกรอก — **ไม่ใช้ `!important` แล้ว**
+   ⚠️ เดิมบล็อกนี้บังคับด้วย `!important` ทั้งชุด ⇒ คลาสของ Tailwind อย่าง `bg-canvas`
+      หรือ `border-line` ที่เขียนไว้บน `<input>` **ไม่มีผลเลย** (element selector ที่มี
+      `!important` ชนะ utility class) — อาการคือ "แก้สีช่องกรอกแล้วไม่เปลี่ยน" ซึ่งหาเหตุยากมาก
+   ✅ ตอนนี้เป็นค่า *เริ่มต้น* เฉย ๆ ⇒ หน้าที่ต้องการอย่างอื่นเขียนทับด้วย utility ได้ตามปกติ
+      · specificity ยังชนะ preflight ของ Tailwind (`input` 0,0,1 > `*` 0,0,0) */
 input,
 textarea,
 select {
-  background-color: #ffffff !important;
-  color: #1c1917 !important; /* stone-900 */
-  border-color: #d6d3d1 !important; /* stone-300 */
+  background-color: #ffffff;
+  color: #1c1917; /* stone-900 */
+  border-color: #d6d3d1; /* stone-300 */
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #a8a29e !important; /* stone-400 */
+  color: #a8a29e; /* stone-400 */
 }
 
 /* ✨ Focus ring Cardinal Red */
 input:focus,
 textarea:focus,
 select:focus {
-  border-color: #b91c1c !important;
-  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.16) !important;
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.16);
   outline: none;
 }
 
-/* ✨ Scrollbar สวย (desktop) */
+/* ✨ Scrollbar (desktop) */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -67,6 +72,16 @@ select:focus {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #a8a29e; /* stone-400 */
+}
+
+/* 📱 **ซ่อน scrollbar บนอุปกรณ์สัมผัส** — บนมือถือ scrollbar ไม่ช่วยบอกตำแหน่ง
+   (นิ้วบังอยู่แล้ว) แต่กินเนื้อที่ 8px และโผล่เป็นแถบเทา ๆ กลางการ์ดขาว
+   ⇒ ยังเลื่อนได้ปกติทุกทิศ แค่ไม่มีแถบให้เห็น */
+@media (pointer: coarse) {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
 }
 
 /* ✨ tap highlight เลือนบน mobile */
@@ -85,20 +100,43 @@ select:focus {
 
 /* ===================== คอมโพเนนต์สไตล์กลาง (stone + cardinal, ไร้ gradient/glass) ===================== */
 @layer components {
-  /* การ์ดมาตรฐานของระบบ — hairline border แทนเงา */
+  /* การ์ดมาตรฐานของระบบ — hairline border แทนเงา
+     ⚠️ ใช้ `AppCard.vue` สำหรับงานใหม่ · คลาสนี้คงไว้ให้ไฟล์เดิมที่ยังไม่ย้าย */
   .page-card {
-    @apply bg-white rounded-2xl border border-stone-200;
+    @apply bg-surface rounded-card border border-line;
   }
-  /* ปุ่มหลัก flat cardinal (เดิมเคยเป็น gradient — รีแบรนด์แล้ว) */
+  /* ปุ่มหลัก flat cardinal (เดิมเคยเป็น gradient — รีแบรนด์แล้ว)
+     ⚠️ ใช้ `AppButton.vue` สำหรับงานใหม่ · คลาสนี้คงไว้ให้ไฟล์เดิมที่ยังไม่ย้าย */
   .btn-gradient {
     @apply inline-flex items-center justify-center gap-1.5 py-2.5 px-4 bg-brand
-           text-white rounded-xl font-semibold
+           text-white rounded-control font-semibold
            hover:bg-brand-strong transition-all disabled:opacity-50 disabled:pointer-events-none;
   }
-  /* ปุ่มรอง (ขอบบาง stone) */
+  /* ปุ่มรอง (ขอบบาง) */
   .btn-ghost-ui {
-    @apply inline-flex items-center justify-center gap-1.5 py-2.5 px-4 bg-white border border-stone-200
-           text-stone-600 rounded-xl text-sm font-medium hover:bg-stone-50 hover:text-stone-800 transition;
+    @apply inline-flex items-center justify-center gap-1.5 py-2.5 px-4 bg-surface border border-line
+           text-ink-2 rounded-control text-sm font-medium hover:bg-canvas hover:text-ink-1 transition;
+  }
+
+  /* 📝 ช่องกรอกมาตรฐาน — ใช้กับ `<input>`/`<textarea>`/`<select>` ที่ยังไม่ย้ายไปคอมโพเนนต์
+     ⚠️ `text-body` (16px) ไม่ใช่ `text-sm` (14px) โดยเจตนา — iOS Safari **ซูมจอทุกครั้ง**
+        ที่แตะช่องกรอกที่มี font-size < 16px (นั่นคือเหตุผลของ `!important` ที่เคยอยู่ใน
+        `@media (max-width: 640px)` ข้างล่าง ⇒ ถ้าตั้ง 16px ตั้งแต่ต้น ก็ไม่ต้องมีข้อยกเว้น) */
+  .field {
+    @apply w-full rounded-control border border-line bg-surface px-3 py-2.5 text-body text-ink-1
+           placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none
+           disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-3;
+  }
+
+  /* ↔️ แถวชิปที่เลื่อนแนวนอนได้ — **ห้ามตัดบรรทัด** (ชิป 2 บรรทัดสูงไม่เท่ากันแล้วแถวกระโดด)
+     ⚠️ `-mx-4 px-4` ทำให้ชิปแรก/สุดท้ายชิดขอบจอพอดีขณะเลื่อน แต่ยังตรงกับเนื้อหาตอนนิ่ง */
+  .chip-row {
+    @apply -mx-4 flex gap-2 overflow-x-auto px-4 py-1;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chip-row::-webkit-scrollbar {
+    display: none;
   }
 }
 

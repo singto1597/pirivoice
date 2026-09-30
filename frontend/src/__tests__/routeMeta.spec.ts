@@ -12,7 +12,7 @@
  *      ⚠️ `received-issues` คือเคสจริงข้อนี้ — ดู `R0.3.3`
  *
  * ⭐ **สิ่งที่เทสนี้ยึด:**
- *   - **gate ทั้ง 30 route** (snapshot ตรง ๆ) ⇒ เปลี่ยนที่ไหน เทสต์แดงที่นั่น
+ *   - **gate ทั้ง 31 route** (snapshot ตรง ๆ) ⇒ เปลี่ยนที่ไหน เทสต์แดงที่นั่น
  *   - `received-issues` **ห้ามมี** `requiresPermission` โดยเจตนา
  *   - **ห้ามประกาศ `navTab`/`fab` ที่ route แม่ `/app`** — `route.meta` เป็นการ merge ของ
  *     ทุก record ที่ match ⇒ ค่าที่แม่จะ **รั่วลงทุกหน้าลูก** แล้วแท็บจะสว่างผิดทั้งแอป
@@ -46,6 +46,9 @@ function nameOfRoute(r: RouteRecordRaw): string {
  */
 const GATES: Record<string, [boolean | undefined, string | undefined, boolean | undefined]> = {
   home: [true, undefined, undefined],
+  // 🗂️ แท็บที่ 5 — **route เดียวที่เพิ่มใหม่ทั้ง refactor** · ไม่มี gate เพิ่มโดยเจตนา
+  //    (เมนูข้างในกรองสิทธิ์ที่ `useNavItems` อยู่แล้ว ⇒ ไม่ต้องมีประตูสองชั้น)
+  more: [true, undefined, undefined],
   dashboard: [true, 'VIEW_DASHBOARD', undefined],
   profile: [undefined, undefined, undefined],
   'my-activity': [undefined, undefined, undefined],
@@ -91,12 +94,12 @@ const NAV_HIDDEN = [
 ]
 
 /** แท็บราก — ต้องมี `headerBack: false` ไม่งั้นได้ลูกศร ← ที่กดแล้วกลับหน้าเดิม */
-const TAB_ROOTS = ['home', 'my-issues', 'boards', 'events']
+const TAB_ROOTS = ['home', 'more', 'my-issues', 'boards', 'events']
 
 describe('ประตูสิทธิ์ (snapshot)', () => {
-  it('ครบทั้ง 30 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
+  it('ครบทั้ง 31 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
     const children = appChildren()
-    expect(children).toHaveLength(30)
+    expect(children).toHaveLength(31)
 
     const actual: Record<string, [boolean | undefined, string | undefined, boolean | undefined]> =
       {}

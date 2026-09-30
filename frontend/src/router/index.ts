@@ -63,6 +63,16 @@ const router = createRouter({
           meta: { requiresAuth: true, navTab: 'home', headerBack: false, fab: 'issue' },
         },
         {
+          // 🗂️ แท็บที่ 5 — **route เดียวที่เพิ่มใหม่ทั้ง refactor** (ดู R0.3.2 ในแผน)
+          //    🔴 ต้องลงคอมมิตเดียวกันกับ `AppBottomNav` ที่ชี้มาที่นี่เสมอ —
+          //       ถ้าแท็บชี้ไป route ที่ยังไม่มี จะตกไปที่ catch-all ⇒ `login?redirect=/app/more`
+          //       = **เมนูที่กดแล้วออกจากระบบ** ซึ่งเป็น failure ที่แย่ที่สุดของงานนี้
+          path: 'more',
+          name: 'more',
+          component: () => import('@/views/More.vue'),
+          meta: { requiresAuth: true, navTab: 'more', headerBack: false },
+        },
+        {
           path: 'dashboard',
           name: 'dashboard',
           component: () => import('@/views/Dashboard.vue'),

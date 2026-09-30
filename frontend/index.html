@@ -3,8 +3,18 @@
   <head>
     <meta charset="UTF-8">
     <link rel="icon" type="image/png" href="/logos/school-logo.png">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--
+      🔤 ไอคอน: โหลดจาก npm ทางเดียว (`main.css` บรรทัดแรก) — **ห้ามเพิ่ม CDN กลับ**
+         ของเดิมโหลดซ้ำ 2 ทาง (CDN 1.11.3 ที่นี่ + npm 1.13.1 ใน `main.css`)
+         ⇒ ดาวน์โหลดฟอนต์ไอคอนทั้งชุดสองรอบ และเวอร์ชันชนกันแบบไม่ตั้งใจ
+    -->
+
+    <!--
+      📱 `viewport-fit=cover` จำเป็นสำหรับ `env(safe-area-inset-*)`
+         ถ้าไม่ใส่ เบราว์เซอร์จะคืนค่า safe-area เป็น **0 ทุกด้าน** ⇒ ทั้งแถบล่าง หัวแถบ
+         และ `.pb-safe` ที่เขียนรอไว้แล้วไม่มีผลจริงบน iPhone ที่มีรอยบาก
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>PIRIvoice — ระบบแจ้งเรื่องของนักเรียน สภานักเรียน พิริยาลัยจังหวัดแพร่</title>
 
     <!-- 🔤 Font: Noto Sans Thai (body) + Anuphan (display/พาดหัว) — preconnect + display=swap กัน FOUT -->

@@ -161,9 +161,11 @@ async function onInstall() {
 <style scoped>
 /* ⚠️ ใช้ class + media query ไม่ใช่ inline style — เพราะ inline style ชนะ
    `lg:` utility เสมอ (เขียน `lg:bottom-6` ไว้ด้วยกันแล้วจะไม่มีผลเงียบ ๆ)
-   มือถือ: ลอยเหนือ bottom tab bar · จอใหญ่: tab bar ซ่อน ⇒ ชิดขอบล่างได้ */
+   มือถือ: ลอยเหนือ bottom tab bar · จอใหญ่: tab bar ซ่อน ⇒ ชิดขอบล่างได้
+   📐 วัดใหม่หลังเปลี่ยนแถบล่าง (R0): แถบสูง 3.5rem (เดิมเป็นแคปซูลลอย ~4.6rem)
+   ⇒ 3.5rem + ช่องไฟ 1rem = 4.5rem — ให้ช่องไฟเท่ากับที่ FAB ใช้ (ดู `AppFab.vue`) */
 .banner-anchor {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.6rem);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 4.5rem);
 }
 @media (min-width: 1024px) {
   .banner-anchor {
