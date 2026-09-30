@@ -137,3 +137,73 @@ export function fmtTime(iso: string): string {
     minute: '2-digit',
   })
 }
+
+/** วันที่ล้วน (`30 ก.ย. 2569`) — พ.ศ. · ไม่มีเวลา ⇒ ใช้ในบรรทัดที่เวลาที่แน่นอนไม่ช่วยอะไร */
+export function fmtDateShort(iso: string): string {
+  return new Date(iso).toLocaleDateString('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+/** ปี/เดือน/วัน **ในเขตเวลาไทย** — ใช้คิด "ต่างกันกี่วัน" โดยไม่พึ่งโซนเครื่องที่รัน */
+function bangkokYmd(d: Date): [number, number, number] {
+  const parts = BKK_PARTS.formatToParts(d)
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0)
+  return [get('year'), get('month'), get('day')]
+}
+
+/**
+ * ต่างกันกี่ **วันตามปฏิทินไทย** — `เมื่อวาน` ต้องหมายถึง "เมื่อวาน" ไม่ใช่ "24–48 ชม.ที่แล้ว"
+ *
+ * ⚠️ ห้ามคิดจาก `(a - b) / 86400000` — 23:00 กับ 01:00 ของวันถัดไปห่างกันแค่ 2 ชม.
+ *    แต่เป็นคนละวันตามปฏิทิน ซึ่งเป็นสิ่งที่ผู้ใช้อ่าน ⇒ ต้องเทียบ **วันที่** ไม่ใช่ระยะเวลา
+ *    และต้องอ่านวันที่ในโซน Bangkok ไม่ใช่โซนเครื่อง (VPS อยู่นอกไทยได้)
+ */
+function bangkokDayDiff(from: Date, to: Date): number {
+  const [fy, fm, fd] = bangkokYmd(from)
+  const [ty, tm, td] = bangkokYmd(to)
+  // `Date.UTC` ใช้เป็น "ถังพัก" ให้ลบกันได้โดยไม่มี DST/โซนเข้ามาเกี่ยว (ทุกค่าเป็น UTC หมด)
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000)
+}
+
+/**
+ * เวลาแบบ "ผ่านมาเท่าไร" — `เมื่อสักครู่` · `5 นาทีที่แล้ว` · `3 ชั่วโมงที่แล้ว` ·
+ * `เมื่อวาน` · `3 วันที่แล้ว` → เกิน 7 วันคืน **วันที่จริง** (ดู `fmtDateShort`)
+ *
+ * ⭐ **ทำไมต้องมี:** ในลิสต์ที่ผู้ใช้ต้องกวาดตาหา "อันไหนใหม่" วันที่เต็ม (`30 ก.ย. 2569 14:32`)
+ *    บังคับให้อ่านและลบกันในหัวทุกแถว — "3 วันที่แล้ว" ตอบคำถามนั้นทันที
+ *    ⚠️ แต่ **ต้องเปลี่ยนเป็นวันที่จริงเมื่อเก่าพอ** — "45 วันที่แล้ว" ก็ต้องลบกันในหัวอยู่ดี
+ *       และยิ่งนานยิ่งอ่านยาก ⇒ ตัดที่ 7 วันซึ่งเป็นจุดที่การนับถอยหลังเลิกมีประโยชน์
+ *
+ * 🔴 `now` **เป็นพารามิเตอร์ ไม่เรียก `new Date()` ข้างใน** — ไม่งั้นเทสต์ต้องคำนวณค่า
+ *    คาดหวังด้วย `new Date()` ของตัวเอง ซึ่งจะผ่านเสมอไม่ว่าจะยืนยันอะไร (ดูหัวไฟล์ของ
+ *    `datetime.spec.ts`) ⇒ ผู้เรียกจริงส่งค่าว่างได้ แต่เทสต์ป้อนเวลาคงที่ได้
+ *
+ * ⚠️ **อนาคตเล็กน้อยคืน `เมื่อสักครู่` ไม่ใช่ค่าติดลบ** — `created_at` ที่ใหม่กว่านาฬิกาเครื่อง
+ *    ผู้ใช้เกิดได้จริง (นาฬิกาเครื่องเพี้ยน/เขตเวลาผิด) และ `-3 นาทีที่แล้ว` อ่านแล้วเหมือนบั๊ก
+ *    ⇒ ตรรกะเดียวกับที่ `closingLabel()` ใน `types/event.ts` ต้องรับมือ
+ */
+export function fmtRelative(iso: string, now: Date = new Date()): string {
+  const then = new Date(iso)
+  if (Number.isNaN(then.getTime())) return ''
+
+  const diffMs = now.getTime() - then.getTime()
+  if (diffMs < 60_000) return 'เมื่อสักครู่' // รวมอนาคตอันใกล้และนาฬิกาเครื่องเพี้ยน
+
+  const dayDiff = bangkokDayDiff(then, now)
+  if (dayDiff >= 1) {
+    if (dayDiff === 1) return 'เมื่อวาน'
+    if (dayDiff < 7) return `${dayDiff} วันที่แล้ว`
+    return fmtDateShort(iso)
+  }
+
+  // ถึงตรงนี้แปลว่าเป็น **วันเดียวกันตามปฏิทินไทย** แล้ว (`dayDiff === 0`) ⇒ นับเป็นชั่วโมงได้ตรง
+  // ⚠️ แต่มันไม่เท่ากับ "ห่างกันไม่ถึง 24 ชม." — ของเมื่อวาน 23:00 เปิดดูตอน 01:00 ได้ `dayDiff = 1`
+  //    แล้วถูกจับเป็น `เมื่อวาน` ตั้งแต่บล็อกข้างบน ซึ่งเป็นสิ่งที่ผู้ใช้อ่านถูกอยู่แล้ว
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) return `${minutes} นาทีที่แล้ว`
+  return `${Math.floor(minutes / 60)} ชั่วโมงที่แล้ว`
+}
