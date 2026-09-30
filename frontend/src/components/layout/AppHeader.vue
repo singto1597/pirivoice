@@ -96,10 +96,15 @@ const notifications = useNotificationsStore()
         ⚠️ avatar ยังอยู่ที่หัวแถบใน R0 เพราะหน้า "เพิ่มเติม" (ที่เก็บทางเข้าโปรไฟล์)
            ยังไม่เปิด — จะย้ายออกใน R1 พร้อมกับหน้า More ⇒ ห้ามลบก่อนหน้านั้น
            ไม่งั้นโปรไฟล์จะไม่มีทางเข้าเลย
+
+        📐 `h-11 w-11` (44dp) ไม่ใช่ `h-9` (36dp) — วัดบน staging จริงแล้ว 36dp **เล็กกว่า
+           เกณฑ์แตะ 44dp** ที่ R0 ตั้งไว้เอง และมันคือทางเข้าโปรไฟล์ทางเดียวบนมือถือ
+           ⇒ ขนาดตรงกับโลโก้ (`h-11 w-11` ด้านซ้าย) ทำให้หัวแถบสมดุลด้วย
+           ⚠️ ตัวอักษรยัง `text-[13px]` — โตช้ากว่ากรอบ ไม่งั้นตัวอักษรจะใหญ่เท่าการ์ด
       -->
       <RouterLink
         to="/app/profile"
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-[13px] font-bold text-white"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-[13px] font-bold text-white"
         :aria-label="`โปรไฟล์ของ ${identity.displayName.value}`"
       >
         {{ identity.avatarChar.value }}
