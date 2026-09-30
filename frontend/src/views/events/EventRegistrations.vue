@@ -279,7 +279,7 @@ const goBack = () => router.push({ name: 'event-management' })
           <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-brand">
             <i class="bi bi-people mr-1"></i> Registrations
           </p>
-          <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">
+          <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">
             รายชื่อผู้สมัคร
           </h1>
           <p class="mt-1 truncate text-sm text-stone-500">{{ event?.title }}</p>

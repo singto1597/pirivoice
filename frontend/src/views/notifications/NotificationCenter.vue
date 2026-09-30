@@ -194,7 +194,7 @@ function go(n: NotificationItem) {
     <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
       <div>
         <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Inbox</p>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
+        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
           <i class="bi bi-bell-fill mr-1 text-brand"></i> การแจ้งเตือน
         </h1>
         <p class="mt-1 text-sm text-stone-500">

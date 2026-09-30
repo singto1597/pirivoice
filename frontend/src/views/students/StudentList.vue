@@ -69,7 +69,7 @@ async function changeRole(student: Student) {
     <!-- Header -->
     <div class="mb-5">
       <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Student Directory</p>
-      <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-mortarboard mr-1 text-brand"></i> รายชื่อนักเรียน</h1>
+      <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-mortarboard mr-1 text-brand"></i> รายชื่อนักเรียน</h1>
       <p class="mt-1 text-sm text-stone-500">ค้นหาและจัดการตำแหน่งในห้องเรียน</p>
     </div>
 
@@ -151,11 +151,11 @@ async function changeRole(student: Student) {
         <table class="w-full text-sm">
           <thead class="bg-stone-50 text-stone-500">
             <tr>
-              <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">เลขที่</th>
-              <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">รหัสนักเรียน</th>
-              <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">ชื่อ-นามสกุล</th>
-              <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">ห้อง</th>
-              <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">ตำแหน่ง</th>
+              <th class="px-4 py-3 text-left font-semibold text-[11px]">เลขที่</th>
+              <th class="px-4 py-3 text-left font-semibold text-[11px]">รหัสนักเรียน</th>
+              <th class="px-4 py-3 text-left font-semibold text-[11px]">ชื่อ-นามสกุล</th>
+              <th class="px-4 py-3 text-left font-semibold text-[11px]">ห้อง</th>
+              <th class="px-4 py-3 text-left font-semibold text-[11px]">ตำแหน่ง</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-stone-100">

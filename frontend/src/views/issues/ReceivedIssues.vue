@@ -293,7 +293,7 @@ async function load() {
       >
         <i class="bi bi-inbox text-[13px]"></i> Inbox &amp; My Level
       </p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">
+      <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">
         เรื่องที่รับ / ระดับฉัน
       </h1>
       <p class="mt-2 text-sm text-stone-500">เรื่องที่รอคุณและทีมรับผิดชอบดำเนินการ</p>

@@ -106,8 +106,8 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
           <i class="bi bi-arrow-left text-lg"></i>
         </button>
         <div>
-          <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">ข้อมูลส่วนตัว</p>
-          <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-pencil-square mr-1 text-brand"></i> แก้ไขโปรไฟล์</h1>
+          <p class="mb-1 text-[11px] font-bold text-stone-400">ข้อมูลส่วนตัว</p>
+          <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-pencil-square mr-1 text-brand"></i> แก้ไขโปรไฟล์</h1>
           <p class="mt-1 text-sm text-stone-500">แก้ข้อมูลส่วนตัวของคุณ</p>
         </div>
       </div>

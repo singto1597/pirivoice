@@ -317,7 +317,7 @@ onMounted(loadStats);
               </div>
               <!-- ชื่อ + ตำแหน่ง: pt ชัดเจน → อยู่ใต้ cover บนพื้นขาว อ่านง่ายเสมอ -->
               <div class="min-w-0 flex-1 pt-3 sm:pt-5">
-                <h1 class="text-2xl font-bold tracking-tight text-stone-900 break-words leading-snug sm:text-3xl">{{ fullName }}</h1>
+                <h1 class="text-2xl font-bold text-stone-900 break-words leading-snug sm:text-3xl">{{ fullName }}</h1>
                 <div class="flex flex-wrap gap-1.5 mt-2.5">
                   <span class="px-2.5 py-1 bg-brand/10 text-brand text-xs font-semibold rounded-full">
                     <i class="bi bi-mortarboard mr-1"></i>{{ roleLabel }}
@@ -348,7 +348,7 @@ onMounted(loadStats);
           <transition name="fade-up">
             <div v-if="menuOpen" class="absolute right-0 top-11 z-50 w-56 rounded-2xl border border-stone-200 bg-white py-2 shadow-lg shadow-stone-900/5">
               <div class="mb-1 border-b border-stone-100 px-4 py-1.5">
-                <p class="text-[10px] font-bold text-stone-400 uppercase tracking-widest">การจัดการบัญชี</p>
+                <p class="text-[10px] font-bold text-stone-400">การจัดการบัญชี</p>
               </div>
               <button @click="goEdit" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 hover:text-brand">
                 <i class="bi bi-pencil-square text-lg"></i> แก้ไขโปรไฟล์

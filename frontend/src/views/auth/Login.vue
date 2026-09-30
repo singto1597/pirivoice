@@ -106,7 +106,7 @@ async function handleLogin() {
         <div class="rounded-3xl border border-stone-200 bg-white p-8 sm:p-10">
           <div class="mb-8 text-center">
             <p class="mb-3 text-[11px] font-bold uppercase tracking-widest text-brand">Student Council · PIRIvoice</p>
-            <h2 class="text-3xl font-bold tracking-tight text-stone-900">เข้าสู่ระบบ</h2>
+            <h2 class="text-3xl font-bold text-stone-900">เข้าสู่ระบบ</h2>
             <p class="mt-2 text-sm text-stone-500">ลงชื่อเข้าใช้ด้วยรหัสนักเรียน / บุคลากร</p>
           </div>
 

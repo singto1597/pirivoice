@@ -158,7 +158,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
         <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
           <i class="bi bi-flag-fill mr-1"></i> Moderation Queue
         </p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">จัดการรายงาน</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">จัดการรายงาน</h1>
         <p class="text-sm text-stone-500 mt-1.5">คอมเมนต์ที่นักเรียนแจ้งความไม่เหมาะสม — สภานักเรียน/แอดมินตรวจสอบ</p>
       </div>
     </div>

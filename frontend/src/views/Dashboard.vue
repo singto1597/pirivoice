@@ -284,8 +284,8 @@ const hasTrafficData = computed(
     <!-- ===== Header ===== -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
-        <p class="text-[11px] font-bold uppercase tracking-widest text-brand"><i class="bi bi-bar-chart mr-1"></i> ระบบสถิติ</p>
-        <h1 class="mt-0.5 text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">แดชบอร์ด</h1>
+        <p class="text-[11px] font-bold text-brand"><i class="bi bi-bar-chart mr-1"></i> ระบบสถิติ</p>
+        <h1 class="mt-0.5 text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">แดชบอร์ด</h1>
         <p v-if="lastUpdated" class="text-xs text-stone-400 mt-1.5">
           อัปเดตล่าสุด <span class="font-medium text-stone-500">{{ fmtDateTime(lastUpdated) }}</span>
         </p>

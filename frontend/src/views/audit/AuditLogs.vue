@@ -224,7 +224,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
     <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
       <div>
         <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Audit Trail</p>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
+        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
           <i class="bi bi-clock-history mr-1 text-brand"></i> บันทึกการใช้งาน
         </h1>
         <p class="mt-1 text-xs text-stone-500">ประวัติทุกการกระทำในระบบ (เข้าสู่ระบบ / เพิ่ม / ดึงข้อมูล / แก้ไข / ลบ)</p>
@@ -323,7 +323,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-stone-50">
-            <tr class="text-left text-[11px] uppercase tracking-wider text-stone-500">
+            <tr class="text-left text-[11px] text-stone-500">
               <th class="px-4 py-3 font-semibold">เวลา</th>
               <th class="px-4 py-3 font-semibold">ผู้ใช้</th>
               <th class="px-4 py-3 font-semibold">ห้อง</th>

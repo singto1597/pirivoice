@@ -169,7 +169,7 @@ async function handleSubmit() {
         <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
           <i class="bi bi-pencil-square text-[13px]"></i> Edit Issue
         </p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">แก้ไขเรื่อง</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">แก้ไขเรื่อง</h1>
         <p class="mt-2 text-sm text-stone-500">แก้ไขข้อมูลเรื่องที่แจ้งไปแล้ว (เฉพาะผู้แจ้ง)</p>
       </div>
 

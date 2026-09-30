@@ -289,8 +289,8 @@ const annIconColor: Record<string, string> = {
               {{ avatarChar }}
             </span>
             <div>
-              <p class="text-[11px] font-bold uppercase tracking-widest text-brand">{{ greeting }} 👋</p>
-              <h1 class="mt-1 truncate text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">
+              <p class="text-[11px] font-bold text-brand">{{ greeting }} 👋</p>
+              <h1 class="mt-1 truncate text-2xl font-bold text-stone-900 sm:text-3xl">
                 {{ displayName }}
               </h1>
               <p class="mt-0.5 text-xs font-semibold text-stone-500">
@@ -360,7 +360,7 @@ const annIconColor: Record<string, string> = {
           <i class="bi bi-megaphone"></i>
         </span>
         <div class="min-w-0 space-y-2">
-          <p class="text-xs font-bold uppercase tracking-wider text-stone-500">ประกาศโรงเรียน</p>
+          <p class="text-xs font-bold text-stone-500">ประกาศโรงเรียน</p>
           <div v-for="a in announcements" :key="a.id" class="flex items-start gap-2.5">
             <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="annIconColor[a.priority] || 'bg-stone-300'"></span>
             <p class="text-sm font-medium leading-relaxed text-stone-700">{{ a.message }}</p>
@@ -404,7 +404,7 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-stack text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">สรุปเรื่องของฉัน</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">สรุปเรื่องของฉัน</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">ติดตามสถานะเรื่องที่คุณแจ้งไว้</p>
           </div>
         </div>
@@ -458,26 +458,26 @@ const annIconColor: Record<string, string> = {
         <!-- ตัวเลขหลัก (ledger) -->
         <div class="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-4">
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">แจ้งไปทั้งหมด</p>
+            <p class="text-[10px] font-bold text-stone-500">แจ้งไปทั้งหมด</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="summary.total_issues">0</p>
           </div>
 
           <div class="bg-white p-4 sm:p-5">
-            <p class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+            <p class="flex items-center gap-1.5 text-[10px] font-bold text-stone-500">
               <span class="h-1.5 w-1.5 rounded-full bg-stone-400"></span> รอรับเรื่อง
             </p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="statusMap['pending'] ?? 0">0</p>
           </div>
 
           <div class="bg-white p-4 sm:p-5">
-            <p class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+            <p class="flex items-center gap-1.5 text-[10px] font-bold text-stone-500">
               <span class="h-1.5 w-1.5 rounded-full bg-brand"></span> กำลังดำเนินการ
             </p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="statusMap['in_progress'] ?? 0">0</p>
           </div>
 
           <div class="bg-white p-4 sm:p-5">
-            <p class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+            <p class="flex items-center gap-1.5 text-[10px] font-bold text-stone-500">
               <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> เสร็จแล้ว
             </p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900 sm:text-3xl" :data-count="statusMap['resolved'] ?? 0">0</p>
@@ -524,7 +524,7 @@ const annIconColor: Record<string, string> = {
 
         <!-- ล่าสุด 2 เรื่อง -->
         <div v-if="summary.recent.length > 0" class="mt-4 border-t border-stone-200 pt-4">
-          <p class="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-500">
+          <p class="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-stone-500">
             <i class="bi bi-clock-history"></i> เรื่องล่าสุด
           </p>
           <div class="space-y-1">
@@ -583,7 +583,7 @@ const annIconColor: Record<string, string> = {
             </span>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">รอฉันตอบ</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">รอฉันตอบ</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">เรื่องที่ค้างอยู่ที่คุณและยังไม่ปิด</p>
           </div>
         </div>
@@ -656,7 +656,7 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-bar-chart-steps text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">โหวตที่ยังไม่โหวต</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">โหวตที่ยังไม่โหวต</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">บอร์ดที่ยังเปิดอยู่ และคุณยังไม่ได้ออกเสียง</p>
           </div>
         </div>
@@ -722,7 +722,7 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-hourglass-split text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">กิจกรรมใกล้ปิดรับ</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">กิจกรรมใกล้ปิดรับ</h2>
             <!-- ⚠️ ใช้ "ยังไม่ปิดรับ" ไม่ใช่ "ยังสมัครได้อยู่" — กิจกรรมที่เต็มแล้วก็อยู่ในบล็อกนี้
                  (สมัครได้แต่จะได้คิวสำรอง) ⇒ คำเดิมจะขัดกับป้าย "เต็มแล้ว" ในแถวเดียวกัน -->
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">ยังไม่ปิดรับ — เหลือเวลาอีกไม่มาก</p>
@@ -799,7 +799,7 @@ const annIconColor: Record<string, string> = {
             <i class="bi bi-flag-fill text-lg"></i>
           </span>
           <div>
-            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">คิวจัดการรายงาน</h2>
+            <h2 class="text-base font-bold text-stone-900 sm:text-lg">คิวจัดการรายงาน</h2>
             <p class="text-[11px] font-medium text-stone-400 sm:text-xs">คอมเมนต์ที่ถูกรายงานว่าน่าไม่เหมาะสม</p>
           </div>
         </div>
@@ -854,7 +854,7 @@ const annIconColor: Record<string, string> = {
               <i class="bi bi-graph-up text-lg"></i>
             </span>
             <div>
-              <h2 class="text-sm font-bold tracking-tight text-stone-900 sm:text-base">ภาพรวม {{
+              <h2 class="text-sm font-bold text-stone-900 sm:text-base">ภาพรวม {{
                 dash?.scope_label ? `ระดับ ${dash.scope_label}` : 'ทั้งโรงเรียน'
               }}</h2>
               <p class="text-[11px] font-medium text-stone-400">จากแดชบอร์ด — ข้อมูลอัปเดตเรียลไทม์</p>
@@ -878,19 +878,19 @@ const annIconColor: Record<string, string> = {
         </div>
         <div v-else-if="dash" class="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-4">
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">เรื่องทั้งหมด</p>
+            <p class="text-[10px] font-bold text-stone-500">เรื่องทั้งหมด</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900">{{ dash.total_issues }}</p>
           </div>
           <div class="bg-brand/5 p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-brand">ค้าง/เลยกำหนด</p>
+            <p class="text-[10px] font-bold text-brand">ค้าง/เลยกำหนด</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-brand-strong">{{ dash.overdue }}</p>
           </div>
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">กำลังดำเนินการ</p>
+            <p class="text-[10px] font-bold text-stone-500">กำลังดำเนินการ</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900">{{ dash.in_progress }}</p>
           </div>
           <div class="bg-white p-4 sm:p-5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">เสร็จแล้ว</p>
+            <p class="text-[10px] font-bold text-stone-500">เสร็จแล้ว</p>
             <p class="mt-1 font-display text-2xl font-bold leading-none text-stone-900">{{ dash.resolved }}</p>
           </div>
         </div>

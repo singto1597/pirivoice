@@ -81,7 +81,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
           <i class="bi bi-arrow-left text-base"></i>
         </RouterLink>
         <div class="min-w-0 flex-1">
-          <p class="text-[10px] sm:text-[11px] text-stone-500 font-bold uppercase tracking-widest leading-none mb-1">
+          <p class="text-[10px] sm:text-[11px] text-stone-500 font-bold leading-none mb-1">
             {{ volumeLabel }} · P.R. Playbooks
           </p>
           <h1 class="text-sm sm:text-base font-bold text-stone-900 truncate leading-tight">{{ playbook.title }}</h1>
@@ -141,7 +141,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
       <!-- 🏁 สิ้นสุดเล่ม -->
       <div class="mt-8 flex items-center justify-center gap-3 text-stone-400">
         <div class="h-px w-14 sm:w-20 bg-stone-200"></div>
-        <span class="text-xs font-semibold tracking-widest">จบเล่ม</span>
+        <span class="text-xs font-semibold">จบเล่ม</span>
         <div class="h-px w-14 sm:w-20 bg-stone-200"></div>
       </div>
 
@@ -155,7 +155,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
           <img :src="nextPlaybook.coverImage" :alt="`ปก ${nextPlaybook.title}`" loading="lazy" class="w-full h-full object-cover" />
         </div>
         <div class="min-w-0 flex-1">
-          <p class="text-[10px] text-brand font-bold uppercase tracking-widest mb-0.5">อ่านเล่มถัดไป</p>
+          <p class="text-[10px] text-brand font-bold mb-0.5">อ่านเล่มถัดไป</p>
           <p class="font-semibold text-stone-800 truncate">{{ nextPlaybook.title }}</p>
         </div>
         <i class="bi bi-arrow-right text-xl text-brand shrink-0"></i>

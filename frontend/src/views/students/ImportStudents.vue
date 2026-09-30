@@ -221,7 +221,7 @@ onBeforeUnmount(stopPolling);
     <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
       <div>
         <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Excel Import</p>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
+        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
           <i class="bi bi-file-earmark-excel mr-1 text-brand"></i> นำเข้านักเรียนจาก Excel
         </h1>
         <p class="mt-1 text-sm text-stone-500">อัปโหลดรายชื่อ + ตำแหน่งในห้องเรียนเป็นชุด</p>
@@ -248,10 +248,10 @@ onBeforeUnmount(stopPolling);
         <table class="w-full text-xs">
           <thead>
             <tr class="bg-stone-50 text-left text-stone-500">
-              <th class="px-3 py-2 font-semibold uppercase tracking-wider">คอลัมน์</th>
-              <th class="px-3 py-2 font-semibold uppercase tracking-wider">จำเป็น</th>
-              <th class="px-3 py-2 font-semibold uppercase tracking-wider">ตัวอย่าง</th>
-              <th class="min-w-[200px] px-3 py-2 font-semibold uppercase tracking-wider">คำอธิบาย</th>
+              <th class="px-3 py-2 font-semibold">คอลัมน์</th>
+              <th class="px-3 py-2 font-semibold">จำเป็น</th>
+              <th class="px-3 py-2 font-semibold">ตัวอย่าง</th>
+              <th class="min-w-[200px] px-3 py-2 font-semibold">คำอธิบาย</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-stone-100">
@@ -424,7 +424,7 @@ onBeforeUnmount(stopPolling);
       <div v-else class="overflow-x-auto rounded-xl border border-stone-200">
         <table class="w-full text-sm">
           <thead>
-            <tr class="bg-stone-50 text-left text-[11px] uppercase tracking-wider text-stone-500">
+            <tr class="bg-stone-50 text-left text-[11px] text-stone-500">
               <th class="px-4 py-3 font-semibold">ไฟล์</th>
               <th class="px-4 py-3 font-semibold">สถานะ</th>
               <th class="min-w-[220px] px-4 py-3 font-semibold">ความคืบหน้า</th>

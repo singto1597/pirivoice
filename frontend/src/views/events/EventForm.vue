@@ -472,7 +472,7 @@ const inputCls =
           <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-brand">
             <i class="bi bi-calendar-event mr-1"></i> Events
           </p>
-          <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">
+          <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">
             {{ isEdit ? 'แก้ไขกิจกรรม' : 'สร้างกิจกรรม' }}
           </h1>
           <p v-if="isEdit && event" class="mt-1 truncate text-sm text-stone-500">

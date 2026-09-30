@@ -151,7 +151,7 @@ function metaClass(a: ActivityItem): string {
       <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
         <i class="bi bi-clock-history text-[13px]"></i> My Activity
       </p>
-      <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">กิจกรรมของฉัน</h1>
+      <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">กิจกรรมของฉัน</h1>
       <p class="mt-2 text-sm text-stone-500">ทุกอย่างที่คุณเคยแจ้ง โหวต และแสดงความคิดเห็น</p>
     </div>
 
@@ -275,7 +275,7 @@ function metaClass(a: ActivityItem): string {
           </div>
           <div class="min-w-0 flex-1">
             <div class="mb-1 flex flex-wrap items-center gap-2">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+              <span class="text-[11px] font-bold text-stone-400">
                 {{ ACTIVITY_VERBS[a.activity_type] }}
               </span>
               <span

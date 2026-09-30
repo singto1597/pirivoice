@@ -255,7 +255,7 @@ function resetBanner() {
       <p class="mt-2 text-[11px] font-bold uppercase tracking-widest text-brand">
         <i class="bi bi-qr-code-scan mr-1"></i> Check-in
       </p>
-      <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 leading-tight">
+      <h1 class="text-xl sm:text-2xl font-bold text-stone-900 leading-tight">
         สแกนเช็คอิน
       </h1>
       <p v-if="event" class="text-sm text-stone-500 mt-1">{{ event.title }}</p>

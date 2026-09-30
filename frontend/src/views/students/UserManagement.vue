@@ -285,7 +285,7 @@ const editMeta = computed(() => {
         >
           <i class="bi bi-person-gear text-[13px]"></i> User Management
         </p>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
+        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
           จัดการสมาชิก
         </h1>
         <p class="mt-2 text-sm text-stone-500">
@@ -448,20 +448,20 @@ const editMeta = computed(() => {
           <table class="w-full text-sm">
             <thead class="bg-stone-50 text-stone-500">
               <tr>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   รหัสนักเรียน
                 </th>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   ชื่อ-นามสกุล
                 </th>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   ห้อง
                 </th>
-                <th class="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[11px]">
+                <th class="px-4 py-3 text-left font-semibold text-[11px]">
                   ตำแหน่ง / หน้าที่
                 </th>
                 <th
-                  class="px-4 py-3 text-right font-semibold uppercase tracking-wider text-[11px]"
+                  class="px-4 py-3 text-right font-semibold text-[11px]"
                 ></th>
               </tr>
             </thead>

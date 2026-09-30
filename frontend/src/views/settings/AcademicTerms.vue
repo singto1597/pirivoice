@@ -311,7 +311,7 @@ function coversToday(t: AcademicTerm): boolean {
         >
           <i class="bi bi-calendar3-range text-[13px]"></i> Academic Terms
         </p>
-        <h1 class="text-2xl font-bold leading-tight tracking-tight text-stone-900 sm:text-3xl">
+        <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">
           จัดการภาคเรียน
         </h1>
         <p class="mt-2 text-sm text-stone-500">

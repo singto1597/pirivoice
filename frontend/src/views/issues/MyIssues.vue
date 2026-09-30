@@ -62,7 +62,7 @@ function onPageChange(n: number) {
         <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
           <i class="bi bi-file-earmark-text text-[13px]"></i> My Reports
         </p>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">เรื่องของฉัน</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">เรื่องของฉัน</h1>
         <p class="mt-2 text-sm text-stone-500">ติดตามสถานะเรื่องที่คุณแจ้ง</p>
       </div>
       <RouterLink to="/app/issues/new" class="btn-gradient text-sm shrink-0">

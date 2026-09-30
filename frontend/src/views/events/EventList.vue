@@ -126,7 +126,7 @@ function seatsText(e: PublicEvent): string {
       <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
         <i class="bi bi-calendar-event mr-1"></i> Activities
       </p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">กิจกรรม</h1>
+      <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">กิจกรรม</h1>
       <p class="text-sm text-stone-500 mt-1.5">กิจกรรมที่สภานักเรียนประกาศให้ทั้งโรงเรียน</p>
     </div>
 

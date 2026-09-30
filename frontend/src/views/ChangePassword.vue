@@ -83,8 +83,8 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
           <i class="bi bi-arrow-left text-lg"></i>
         </button>
         <div>
-          <p class="text-[11px] font-bold uppercase tracking-widest text-stone-400 mb-1">การจัดการบัญชี</p>
-          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight"><i class="bi bi-shield-lock mr-1 text-brand"></i> เปลี่ยนรหัสผ่าน</h1>
+          <p class="text-[11px] font-bold text-stone-400 mb-1">การจัดการบัญชี</p>
+          <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight"><i class="bi bi-shield-lock mr-1 text-brand"></i> เปลี่ยนรหัสผ่าน</h1>
           <p class="text-sm text-stone-500 mt-1">ตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>
         </div>
       </div>

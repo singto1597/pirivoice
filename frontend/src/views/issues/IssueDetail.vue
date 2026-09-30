@@ -549,7 +549,7 @@ function countdownLabel(deadline: string): string {
               {{ DESTINATION_LABELS[issue.requested_destination] }}
             </span>
           </div>
-          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-snug break-words">
+          <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-snug break-words">
             {{ issue.title }}
           </h1>
           <p class="text-stone-500 text-sm mt-1 break-words">

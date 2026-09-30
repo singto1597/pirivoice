@@ -353,7 +353,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
         >
           <i class="bi bi-megaphone-fill text-[13px]"></i> Announcement Management
         </p>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900 leading-tight sm:text-3xl">
+        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
           จัดการประกาศ
         </h1>
         <p class="mt-2 text-sm text-stone-500">
