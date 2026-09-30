@@ -31,9 +31,19 @@ async function handleLogin() {
   try {
     await authStore.login(username.value.trim(), password.value);
 
+    // 🔗 ปลายทางที่ผู้ใช้ตั้งใจจะไป (deep link จาก push — A4 / ลิงก์ที่แชร์มา) ถ้ามีและ **ผ่านด่าน**
+    //    ⚠️ `safeRedirect()` คือด่านกัน open redirect — ห้ามเอา `route.query.redirect`
+    //       ไป `push()` ตรง ๆ (เหตุผลเต็มอยู่ใน `router/redirect.ts`)
+    //    ⚠️ คำนวณ **ก่อน** แยกเส้นทาง เพราะ **ทั้งสองเส้นทางต้องใช้ค่านี้**
+    //       (เดิมคำนวณหลัง `mustChangePassword` ⇒ เส้นนั้นทิ้งปลายทางไปเปล่า ๆ — §30 ข้อ 3)
+    const target = safeRedirect(route.query[REDIRECT_QUERY]);
+
     if (authStore.mustChangePassword) {
-      // ⚠️ เส้นนี้ **ทิ้งปลายทางที่ตั้งใจไว้** โดยเจตนา — บัญชี seed ต้องเปลี่ยนรหัสผ่าน
-      //    ก่อนใช้ระบบอะไรทั้งนั้น ⇒ พาไปหน้าที่ตั้งใจก่อนไม่ได้ (โดน guard เด้งกลับอยู่ดี)
+      // บัญชี seed ต้องเปลี่ยนรหัสผ่านก่อนใช้ระบบอะไรทั้งนั้น ⇒ พาไปหน้าที่ตั้งใจทันทีไม่ได้
+      // (โดน guard `mustChangePassword` เด้งกลับมาอยู่ดี)
+      // ⚠️ **แต่ต้องไม่ทิ้งปลายทาง** — บัญชีที่เพิ่งถูกส่งลิงก์ที่แชร์มาจะไปไม่ถึงเลย
+      //    แม้หลังเปลี่ยนรหัสแล้ว ⇒ ส่ง `redirect` ต่อไปให้ `ChangePassword.vue` กระโดดต่อเอง
+      //    (ปลายทางจะถูกใช้ **หลัง** เปลี่ยนรหัสสำเร็จเท่านั้น ⇒ ไม่ขัดเจตนาเดิมของ guard)
       Swal.fire({
         icon: 'info',
         title: 'ตั้งรหัสผ่านใหม่',
@@ -41,18 +51,17 @@ async function handleLogin() {
         timer: 2000,
         showConfirmButton: false,
       });
-      router.push({ name: 'profile-password' });
+      router.push({
+        name: 'profile-password',
+        query: target ? { [REDIRECT_QUERY]: target } : {},
+      });
       return;
     }
 
     Swal.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ!', text: 'ยินดีต้อนรับสู่ PIRIvoice', timer: 1200, showConfirmButton: false });
 
-    // 🔗 กลับไปที่ที่ผู้ใช้ตั้งใจจะไป (deep link จาก push — A4) ถ้ามีและ **ผ่านด่าน**
-    //    ⚠️ `safeRedirect()` คือด่านกัน open redirect — ห้ามเอา `route.query.redirect`
-    //       ไป `push()` ตรง ๆ (เหตุผลเต็มอยู่ใน `router/redirect.ts`)
-    //    ⚠️ ใช้ `replace` ไม่ใช่ `push` — ไม่งั้นกด "ย้อนกลับ" จะเจอหน้า login อีกครั้ง
-    //       ทั้งที่เพิ่งล็อกอินสำเร็จ (วนกลับมาที่เดิมที่ผู้ใช้เพิ่งผ่านไปแล้ว)
-    const target = safeRedirect(route.query[REDIRECT_QUERY]);
+    // ⚠️ ใช้ `replace` ไม่ใช่ `push` — ไม่งั้นกด "ย้อนกลับ" จะเจอหน้า login อีกครั้ง
+    //    ทั้งที่เพิ่งล็อกอินสำเร็จ (วนกลับมาที่เดิมที่ผู้ใช้เพิ่งผ่านไปแล้ว)
     router.replace(target ?? { name: homeRouteName() });
   } catch (e) {
     const msg =
