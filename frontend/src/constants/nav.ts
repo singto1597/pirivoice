@@ -139,8 +139,20 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: 'dashboard', label: 'แดชบอร์ด', icon: 'bi-grid-1x2', to: { name: 'dashboard' }, permission: 'VIEW_DASHBOARD' },
       { key: 'board-reports', label: 'ตรวจรายงาน', icon: 'bi-flag', to: { name: 'board-reports' }, badgeGroup: 'report', councilOnly: true },
       { key: 'event-management', label: 'จัดการกิจกรรม', icon: 'bi-calendar-plus', to: { name: 'event-management' }, permission: 'MANAGE_EVENTS' },
-      { key: 'users', label: 'สมาชิก', icon: 'bi-person-gear', to: { name: 'users' }, permission: 'MANAGE_STUDENTS' },
-      { key: 'import-students', label: 'นำเข้านักเรียน', icon: 'bi-file-earmark-arrow-up', to: { name: 'import-students' }, permission: 'MANAGE_STUDENTS' },
+      {
+        // 👥 **แถวเดียวของ "สมาชิก"** — ปลายทาง `students` ซึ่งมี `segmentGroup: 'members'`
+        //    ⇒ สลับ นักเรียน / เจ้าหน้าที่ ได้ในหน้าเดียว โดยไม่ต้องมีเมนู 2 แถว
+        //    (เดิมมี 3 แถวไปที่เดียวกัน: "จัดการสมาชิก" + "นักเรียน" + "นำเข้า Excel"
+        //     ซึ่งเป็นตัวอย่างของปัญหาที่ audit ฟ้องว่าแอป "เยอะเกินไป" ตรง ๆ)
+        key: 'members',
+        label: 'สมาชิก',
+        icon: 'bi-people',
+        to: { name: 'students' },
+        permission: 'MANAGE_STUDENTS',
+      },
+      // ซ่อนจากเมนู — เป็น *segment* ของหน้า "สมาชิก" กับ *FAB* ของหน้านั้น ไม่ใช่ทางเข้าแยก
+      { key: 'users', label: 'เจ้าหน้าที่', icon: 'bi-person-gear', to: { name: 'users' }, permission: 'MANAGE_STUDENTS', hiddenFromMenu: true },
+      { key: 'import-students', label: 'นำเข้านักเรียน', icon: 'bi-file-earmark-arrow-up', to: { name: 'import-students' }, permission: 'MANAGE_STUDENTS', hiddenFromMenu: true },
     ],
   },
   {
@@ -150,7 +162,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'announcements', label: 'จัดการประกาศ', icon: 'bi-megaphone', to: { name: 'announcements' }, permission: 'MANAGE_ANNOUNCEMENTS' },
       { key: 'academic-terms', label: 'ภาคเรียน', icon: 'bi-calendar3-range', to: { name: 'academic-terms' }, permission: 'MANAGE_SETTINGS' },
-      { key: 'students', label: 'รายชื่อนักเรียน', icon: 'bi-people', to: { name: 'students' }, permission: 'MANAGE_STUDENTS' },
+      // ⚠️ ไม่มีแถว "รายชื่อนักเรียน" ที่นี่ — ถูกรวมเข้าแถว "สมาชิก" ในกลุ่มผู้ดูแลแล้ว (R1)
       { key: 'audit-logs', label: 'บันทึกการใช้งาน', icon: 'bi-clock-history', to: { name: 'audit-logs' }, permission: 'VIEW_AUDIT_LOG' },
     ],
   },
@@ -211,7 +223,10 @@ export const routeTitles: Record<string, string> = {
   'playbook-reader': 'อ่านหนังสือ',
   notifications: 'การแจ้งเตือน',
   users: 'เจ้าหน้าที่',
-  students: 'รายชื่อนักเรียน',
+  // ⚠️ หน้าเดียวที่มี segment "นักเรียน / เจ้าหน้าที่" ⇒ ชื่อหัวแถบต้องเป็นชื่อ *หน้า*
+  //    ไม่ใช่ชื่อ segment แรก (ไม่งั้นกด "สมาชิก" แล้วหัวแถบขึ้น "รายชื่อนักเรียน"
+  //    ทั้งที่กำลังดู segment เจ้าหน้าที่อยู่)
+  students: 'สมาชิก',
   'import-students': 'นำเข้านักเรียน',
   announcements: 'จัดการประกาศ',
   'academic-terms': 'ภาคเรียน',
