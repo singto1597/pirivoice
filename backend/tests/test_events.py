@@ -28,6 +28,8 @@ import json
 import random
 from datetime import datetime, timedelta, timezone
 
+import asyncpg
+
 import pytest
 import pytest_asyncio
 
@@ -579,6 +581,92 @@ async def test_full_event_seats_first_then_waitlists(ev_world, client, db_pool):
     bob = _register(client, ev_world, event_id, "bob").json()
     assert bob["status"] == "waitlisted"
     assert bob["queue_position"] == 1
+
+
+@pytest.mark.asyncio
+async def test_waitlist_join_notifies_once_with_position(ev_world, client, db_pool):
+    """⭐ D3 — **การเข้าคิวต้องมีข้อความบอก** เพราะระบบ "ลดขั้น" ให้เงียบ ๆ
+
+    คนที่กดลงทะเบียนแล้วกิจกรรมเต็ม **ไม่ได้การ์ดที่ขอ** แต่ **ไม่เห็น error**
+    (นโยบาย auto-waitlist ของ D1) ⇒ ถ้าไม่มี notification เขาจะเข้าใจว่าสมัครติด
+    จนถึงวันงาน · และ **คนที่ได้ที่นั่งต้องไม่ได้ข้อความนี้** (เขาได้สิ่งที่ขอแล้ว)
+
+    ตรึง 4 อย่างที่พลาดได้จริง:
+      · ข้อความไปถึง **คนที่เข้าคิว** ไม่ใช่คนอื่น (และไม่ไปหาคนที่มีที่นั่ง)
+      · `queue_position` ในข้อความตรงกับที่ API คืน (2 ที่นี้เคยเถียงกันได้)
+      · **กดซ้ำไม่สร้างข้อความซ้ำ** — ขั้น 3 คืนค่าเดิมก่อนถึงจุดแจ้ง ⇒ ต้องได้ 1 ใบ
+      · `actor_id IS NULL` — ระบบเป็นคนพูด ไม่ใช่ตัวผู้ใช้ (ไม่งั้น `notify()` กรองทิ้ง
+        ด้วยกฎ "ไม่สแปมตัวเอง" แล้วข้อความจะ **หายทั้งใบโดยไม่มี error**)
+
+    mutation ที่ต้องทำให้แตก: ลบ `notification_service.notify(...)` ใน
+    `register_event()` (สาขา `new_status == "waitlisted"`)
+    """
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+
+    _register(client, ev_world, event_id, "alice")  # ได้ที่นั่ง
+    bob = _register(client, ev_world, event_id, "bob").json()
+    carol = _register(client, ev_world, event_id, "carol").json()
+    assert (bob["queue_position"], carol["queue_position"]) == (1, 2)
+
+    # เฉพาะสองคนที่เข้าคิว — alice (เจ้าของที่นั่ง) ต้องไม่อยู่ในรายชื่อ
+    assert await _notified_ids(db_pool, "event_waitlist_joined") == sorted([
+        ev_world["bob"]["user_id"], ev_world["carol"]["user_id"],
+    ])
+
+    # กดซ้ำตอนเป็นคิวอยู่แล้ว → ไม่เขียน `registered_at` ทับ (เทสต์ข้างบนคุมไว้)
+    # และ **ไม่แจ้งซ้ำ** — จำนวนต้องยังเท่าเดิม
+    _register(client, ev_world, event_id, "bob")
+    assert await _count_notifications(db_pool, "event_waitlist_joined") == 2
+
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT user_id, group_type, entity_type, entity_id, actor_id, body
+            FROM notifications WHERE type = 'event_waitlist_joined'
+            ORDER BY user_id
+            """
+        )
+    by_user = {r["user_id"]: r for r in rows}
+    first = by_user[ev_world["bob"]["user_id"]]
+    assert first["group_type"] == "event"
+    assert (first["entity_type"], first["entity_id"]) == ("event", event_id)
+    assert first["actor_id"] is None, "ระบบเป็นคนพูด — ถ้าใส่ actor_id = user_id จะถูกกรองทิ้ง"
+    # ⚠️ ตำแหน่งในข้อความต้องตรงกับที่ API คืน ไม่ใช่ค่าที่คำนวณคนละจังหวะ
+    assert "คิวที่ 1" in first["body"]
+    assert "คิวที่ 2" in by_user[ev_world["carol"]["user_id"]]["body"]
+
+
+@pytest.mark.asyncio
+async def test_no_waitlist_notification_when_promoted_person_re_joins(
+    ev_world, client, db_pool
+):
+    """คนที่ถูกเลื่อนขึ้นแล้ว "ไม่" ได้ข้อความเข้าคิว — คนละเหตุการณ์กันโดยสิ้นเชิง
+
+    ลำดับ: bob เข้าคิว (ได้ข้อความ) → alice ถอน ⇒ bob ถูกเลื่อน (ได้ `promoted`)
+    ⇒ ตอนนี้ bob มี **2 ใบ** คนละชนิด · ถ้าถอนแล้วสมัครใหม่ตอนเต็ม bob จะได้
+    `joined` ใบที่สอง (คนละรอบ) — แต่ห้ามได้ `promoted` ซ้ำโดยไม่มีใครถอน
+
+    ⚠️ เทสต์นี้กันความสับสนที่ **อ่านโค้ดไม่ออก**: สองไทป์นี้อยู่ใกล้กันใน `event_service`
+       และใช้ปลายทางเดียวกัน ⇒ การสลับ `type=` ระหว่างสองจุดจะไม่มีอะไรพังเลย
+       ถ้าไม่มีเทสต์ที่แยกสองเหตุการณ์ออกจากกัน
+    """
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+
+    _register(client, ev_world, event_id, "alice")
+    _register(client, ev_world, event_id, "bob")
+    cancelled = _cancel_reg(client, ev_world, event_id, "alice")
+    assert cancelled.status_code == 200, cancelled.text
+
+    bob_id = ev_world["bob"]["user_id"]
+    assert await _notified_ids(db_pool, "event_waitlist_joined") == [bob_id]
+    assert await _notified_ids(db_pool, "event_waitlist_promoted") == [bob_id]
+
+    # bob มีที่นั่งแล้ว ⇒ สมัครซ้ำต้องไม่เกิดข้อความใด ๆ เพิ่ม (ทั้งสองชนิด)
+    _register(client, ev_world, event_id, "bob")
+    assert await _count_notifications(db_pool, "event_waitlist_joined") == 1
+    assert await _count_notifications(db_pool, "event_waitlist_promoted") == 1
 
 
 @pytest.mark.asyncio
@@ -1930,3 +2018,317 @@ async def test_re_register_clears_checked_in_at_from_the_previous_round(ev_world
     row = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
     assert row["id"] == reg["id"], "ต้องเป็นแถวเดิม ไม่ใช่แถวใหม่"
     assert row["checked_in_at"] is None, "เวลาที่เช็คอินของรอบก่อนค้างอยู่ในแถวใหม่"
+
+
+# ============================================================
+# 11) D4 — หมวดกิจกรรม (`category`)
+# ============================================================
+#
+# ⭐ หัวใจที่ต้องพิสูจน์ (ไม่ใช่แค่ "ส่งค่าไปแล้วได้ค่าเดิม"):
+#
+#   1. **ค่าไม่ถูกทิ้งเงียบ ๆ** — แผนเตือนไว้ตรง ๆ ว่า `_EDITABLE_COLUMNS` เป็น allowlist
+#      ⇒ เพิ่มคอลัมน์แล้วไม่แตะ `_ROW_COLUMNS` **และ** schema ⇒ เขียนลง DB ได้แต่อ่านไม่ขึ้น
+#      ซึ่งเป็นความผิดที่ **เทสต์ที่ดูแค่ HTTP 200 จับไม่ได้** (200 = "สำเร็จ" ทั้งที่ค่าหาย)
+#      ⇒ ทุกเทสต์ที่นี่อ่าน **DB ตรง ๆ** ประกอบเสมอ
+#   2. **ตัวกรองหมายถึงสิ่งที่พูด** — `None` = ทุกหมวด **ไม่ใช่** หมวด `other`
+#      (เป็นบั๊กคลาสสิกของ `if category:` กับ `if category is not None:`)
+#   3. **CHECK ที่ DB ทำงานจริง** — พิสูจน์ด้วยการ INSERT ค่าที่ผิด **ตรงเข้าไปในตาราง**
+#      เพราะชั้น API กรองไว้ก่อนถึง DB ⇒ ถ้าดูแค่ HTTP จะไม่รู้เลยว่าด่าน DB มีอยู่จริง
+
+# ค่าที่ระบบรู้จัก — ต้องตรงกับ `EventCategory` (backend) และ `EVENT_CATEGORIES` (frontend)
+_KNOWN_CATEGORIES = ("academic", "sports", "arts", "service", "club", "meeting", "other")
+
+
+async def _db_category(db_pool, event_id):
+    async with db_pool.acquire() as conn:
+        return await conn.fetchval("SELECT category FROM events WHERE id = $1", event_id)
+
+
+async def _count_events(db_pool):
+    async with db_pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM events")
+
+
+@pytest.mark.asyncio
+async def test_create_without_category_defaults_to_other(ev_world, client, db_pool):
+    """ไม่ส่ง `category` มา ⇒ ได้ `other` **ใน DB จริง** (ไม่ใช่แค่ใน response)
+
+    ⭐ สัญญาที่สำคัญคือ "สร้างกิจกรรมได้เหมือนเดิม" — ฟอร์ม/สคริปต์เดิมที่ไม่มีฟิลด์นี้
+       ต้องไม่พัง (คอลัมน์เป็น `NOT NULL` ⇒ ถ้า default หลุด จะได้ 500 ไม่ใช่ 400)
+    """
+    event_id = _create(client, ev_world)["id"]
+    assert await _db_category(db_pool, event_id) == "other"
+
+
+@pytest.mark.asyncio
+async def test_create_and_patch_category_round_trip(ev_world, client, db_pool):
+    """★★ เทสต์หลักของ D4 — สร้างด้วยหมวดหนึ่ง แก้เป็นอีกหมวด แล้ว **อ่านจาก DB**
+
+    ตรึงกับดัก "ค่าถูกทิ้งเงียบ ๆ" ทั้งสองทาง:
+      · ขาเขียน — `_EDITABLE_COLUMNS` ต้องมี `category` ไม่งั้น PATCH จะไม่เขียนอะไรเลย
+      · ขาอ่าน — `_ROW_COLUMNS` + `EventOut` ต้องมี ไม่งั้น response จะคืน `other` ลอย ๆ
+        (ค่า default ของ schema) แทนค่าจริง — ซึ่ง **ดูเหมือนสำเร็จ** ทุกประการ
+    """
+    created = _create(client, ev_world, category="sports")
+    event_id = created["id"]
+    assert created["category"] == "sports"
+    assert await _db_category(db_pool, event_id) == "sports"
+
+    res = client.patch(
+        f"/api/events/{event_id}", json={"category": "arts"}, headers=_auth(ev_world)
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["category"] == "arts"
+    assert await _db_category(db_pool, event_id) == "arts"
+
+    # อ่านซ้ำผ่าน GET — พิสูจน์ว่าค่ามาจากคอลัมน์จริง ไม่ใช่ค่าที่ค้างอยู่ใน response ของ PATCH
+    fetched = client.get(f"/api/events?status=live", headers=_auth(ev_world)).json()
+    row = next(i for i in fetched["items"] if i["id"] == event_id)
+    assert row["category"] == "arts"
+
+
+@pytest.mark.asyncio
+async def test_unknown_category_is_rejected_with_422_not_500(ev_world, client, db_pool):
+    """🚨 ค่าที่ DB ไม่รู้จักต้องได้ **422 พร้อมข้อความที่อ่านออก** ไม่ใช่ 500 จาก CHECK violation
+
+    ⭐ นี่คือเหตุผลที่ต้องมี `EventCategory` (Literal) **ทั้งที่มี CHECK ที่ DB แล้ว** —
+       สองชั้นทำคนละอย่าง: DB กันข้อมูลเสียถาวร · schema แปลงเป็นคำตอบที่ผู้ใช้อ่านออก
+       ⇒ ถ้าถอด Literal ออก เทสต์นี้จะได้ 500 (asyncpg CheckViolationError หลุดเป็น
+         unexpected error ที่ router ไม่ได้ดัก) ซึ่ง **ไม่มีใครรู้ว่าต้องแก้ตรงไหน**
+
+    ⚠️ **422 ไม่ใช่ 400 โดยเจตนา** — เป็นการตรวจที่ชั้น schema (body) ซึ่งทั้งระบบใช้ 422
+       เหมือนกันหมด (`test_create_validation_422` · `test_list_events_bad_status_is_422`)
+       ⇒ ผู้ใช้เห็นข้อความไทยจาก `api.ts` ที่แปลง `detail[]` ให้อยู่แล้ว
+       · ส่วน **query param** ของตัวกรองก็ 422 เช่นกัน (มาจาก `pattern=` ที่ router
+         ไม่ใช่จาก service) — ดู `test_unknown_category_filter_is_422_on_both_lists`
+
+    ⚠️ และต้องไม่มีแถวถูกสร้างด้วย — การปฏิเสธต้องไม่ทิ้งขยะไว้
+    """
+    before = await _count_events(db_pool)
+
+    res = client.post(
+        "/api/events", json=_body(category="ท่องเที่ยว"), headers=_auth(ev_world)
+    )
+    assert res.status_code == 422, res.text
+    assert await _count_events(db_pool) == before
+
+    event_id = _create(client, ev_world)["id"]
+    patched = client.patch(
+        f"/api/events/{event_id}", json={"category": "ไม่รู้จัก"}, headers=_auth(ev_world)
+    )
+    assert patched.status_code == 422, patched.text
+    assert await _db_category(db_pool, event_id) == "other", "ค่าของเดิมต้องไม่ถูกแตะ"
+
+
+@pytest.mark.asyncio
+async def test_patch_category_null_is_422_and_leaves_value_untouched(ev_world, client, db_pool):
+    """`category: null` = คำขอที่ทำไม่ได้ ⇒ **422** ไม่ใช่ 500 (NotNullViolation)
+
+    ⚠️ คอลัมน์เป็น `NOT NULL` ⇒ ถ้าปล่อย `null` ผ่าน schema ไปถึง SQL จะได้
+       `NotNullViolationError` = 500 ซึ่งอ่านไม่ออกว่าใครผิด
+       · ต่างจาก `location`/`capacity` ที่ `null` มีความหมายว่า "ล้างค่า" จริง ๆ
+       · เทสต์นี้จึงต้องคู่กับการยืนยันว่า **ค่าเดิมยังอยู่** — ไม่ใช่แค่ "ไม่พัง"
+
+    📌 เทสต์นี้คือด่านของ `_reject_null_category` — pydantic v2 **ไม่เรียก validator
+       เมื่อฟิลด์ไม่ถูกส่งมา** ⇒ ตัวนั้นยิงเฉพาะตอนได้ `null` มาจริง ๆ ซึ่งเทสต์นี้พิสูจน์
+       · และมีเทสต์คู่กันที่พิสูจน์ว่า **"ไม่ส่ง" ยังคงทำงานถูก** (ค่าคงเดิม) —
+         `test_create_and_patch_category_round_trip` ส่ง `{"category": "arts"}` เท่านั้น
+    """
+    event_id = _create(client, ev_world, category="club")["id"]
+
+    res = client.patch(
+        f"/api/events/{event_id}", json={"category": None}, headers=_auth(ev_world)
+    )
+    assert res.status_code == 422, res.text
+    assert await _db_category(db_pool, event_id) == "club"
+
+
+@pytest.mark.asyncio
+async def test_category_filter_distinguishes_none_from_other(ev_world, client, db_pool):
+    """★ `category=None` (ไม่ส่งมา) = **ทุกหมวด** · `category=other` = **เฉพาะ other**
+
+    🚨 กับดักที่เทสต์นี้จับ: เขียน `if category:` แทน `if category is not None:`
+       ⇒ สตริงว่างจะกลายเป็น "ไม่กรอง" (ซึ่งบังเอิญถูก) แต่โค้ดที่เผลอเขียน
+         `if category != "other"` หรือใช้ `or` ในการเลือกค่า จะรวมสองความหมายเข้าด้วยกัน
+       · ที่เจ็บจริงคือผู้ใช้ที่ **อยากดูเฉพาะ "อื่น ๆ"** แล้วได้ทั้งหมดแทน — ซึ่ง
+         "ดูเหมือนทำงาน" เพราะได้รายการมาแสดงเต็มไปหมด
+    """
+    sports_id = _create(client, ev_world, category="sports", title="แข่งกีฬา")["id"]
+    other_id = _create(client, ev_world, category="other", title="อื่น ๆ")["id"]
+
+    async def ids(**params):
+        res = client.get("/api/events?status=live", params=params, headers=_auth(ev_world))
+        assert res.status_code == 200, res.text
+        return {i["id"] for i in res.json()["items"]}
+
+    every = await ids()
+    assert {sports_id, other_id} <= every, "ไม่ส่ง category ⇒ ต้องได้ทุกหมวด"
+
+    only_other = await ids(category="other")
+    assert other_id in only_other
+    assert sports_id not in only_other, (
+        "กรอง 'other' แล้วยังเห็นหมวดอื่น — นี่คืออาการของ `if category:` ที่หลุด"
+    )
+
+    only_sports = await ids(category="sports")
+    assert only_sports == {sports_id}
+
+
+@pytest.mark.asyncio
+async def test_unknown_category_filter_is_422_on_both_lists(ev_world, client, db_pool):
+    """กรองด้วยหมวดที่ไม่มีอยู่ **ไม่ใช่** "ได้ลิสต์ว่าง" — ต้องเป็น 422
+
+    ⚠️ สองอย่างนี้ผู้ใช้ตีความต่างกันมาก: ลิสต์ว่างอ่านได้ว่า "ไม่มีกิจกรรมหมวดนี้"
+       ซึ่งเป็นข้อมูลที่ผิด ⇒ ต้องบอกว่า "คำขอผิด" ไม่ใช่ "ไม่มีข้อมูล"
+       (หลักเดียวกับ `scope`/`status` ที่ปฏิเสธด้วย 422 ผ่าน `pattern=` เหมือนกัน)
+
+    ⭐ เทสต์นี้ยิง **ทั้งสอง endpoint** โดยเจตนา — pattern ถูกประกาศเป็น `_CATEGORY_PATTERN`
+       ตัวเดียวแล้วอ้างสองที่ ⇒ ถ้ามีคนเผลอเขียน regex ซ้ำเฉพาะที่ใดที่หนึ่ง
+       (ซึ่งจะเพี้ยนจาก `EventCategory` ทันทีที่มีคนเพิ่มหมวด) ที่นี่จะจับได้
+    """
+    _create(client, ev_world)
+
+    for url in ("/api/events?status=live", "/api/events/public?scope=all"):
+        res = client.get(url, params={"category": "quidditch"}, headers=_auth(ev_world))
+        assert res.status_code == 422, f"{url} → {res.status_code}: {res.text}"
+
+
+@pytest.mark.asyncio
+async def test_public_list_carries_and_filters_category(ev_world, client, db_pool):
+    """ฝั่งนักเรียนก็เห็นหมวด และกรองได้ — ใช้ตัวกรอง **คนละชุด param** กับฝั่งจัดการ
+
+    ⚠️ ฝั่ง public มี `_MY_REG_JOIN` จอง `$1` ไว้ ⇒ เลข placeholder ของ count กับ rows
+       **ไม่เท่ากัน** (ดู `_envelope`) ⇒ เทสต์นี้คือด่านที่จับ "สลับเลข placeholder"
+       ซึ่งจะพังเป็น `the server expects N arguments` — แต่ถ้าเลขบังเอิญตรงกัน
+       (เช่นตอนไม่ส่ง category) ก็จะผ่าน ⇒ ต้องยิง **ทั้งตอนกรองและตอนไม่กรอง**
+    """
+    meeting_id = _create(client, ev_world, category="meeting")["id"]
+    service_id = _create(client, ev_world, category="service")["id"]
+    for eid in (meeting_id, service_id):
+        _publish(client, ev_world, eid)
+
+    all_res = client.get("/api/events/public?scope=all", headers=_auth(ev_world, "alice"))
+    assert all_res.status_code == 200, all_res.text
+    assert {i["id"] for i in all_res.json()["items"]} >= {meeting_id, service_id}
+
+    filtered = client.get(
+        "/api/events/public?scope=all",
+        params={"category": "meeting"},
+        headers=_auth(ev_world, "alice"),
+    )
+    assert filtered.status_code == 200, filtered.text
+    body = filtered.json()
+    assert {i["id"] for i in body["items"]} == {meeting_id}
+    # ⚠️ `total` ต้องถูกกรองด้วย ไม่ใช่ยอดรวมทั้งตาราง — ตัวนับผิดจะทำให้ UI แสดง
+    #    "มี 2 รายการ" ทั้งที่โชว์ 1 แถว (และ pagination เพี้ยน)
+    assert body["total"] == 1
+    assert body["items"][0]["category"] == "meeting"
+
+
+@pytest.mark.asyncio
+async def test_db_check_constraint_rejects_unknown_category(db_pool):
+    """🔒 พิสูจน์ **CHECK ที่ฐานข้อมูล** — ยิง INSERT ตรงเข้าตาราง ข้ามชั้น API
+
+    ⭐ ทำไมต้องมีเทสต์นี้ทั้งที่ชั้น API กรองแล้ว: `EventCategory` เป็น **โค้ด Python**
+       ซึ่งกันได้เฉพาะเส้นทางที่ผ่าน Pydantic · ส่วน `CHECK` เป็น **สัญญาของข้อมูล**
+       ที่กันทุกเส้นทาง (สคริปต์, seed, psql, หรือโค้ดในอนาคตที่ลืมใช้ schema)
+       ⇒ ถ้าเทสต์นี้หายไป การเผลอลบ CHECK จะไม่มีอะไรจับได้เลย
+
+    ⚠️ เทสต์นี้จะไม่มีทางผ่านถ้า CHECK ถูกถอด — และจะไม่ผ่านถ้าใส่ค่าได้ (นั่นคือประเด็น)
+    """
+    async with db_pool.acquire() as conn:
+        uid = await conn.fetchval("SELECT id FROM users LIMIT 1")
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(
+                """
+                INSERT INTO events (title, event_date, category, created_by)
+                VALUES ('หมวดเถื่อน', NOW() + INTERVAL '1 day', 'quidditch', $1)
+                """,
+                uid,
+            )
+        # และค่า NULL ก็ต้องไม่ผ่านเช่นกัน — คอลัมน์เป็น NOT NULL
+        with pytest.raises(asyncpg.NotNullViolationError):
+            await conn.execute(
+                """
+                INSERT INTO events (title, event_date, category, created_by)
+                VALUES ('ไม่มีหมวด', NOW() + INTERVAL '1 day', NULL, $1)
+                """,
+                uid,
+            )
+
+
+@pytest.mark.asyncio
+async def test_migration_026_is_idempotent_and_backfills_by_default(ev_world, client, db_pool):
+    """★★ migration 026 รันซ้ำได้ และ **ไม่ต้องมี UPDATE backfill** เลย
+
+    ⭐ สองข้อที่พิสูจน์ที่นี่ (ที่อื่นพิสูจน์ไม่ได้):
+
+      1. **`upgrade()` รันซ้ำไม่ error** — ๓ คำสั่งของ 026 เป็น
+         `DROP CONSTRAINT IF EXISTS` → `ADD COLUMN IF NOT EXISTS` → `ADD CONSTRAINT`
+         ⚠️ `ADD CONSTRAINT` **ไม่ idempotent** (ตัวอื่นมี `IF EXISTS`/`IF NOT EXISTS` คุมไว้)
+         ⇒ ลำดับนี้เท่านั้นที่ปลอดภัย · ถ้ามีคนสลับหรือถอด `DROP` ออก
+         การรัน migration ซ้ำ (เช่นบน DB ที่สร้างจาก `init_db.py` ซึ่งมี constraint อยู่แล้ว)
+         จะพังด้วย `constraint already exists` — และพัง **ตอน deploy** ไม่ใช่ตอนเทสต์ปกติ
+
+      2. **แถวที่มีอยู่ก่อนได้ `'other'` จาก DEFAULT ไม่ใช่ NULL** — เอกสารของ 026 อ้างว่า
+         "ไม่ต้อง backfill" · คำอ้างนั้นจะกลายเป็นเท็จทันทีที่ใครเปลี่ยน `NOT NULL DEFAULT 'other'`
+         เป็นคอลัมน์ที่ nullable หรือ `ADD COLUMN category` เฉย ๆ (ซึ่งจะได้ NULL กับทุกแถว
+         แล้ว `EventOut` จะคืน `null` ไปให้นักเรียนเห็นช่องว่าง)
+
+    ⚠️ ทำใน transaction แล้ว **rollback** (แบบเดียวกับ `test_migration_025_recreates_schema_when_missing`)
+       — DDL ใน PostgreSQL เป็น transactional ⇒ ถอยกลับได้จริง ไม่ทิ้งสภาพให้เทสต์ไฟล์อื่นพัง
+    """
+    mig = importlib.import_module("migrations.026_event_category")
+
+    # สร้าง "แถวที่มีมาก่อน migration" — ต้องอยู่นอก tx ที่เราจะ rollback ไม่งั้นหายไปด้วย
+    event_id = _create(client, ev_world, category="sports")["id"]
+
+    async with db_pool.acquire() as conn:
+        tx = conn.transaction()
+        await tx.start()
+        try:
+            # ย้อนสภาพกลับเป็น "DB ก่อน 026" — ไม่มีทั้งคอลัมน์และ constraint
+            await conn.execute("ALTER TABLE events DROP CONSTRAINT IF EXISTS chk_events_category")
+            await conn.execute("ALTER TABLE events DROP COLUMN IF EXISTS category")
+            assert (
+                await conn.fetchval(
+                    """
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_name = 'events' AND column_name = 'category'
+                    """
+                )
+                == 0
+            )
+
+            await mig.upgrade(conn)
+            await mig.upgrade(conn)  # ← หัวใจ: รันซ้ำต้องไม่ error
+
+            col = await conn.fetchrow(
+                """
+                SELECT is_nullable, column_default FROM information_schema.columns
+                WHERE table_name = 'events' AND column_name = 'category'
+                """
+            )
+            assert col is not None, "026 ต้องสร้างคอลัมน์ category"
+            assert col["is_nullable"] == "NO", "คอลัมน์ต้องเป็น NOT NULL"
+            assert "other" in (col["column_default"] or ""), (
+                "ต้องมี DEFAULT 'other' — ไม่มีแล้วแถวเดิมจะได้ NULL"
+            )
+
+            constraints = {
+                r["conname"]
+                for r in await conn.fetch(
+                    "SELECT conname FROM pg_constraint WHERE conrelid = 'events'::regclass"
+                )
+            }
+            assert "chk_events_category" in constraints
+
+            # ⭐ แถวที่สร้างไว้ **ก่อน** คอลัมน์มีอยู่ ต้องได้ 'other' จาก DEFAULT เอง
+            assert (
+                await conn.fetchval("SELECT category FROM events WHERE id = $1", event_id) == "other"
+            ), "แถวเดิมต้องไม่เป็น NULL — นี่คือเหตุผลที่ 026 ไม่ต้องมี UPDATE backfill"
+        finally:
+            await tx.rollback()
+
+    # ถอยกลับจริง — ค่าที่เทสต์สร้างไว้ยังอยู่และยังเป็นค่าที่ตั้งไว้
+    assert await _db_category(db_pool, event_id) == "sports"

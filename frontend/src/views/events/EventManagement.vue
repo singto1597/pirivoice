@@ -15,12 +15,18 @@ import {
   updateEvent,
 } from '@/services/event'
 import {
+  CATEGORY_LABELS,
+  EVENT_CATEGORIES,
   EVENT_LIST_STATUSES,
   LIST_STATUS_LABELS,
   REGISTRATION_ICONS,
   REGISTRATION_LABELS,
   STATUS_ICONS,
   STATUS_LABELS,
+  categoryIcon,
+  categoryLabel,
+  categoryPayload,
+  isEventCategory,
   type Event,
   type EventCreate,
   type EventListStatus,
@@ -52,6 +58,17 @@ const items = ref<Event[]>([])
 const total = ref(0)
 const page = ref(1)
 const statusFilter = ref<EventListStatus>('live')
+/**
+ * ตัวกรองหมวด (D4) — **`''` = ทุกหมวด** (ไม่ใช่ `'other'` ซึ่งแปลว่า "เฉพาะหมวดอื่น ๆ")
+ *
+ * ⚠️ เก็บเป็น `string` เปล่าเพราะค่ามาจาก `<select>` (DOM ให้สตริงเสมอ) ⇒ ด่านแคบอยู่ที่
+ *    `load()` ด้วย `isEventCategory()` ไม่ใช่ที่ type ของ ref
+ *    · แบบเดียวกับ `subcategoryFilter` ใน `ReceivedIssues.vue` (`''` = ทุกหมวดย่อย)
+ *
+ * ⚠️ **ส่ง `''` ตรง ๆ ไม่ได้** — จะกลายเป็น `category=` ใน querystring ซึ่งไม่ตรง pattern
+ *    ฝั่ง backend ⇒ **422** (ไม่ใช่ "ไม่กรอง") · ต้องแปลงเป็น `undefined` เสมอ
+ */
+const categoryFilter = ref('')
 const isLoading = ref(true)
 const hasError = ref(false)
 
@@ -76,6 +93,13 @@ const form = ref({
   event_date: '',
   registration_deadline: '',
   capacity: '',
+  /**
+   * ⚠️ ประกาศเป็น **`string` ไม่ใช่ `EventCategory`** โดยเจตนา — ค่ามันมาจาก `<select>` ที่
+   *    เราเติมตัวเลือกแปลก ๆ เข้าไปได้ (ดู `categoryOptions`) ⇒ ถ้าประกาศแคบไว้ จะต้อง cast
+   *    ตอนอ่านค่า ซึ่งกลบความจริงว่ามันอาจไม่ใช่คีย์ที่รู้จัก
+   *    · ด่านจริงอยู่ที่ `buildCreate()` ซึ่งใช้ `isEventCategory()` แคบก่อนส่ง
+   */
+  category: 'other' as string,
 })
 
 // ── modal รายชื่อผู้สมัคร ──
@@ -103,6 +127,19 @@ const regActingId = ref<number | null>(null)
 
 const isEmpty = computed(() => !isLoading.value && !hasError.value && items.value.length === 0)
 
+/**
+ * ข้อความตอนว่าง — **ต้องแยกให้ออกว่า "ไม่มีของ" กับ "ตัวกรองซ่อนอยู่"**
+ *
+ * ⚠️ ทั้งสองกรณีแสดงผลเหมือนกันเป๊ะ (การ์ด 0 ใบ) แต่ความหมายตรงข้าม: กรณีหลังของ *มีอยู่จริง*
+ *    ⇒ ข้อความกลาง ๆ อย่าง "ยังไม่มีกิจกรรมในระบบ" จะทำให้สภาตกใจแล้วไปสร้างซ้ำ
+ */
+const emptyText = computed(() => {
+  if (categoryFilter.value) {
+    return `ไม่มีกิจกรรมในหมวด "${categoryLabel(categoryFilter.value)}" ตามตัวกรองที่เลือก`
+  }
+  return statusFilter.value === 'live' ? 'ยังไม่มีกิจกรรมในระบบ' : 'ไม่มีกิจกรรมในสถานะนี้'
+})
+
 const formError = computed(() => {
   if (!form.value.title.trim()) return 'ต้องกรอกชื่อกิจกรรม'
   if (!form.value.event_date) return 'ต้องเลือกวันและเวลาจัดกิจกรรม'
@@ -128,6 +165,7 @@ async function load() {
   try {
     const res = await listEvents({
       status: statusFilter.value,
+      category: isEventCategory(categoryFilter.value) ? categoryFilter.value : undefined,
       limit: PAGE_SIZE,
       offset: (page.value - 1) * PAGE_SIZE,
     })
@@ -156,6 +194,38 @@ function switchStatus(s: EventListStatus) {
   page.value = 1
   load()
 }
+
+/** เปลี่ยนหมวด ⇒ กลับไปหน้า 1 เสมอ (ไม่งั้นอาจค้างอยู่หน้า 3 ของผลลัพธ์ชุดใหม่ที่สั้นกว่า) */
+function onCategoryChange() {
+  page.value = 1
+  load()
+}
+
+/** ปุ่มในสถานะว่าง — ล้างตัวกรองหมวด **แล้วโหลดใหม่** (ไม่ใช่แค่เคลียร์ค่าแล้วรอ) */
+function clearCategoryFilter() {
+  categoryFilter.value = ''
+  page.value = 1
+  load()
+}
+
+/**
+ * ตัวเลือกใน `<select>` ของฟอร์ม — ปกติคือ `EVENT_CATEGORIES` ทั้งชุด
+ *
+ * ⭐ **แต่ถ้าหมวดของแถวที่กำลังแก้ไม่ใช่คีย์ที่ frontend รู้จัก** (backend ใหม่กว่า) ต้องเติม
+ *    ค่านั้นเข้าไปเป็นตัวเลือก ไม่งั้น `<select>` จะแสดง **ว่าง** แล้วถ้าผู้ใช้กดบันทึก
+ *    ค่าจะกลายเป็น `'other'` เงียบ ๆ — คือ **ลดชั้นข้อมูลโดยที่ผู้ใช้ไม่ได้สั่ง**
+ *    (และคู่กับ `buildCreate()` ที่ไม่ส่งคีย์แปลกออกไป ⇒ ค่าเดิมใน DB ไม่ถูกแตะ)
+ */
+const categoryOptions = computed<readonly { value: string; label: string }[]>(() => {
+  const known: { value: string; label: string }[] = EVENT_CATEGORIES.map((c) => ({
+    value: c,
+    label: CATEGORY_LABELS[c],
+  }))
+  const current = form.value.category
+  return isEventCategory(current)
+    ? known
+    : [{ value: current, label: `${current} (ไม่รู้จัก)` }, ...known]
+})
 
 function onPageChange(n: number) {
   page.value = n
@@ -270,6 +340,8 @@ function buildCreate(): EventCreate {
     event_date: form.value.event_date,
     registration_deadline: form.value.registration_deadline || null,
     capacity: cap === '' ? null : Number(cap),
+    // คีย์ที่ไม่รู้จัก ⇒ `undefined` = ไม่ส่ง (ดู `categoryPayload`) — ไม่เดาว่าเป็น 'other'
+    category: categoryPayload(form.value.category),
   }
 }
 
@@ -283,6 +355,9 @@ function toBaseline(e: Event): EventCreate {
     event_date: toLocalInput(e.event_date),
     registration_deadline: toLocalInput(e.registration_deadline),
     capacity: e.capacity,
+    // ⚠️ ต้องใช้ `categoryPayload()` ตัวเดียวกับ `buildCreate()` — คีย์แปลกจะได้ `undefined`
+    //    **ทั้งสองข้าง** ⇒ diff ไม่เห็นว่าต่าง ⇒ ไม่ยิง PATCH ⇒ ค่าเดิมใน DB ไม่ถูกทับ
+    category: categoryPayload(e.category),
   }
 }
 
@@ -299,6 +374,7 @@ function openAdd() {
     event_date: '',
     registration_deadline: '',
     capacity: '',
+    category: 'other',
   }
   modalOpen.value = true
 }
@@ -317,6 +393,9 @@ function openEdit(e: Event) {
     event_date: base.event_date,
     registration_deadline: base.registration_deadline ?? '',
     capacity: base.capacity === null ? '' : String(base.capacity),
+    // ⚠️ อ่านจาก **แถวจริง** (`e.category`) ไม่ใช่ `base.category` — คีย์แปลกต้องไม่ถูกแปลง
+    //    เป็น 'other' ตั้งแต่เปิดฟอร์ม (ดู `categoryOptions` ที่เติมตัวเลือกนั้นให้)
+    category: e.category,
   }
   modalOpen.value = true
 }
@@ -344,6 +423,7 @@ function buildPatch(): EventUpdate {
     patch.registration_deadline = next.registration_deadline
   }
   if (base.capacity !== next.capacity) patch.capacity = next.capacity
+  if (base.category !== next.category) patch.category = next.category
   return patch
 }
 
@@ -541,6 +621,21 @@ function capacityText(e: Event): string {
           {{ LIST_STATUS_LABELS[s] }}
         </button>
       </div>
+
+      <!-- ตัวกรองหมวด (D4) — ใช้ <select> ไม่ใช่ชิป เพราะ 7 หมวดจะไปเบียดแถวสถานะจนอ่านไม่ออก -->
+      <select
+        v-model="categoryFilter"
+        aria-label="กรองตามหมวดกิจกรรม"
+        data-testid="category-filter"
+        class="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        @change="onCategoryChange"
+      >
+        <option value="">ทุกหมวด</option>
+        <option v-for="c in EVENT_CATEGORIES" :key="c" :value="c">
+          {{ CATEGORY_LABELS[c] }}
+        </option>
+      </select>
+
       <span class="ml-auto text-sm tabular-nums text-stone-400">
         {{ total.toLocaleString('en-US') }} กิจกรรม
       </span>
@@ -578,11 +673,22 @@ function capacityText(e: Event): string {
     >
       <div class="mb-2 text-4xl"><i class="bi bi-calendar-plus"></i></div>
       <p class="text-stone-500">
-        {{ statusFilter === 'live' ? 'ยังไม่มีกิจกรรมในระบบ' : 'ไม่มีกิจกรรมในสถานะนี้' }}
+        {{ emptyText }}
       </p>
-      <p v-if="statusFilter === 'live'" class="mt-1 text-sm text-stone-400">
+      <p v-if="statusFilter === 'live' && !categoryFilter" class="mt-1 text-sm text-stone-400">
         เริ่มจากกด "สร้างกิจกรรม" แล้วเผยแพร่ให้นักเรียนเห็น
       </p>
+      <!-- ⚠️ ต้องบอกทางออกเมื่อ "ว่างเพราะตัวกรอง" — ไม่งั้นสภาจะอ่านว่า "กิจกรรมหายไปหมด"
+           แล้วไปสร้างซ้ำ ซึ่งเป็นความเสียหายจริง (ไม่ใช่แค่ข้อความไม่สวย) -->
+      <button
+        v-else-if="categoryFilter"
+        type="button"
+        data-testid="clear-category-filter"
+        class="mt-4 inline-flex items-center gap-2 rounded-lg bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-200"
+        @click="clearCategoryFilter"
+      >
+        <i class="bi bi-x-lg"></i> ล้างตัวกรองหมวด ({{ categoryLabel(categoryFilter) }})
+      </button>
     </div>
 
     <!-- รายการ -->
@@ -601,6 +707,13 @@ function capacityText(e: Event): string {
                 }"
               >
                 <i :class="`bi ${STATUS_ICONS[e.status]}`"></i> {{ STATUS_LABELS[e.status] }}
+              </span>
+              <!-- หมวด (D4) — ใช้ categoryLabel/categoryIcon ไม่ใช่ CATEGORY_LABELS[c] ตรง ๆ
+                   เพราะ e.category เป็น string หลวม (backend อาจมีหมวดที่เราไม่รู้จัก) -->
+              <span
+                class="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700"
+              >
+                <i :class="`bi ${categoryIcon(e.category)}`"></i> {{ categoryLabel(e.category) }}
               </span>
               <span
                 v-if="e.deleted_at"
@@ -838,6 +951,25 @@ function capacityText(e: Event): string {
                     class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label for="ev-category" class="mb-1 block text-xs font-semibold text-stone-500">
+                  หมวดกิจกรรม
+                </label>
+                <select
+                  id="ev-category"
+                  v-model="form.category"
+                  data-testid="form-category"
+                  class="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                >
+                  <option v-for="o in categoryOptions" :key="o.value" :value="o.value">
+                    {{ o.label }}
+                  </option>
+                </select>
+                <p class="mt-1 text-[11px] text-stone-400">
+                  ใช้กรองในรายการกิจกรรม — ไม่กระทบใครที่สมัครไว้แล้ว
+                </p>
               </div>
 
               <div>

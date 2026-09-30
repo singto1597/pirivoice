@@ -1,7 +1,7 @@
 """
 🏠 Home รวมทุกอย่าง (B1) — GET /api/home/summary
 ================================================
-ทดสอบ 5 ระดับ:
+ทดสอบ 6 ระดับ:
   1) HTTP — 401 (ไม่ล็อกอิน) · 401 (`X-API-Key` ไม่ใช่ 500) · ไม่รับ `user_id` จาก client
   2) **รอฉันตอบ** — เป้าแคบ: `current_assignee_id = ฉัน` เท่านั้น (ไม่ใช่ involved_cond ตัวกว้าง)
      · เรียง ด่วนก่อน แล้วในความด่วนเดียวกันเอาค้างนานสุดก่อน · total ไม่ถูก LIMIT ตัด
@@ -10,6 +10,8 @@
   4) ประกาศ **ไม่ถูกตัด** — เจ้าของระบบสั่ง "โชว์ทั้งหมด" และ PR #31–#33 เพิ่งทำไป
   5) ตัวเลขต้อง **ตรงกับ endpoint เดิม** — `stats` = `/api/me/stats`, `my_issues` = `/api/issues/summary`
      (ถ้าไม่ตรง = มีคนแก้ query เดียวกันแล้วลืมอีกที่ ⇒ หน้าจะโชว์เลขไม่ตรงกัน)
+  6) **กิจกรรมใกล้ปิดรับ** (4.5) — ⭐ "ปิดรับ" = `min(วันจัด, กำหนดปิดรับ)` ไม่ใช่
+     `registration_deadline` เฉย ๆ ⇒ กิจกรรมที่ **ไม่ตั้งกำหนด** ต้องเข้ามาด้วย
 
 ตาม docs/rules/testing.md: ตรวจ DB ตรง ๆ ผ่าน db_pool
 """
@@ -390,8 +392,266 @@ async def test_empty_world_returns_zero_filled_not_error(db_pool, client, home_w
     body = _get(client, home_world).json()
     assert body["pending_on_me"] == []
     assert body["unvoted_boards"] == []
+    assert body["closing_soon_events"] == []  # ไม่มีกิจกรรมเลย ⇒ บล็อกว่าง ไม่ใช่ error
+    assert body["closing_soon_events_total"] == 0
     assert body["my_issues"]["total_issues"] == 0
     assert body["stats"]["term"] is None  # ยังไม่มีภาคปัจจุบัน (สถานะตั้งต้นจริง)
     for key in ("total_reported", "resolved_count", "in_progress_count",
                 "votes_cast", "board_comments_posted", "issue_comments_posted"):
         assert body["stats"][key] == 0, key
+
+
+# ══════════════════════════════════════════════════════════
+# 6) ⏳ กิจกรรมใกล้ปิดรับ (4.5) — คิวที่ 3
+# ══════════════════════════════════════════════════════════
+#
+# ⭐ หัวใจของพาร์ทนี้คือ **"ปิดรับ" ไม่ได้แปลว่า `registration_deadline`** —
+#    กิจกรรมที่ไม่ได้ตั้งกำหนดปิดรับจะปิดที่ *วันจัด* ซึ่งเป็นกลุ่มที่นักเรียนพลาดมากที่สุด
+#    (ไม่มี deadline ให้เห็น จึงไม่มีอะไรเตือน) ⇒ เทสต์ชุดนี้ต้องมีเคส "ไม่มี deadline"
+#    อยู่เสมอ ไม่ใช่มีแต่เคสที่มี deadline ครบ
+#
+# ⚠️ วันที่ทั้งหมดคำนวณจาก `NOW()` ของ **DB** (ไม่ใช่ของ Python) เพราะกติกา
+#    "ยังเปิดรับไหม" ตัดสินที่ SQL ⇒ ใช้ `datetime.now()` ของโปรเซสมาคำนวณแล้วเทียบ
+#    จะเสี่ยง timezone/clock drift ทำให้เทสต์ล้มแบบสุ่ม
+
+
+async def _event(db_pool, world, *, title="กิจกรรมทดสอบ", days_until=3,
+                 deadline_days=None, status="published", capacity=None,
+                 category="other", actor="me", deleted=False) -> int:
+    """สร้างกิจกรรม 1 ใบ
+
+    `days_until`     = อีกกี่วันถึงวันจัด (ติดลบ = ผ่านไปแล้ว)
+    `deadline_days`  = อีกกี่วันถึงกำหนดปิดรับ · `None` = ไม่ตั้งกำหนด (ปิดเอาวันจัด)
+    """
+    async with db_pool.acquire() as conn:
+        return await conn.fetchval(
+            """
+            INSERT INTO events
+                (title, event_date, registration_deadline, capacity, category,
+                 status, published_at, created_by, deleted_at)
+            VALUES ($1,
+                    NOW() + make_interval(days => $2::int),
+                    CASE WHEN $3::int IS NULL THEN NULL
+                         ELSE NOW() + make_interval(days => $3::int) END,
+                    $4, $5, $6::text,
+                    -- ⚠️ `$6::text` **ต้อง cast ทั้งสองที่** — ถ้าปล่อยให้ตัวหนึ่งอนุมานจาก
+                    --    คอลัมน์ (varchar) และอีกตัวจาก literal (text) Postgres จะโยน
+                    --    `AmbiguousParameterError: inconsistent types deduced for parameter $6`
+                    CASE WHEN $6::text = 'published' THEN NOW() ELSE NULL END,
+                    $7,
+                    CASE WHEN $8::boolean THEN NOW() ELSE NULL END)
+            RETURNING id
+            """,
+            title, days_until, deadline_days, capacity, category, status,
+            world[actor]["user_id"], deleted,
+        )
+
+
+async def _register(db_pool, world, event_id, *, actor="me", status="registered"):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO event_registrations (event_id, user_id, status) VALUES ($1,$2,$3)",
+            event_id, world[actor]["user_id"], status,
+        )
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_without_deadline_uses_event_date(db_pool, client, home_world):
+    """★ กับดักหลัก: กิจกรรมที่ไม่ตั้งกำหนดปิดรับ ต้องถูกนับว่าปิดที่ *วันจัด*
+
+    ถ้ามีคนเปลี่ยน `_CLOSES_AT_SQL` เป็น `COALESCE` หรือเผลอกรองด้วย
+    `registration_deadline IS NOT NULL` แถวนี้จะหายจากบล็อกทั้งที่มันคือแถวที่
+    ควรเตือนมากที่สุด — เทสต์นี้คือสิ่งเดียวที่จับได้
+    """
+    ev = await _event(db_pool, home_world, title="ไม่มีกำหนดปิดรับ", days_until=3)
+
+    body = _get(client, home_world).json()
+    ids = [e["id"] for e in body["closing_soon_events"]]
+    assert ev in ids
+    row = next(e for e in body["closing_soon_events"] if e["id"] == ev)
+    # closes_at ต้องเป็นวันจัด ไม่ใช่ null และไม่ใช่ค่าอื่น
+    async with db_pool.acquire() as conn:
+        expected = await conn.fetchval("SELECT event_date FROM events WHERE id = $1", ev)
+    assert _ts(row["closes_at"]) == expected
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_uses_earlier_of_deadline_and_event_date(db_pool, client, home_world):
+    """กำหนดปิดรับอยู่ก่อนวันจัด ⇒ `closes_at` = กำหนดปิดรับ (อันที่ถึงก่อน)"""
+    ev = await _event(db_pool, home_world, days_until=10, deadline_days=2)
+
+    body = _get(client, home_world).json()
+    row = next(e for e in body["closing_soon_events"] if e["id"] == ev)
+    async with db_pool.acquire() as conn:
+        deadline = await conn.fetchval(
+            "SELECT registration_deadline FROM events WHERE id = $1", ev
+        )
+    assert _ts(row["closes_at"]) == deadline
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_deadline_after_event_does_not_extend_the_window(
+    db_pool, client, home_world
+):
+    """★★ กับดักที่ต้อง `LEAST` ไม่ใช่ `COALESCE`
+
+    แถวที่ **กำหนดปิดรับอยู่หลังวันจัด** เป็นแถวที่ "ด่านที่สอง" ของเรามีไว้เพื่อรองรับ
+    (`_assert_deadline_not_after_event` กันไว้ที่ชั้น service ⇒ สร้างผ่าน API ไม่ได้
+    แต่ seed ตรงเข้า DB ได้ และแถวก่อนมีด่านก็มีอยู่จริง)
+
+    ⭐ ถ้าใช้ `COALESCE(e.registration_deadline, e.event_date)` แถวนี้จะได้ `closes_at`
+       = อีก 30 วัน ⇒ **หลุดออกจากหน้าต่าง 7 วันทั้งที่ความจริงปิดรับอีก 3 วัน**
+       (แย่กว่านั้น: มันจะ *โผล่* ผิดที่เมื่อ deadline อยู่ใกล้ แต่ไม่ตรงกับความจริงเลย)
+    ⇒ เทสต์นี้ล้มถ้าเปลี่ยน `LEAST` เป็น `COALESCE` — เป็นเทสต์เดียวที่จับได้
+    """
+    ev = await _event(db_pool, home_world, title="deadline หลังวันจัด", days_until=3,
+                      deadline_days=30)
+
+    body = _get(client, home_world).json()
+    row = next(e for e in body["closing_soon_events"] if e["id"] == ev)
+    async with db_pool.acquire() as conn:
+        event_date = await conn.fetchval("SELECT event_date FROM events WHERE id = $1", ev)
+    # closes_at ต้องเป็น *วันจัด* (อันที่ถึงก่อน) ไม่ใช่ deadline ที่ตั้งไว้ 30 วัน
+    assert _ts(row["closes_at"]) == event_date
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_block_agrees_with_is_registration_open_endpoint(
+    db_pool, client, home_world
+):
+    """★ ความสอดคล้องข้ามคิวรี — ทุกแถวในบล็อกต้อง "ยังเปิดรับ" จริงตาม endpoint ตัวเอง
+
+    `list_closing_soon_events` กับ `get_public_event` เป็นโค้ดคนละเส้นที่ประกอบ
+    `_PUBLIC_COLUMNS` ร่วมกัน ⇒ ถ้าวันหนึ่งมีคนแก้กติกา "เปิดรับ" ที่เดียว
+    บล็อกหน้าแรกจะชี้กิจกรรมที่กดสมัครไม่ได้ ซึ่งเชื่อได้ยากว่าเกิดจากอะไร
+    (ผู้ใช้จะบอกว่า "ปุ่มสมัครหาย" ไม่ใช่ "บล็อกผิด")
+
+    เทสต์นี้ตั้งใจให้มีทั้งแถวที่เข้าและไม่เข้าเงื่อนไข ⇒ มันพิสูจน์ *ทั้งสองทิศ*
+    ไม่ใช่แค่ทิศที่สะดวก
+    """
+    inside = await _event(db_pool, home_world, title="เข้าเงื่อนไข", days_until=2)
+    await _event(db_pool, home_world, title="ปิดไปแล้ว", days_until=2, deadline_days=-1)
+    await _event(db_pool, home_world, title="ไกลเกิน", days_until=40)
+
+    ids = [e["id"] for e in _get(client, home_world).json()["closing_soon_events"]]
+    assert ids == [inside]  # มีแถวเดียวที่ควรเข้า และมันต้องเข้าให้ได้
+
+    detail = client.get(f"/api/events/public/{inside}", headers=_auth(home_world)).json()
+    assert detail["is_registration_open"] is True
+    block_row = _get(client, home_world).json()["closing_soon_events"][0]
+    assert _ts(detail["closes_at"]) == _ts(block_row["closes_at"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"days_until": 30},                       # ปิดอีก 30 วัน — ไกลเกินหน้าต่าง 7 วัน
+        {"days_until": -1},                       # วันจัดผ่านไปแล้ว
+        {"days_until": 3, "deadline_days": -1},   # กำหนดปิดรับผ่านไปแล้ว (ยังไม่ถึงวันจัด)
+        {"days_until": 3, "status": "draft"},     # ยังไม่เผยแพร่
+        {"days_until": 3, "status": "cancelled"},  # ยกเลิกแล้ว
+        {"days_until": 3, "deleted": True},       # ถูกลบ (soft)
+    ],
+    ids=["too-far", "past-event", "deadline-passed", "draft", "cancelled", "deleted"],
+)
+async def test_closing_soon_excludes_out_of_window(db_pool, client, home_world, kwargs):
+    """ทุกกรณีที่ **ไม่ควร** เข้าบล็อก — และต้องไม่ทำให้ total เพี้ยน"""
+    await _event(db_pool, home_world, **kwargs)
+    body = _get(client, home_world).json()
+    assert body["closing_soon_events"] == []
+    assert body["closing_soon_events_total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_ordering_soonest_first(db_pool, client, home_world):
+    """เรียงจากที่จะปิดเร็วสุดขึ้นก่อน — บล็อกนี้มีค่าเพราะ "อันที่ใกล้ที่สุด" อยู่บนสุด"""
+    far = await _event(db_pool, home_world, title="ไกล", days_until=6)
+    near = await _event(db_pool, home_world, title="ใกล้", days_until=1)
+    mid = await _event(db_pool, home_world, title="กลาง", days_until=4)
+
+    body = _get(client, home_world).json()
+    assert [e["id"] for e in body["closing_soon_events"]] == [near, mid, far]
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_limit_but_total_is_real_count(db_pool, client, home_world):
+    """`items` ถูกตัดที่ QUEUE_LIMIT แต่ `total` ต้องเป็นยอดจริง (ไว้ขึ้น "ดูทั้งหมด N")"""
+    for i in range(QUEUE_LIMIT + 2):
+        await _event(db_pool, home_world, title=f"กิจกรรม {i}", days_until=1)
+
+    body = _get(client, home_world).json()
+    assert len(body["closing_soon_events"]) == QUEUE_LIMIT
+    assert body["closing_soon_events_total"] == QUEUE_LIMIT + 2
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_includes_events_i_already_registered_for(db_pool, client, home_world):
+    """★ **ต้องไม่กรองตามการสมัครของฉัน** — "สมัครแล้ว" ≠ "เรียบร้อย"
+
+    บล็อกนี้มีค่าที่สุดตอนที่ฉันสมัครไปแล้วแต่ยังไม่ได้ไป ("อย่าลืมไป") ⇒ ถ้ามีคน
+    "ปรับ" ให้กรอง `my_registration_status IS NULL` (ดูเหมือนสมเหตุสมผล) เทสต์นี้จะจับได้
+    และสิ่งที่ต้องต่างกันคือ *ปุ่ม* ไม่ใช่ *การมีอยู่ของแถว*
+    """
+    mine = await _event(db_pool, home_world, title="ฉันสมัครแล้ว", days_until=2)
+    others = await _event(db_pool, home_world, title="ฉันยังไม่สมัคร", days_until=3)
+    await _register(db_pool, home_world, mine)
+
+    body = _get(client, home_world).json()
+    ids = [e["id"] for e in body["closing_soon_events"]]
+    assert mine in ids and others in ids
+
+    row = next(e for e in body["closing_soon_events"] if e["id"] == mine)
+    assert row["my_registration_status"] == "registered"
+    row2 = next(e for e in body["closing_soon_events"] if e["id"] == others)
+    assert row2["my_registration_status"] is None
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_my_registration_is_mine_not_others(db_pool, client, home_world):
+    """`my_registration_status` ต้องเป็นของ *ฉัน* — `other` สมัครไว้ต้องไม่ทำให้ฉันขึ้นว่าสมัครแล้ว
+
+    ⚠️ `_MY_REG_JOIN` ผูกด้วย `$1` = user_id ของฉัน ⇒ เทสต์นี้กันการเผลอส่ง user_id ผิดตัว
+    (ซึ่งจะทำให้ปุ่มในหน้าแรกขึ้น "สมัครแล้ว" ทั้งที่ยังไม่ได้สมัคร = กดสมัครไม่ได้)
+    """
+    ev = await _event(db_pool, home_world, days_until=2)
+    await _register(db_pool, home_world, ev, actor="other")
+
+    row = next(e for e in _get(client, home_world).json()["closing_soon_events"] if e["id"] == ev)
+    assert row["my_registration_status"] is None
+    # ฝั่ง other เห็นของตัวเอง
+    row_other = next(
+        e for e in _get(client, home_world, actor="other").json()["closing_soon_events"]
+        if e["id"] == ev
+    )
+    assert row_other["my_registration_status"] == "registered"
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_seats_remaining_none_when_unlimited(db_pool, client, home_world):
+    """`capacity IS NULL` = ไม่จำกัด ⇒ `seats_remaining` ต้องเป็น **None ไม่ใช่ 0**
+
+    ⚠️ 0 แปลว่า "เต็ม" ⇒ ถ้าคืน 0 ฝั่งจอจะขึ้น "เต็ม" ทั้งที่ไม่จำกัดจำนวน
+    """
+    unlimited = await _event(db_pool, home_world, title="ไม่จำกัด", days_until=2)
+    limited = await _event(db_pool, home_world, title="จำกัด 2", days_until=2, capacity=2)
+    await _register(db_pool, home_world, limited)
+
+    rows = {e["id"]: e for e in _get(client, home_world).json()["closing_soon_events"]}
+    assert rows[unlimited]["seats_remaining"] is None
+    assert rows[limited]["seats_remaining"] == 1
+
+
+@pytest.mark.asyncio
+async def test_closing_soon_does_not_leak_admin_fields(db_pool, client, home_world):
+    """แถวในบล็อกหน้าแรกต้องไม่มีข้อมูลผู้ดูแลหลุด — ด่านอยู่ที่ schema
+
+    `_PUBLIC_COLUMNS` SELECT `created_by` / `deleted_at` มาตรง ๆ (ใช้ร่วมกับฝั่งจัดการ)
+    ⇒ ที่กันคือ `ClosingSoonEventItem` ที่ไม่ประกาศฟิลด์เหล่านั้น — เทสต์นี้ยืนยันว่า
+    ยังไม่มีใครเผลอเพิ่มเข้าไป (ซึ่งจะทำให้หน้าแรกของนักเรียนทุกคนเห็นว่าใครสร้าง)
+    """
+    await _event(db_pool, home_world, days_until=2)
+    row = _get(client, home_world).json()["closing_soon_events"][0]
+    for leaked in ("created_by", "updated_by", "created_by_name", "updated_by_name",
+                   "deleted_at", "description", "cover_image_url"):
+        assert leaked not in row, leaked

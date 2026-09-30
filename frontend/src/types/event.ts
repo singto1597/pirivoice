@@ -15,6 +15,18 @@ export type EventListStatus = 'live' | 'draft' | 'published' | 'cancelled' | 'de
 /** ช่วงเวลาของหน้ารายการฝั่งนักเรียน (ตรงกับ `_PUBLIC_SCOPES` ฝั่ง backend) */
 export type EventScope = 'upcoming' | 'past' | 'all'
 
+/**
+ * หมวดกิจกรรม (D4) — ค่าตายตัวชุดเดียวกับ `chk_events_category` (migration 026)
+ *
+ * ⚠️ **คีย์เป็นอังกฤษ แต่ป้ายที่ผู้เห็นเป็นไทย** — เก็บคำไทยลง DB แล้ววันหนึ่งจะมีคนพิมพ์
+ *    "วิชาการ"/"วิชาการ " (มีเคาะท้าย) /"งานวิชาการ" ปนกัน แล้วการกรองจะพังเงียบ ๆ
+ *    (บทเรียนเดียวกับ `board_type` — ดู migration 022)
+ *
+ * ⚠️ เพิ่มหมวดใหม่ = **ต้องออก migration** ไม่ใช่แก้ `init_db.py` (ซึ่งเป็น mirror)
+ *    และต้องแก้ที่นี่ + `CATEGORY_LABELS`/`CATEGORY_ICONS` ให้ครบ
+ */
+export type EventCategory = 'academic' | 'sports' | 'arts' | 'service' | 'club' | 'meeting' | 'other'
+
 /** สถานะการลงทะเบียนของคนหนึ่งในกิจกรรมหนึ่ง */
 export type RegistrationStatus = 'registered' | 'waitlisted' | 'cancelled' | 'checked_in'
 
@@ -34,6 +46,88 @@ export const EVENT_LIST_STATUSES = [
 ] as const satisfies readonly EventListStatus[]
 
 export const EVENT_SCOPES = ['upcoming', 'past', 'all'] as const satisfies readonly EventScope[]
+
+/**
+ * ลิสต์หมวดสำหรับ `v-for` ของปุ่มกรอง — **เรียงตามที่ผู้ใช้เห็น** ไม่ใช่ตามตัวอักษร
+ * (`other` ต้องอยู่ท้ายสุดเสมอ ไม่งั้นมันจะไปแทรกกลางระหว่างหมวดจริง)
+ */
+export const EVENT_CATEGORIES = [
+  'academic',
+  'sports',
+  'arts',
+  'service',
+  'club',
+  'meeting',
+  'other',
+] as const satisfies readonly EventCategory[]
+
+export const CATEGORY_LABELS: Record<EventCategory, string> = {
+  academic: 'วิชาการ',
+  sports: 'กีฬา/นันทนาการ',
+  arts: 'ศิลปะ/ดนตรี',
+  service: 'จิตอาสา',
+  club: 'ชมรม',
+  meeting: 'ประชุม/อบรม',
+  other: 'อื่น ๆ',
+}
+
+export const CATEGORY_ICONS: Record<EventCategory, string> = {
+  academic: 'bi-mortarboard',
+  sports: 'bi-trophy',
+  arts: 'bi-palette',
+  service: 'bi-heart',
+  club: 'bi-people',
+  meeting: 'bi-easel',
+  other: 'bi-tag',
+}
+
+/**
+ * มุมมอง "เปิด" ของตารางป้าย — จำเป็นเพราะ **`category` ที่อ่านจาก API เป็น `string` เปล่า
+ * ไม่ใช่ `EventCategory`** (output หลวมโดยเจตนา แบบเดียวกับ `status` — backend อาจมีหมวด
+ * ใหม่กว่าที่ frontend รู้จัก)
+ *
+ * ⚠️ ห้ามใช้ `CATEGORY_LABELS[unknownKey]` ตรง ๆ — จะได้ `undefined` แล้วหน้าจอขึ้นช่องว่าง
+ *    ซึ่งอ่านไม่ออกว่า "ไม่มีหมวด" หรือ "พัง"
+ */
+const CATEGORY_LABELS_BY_KEY: Record<string, string | undefined> = CATEGORY_LABELS
+
+/** ป้ายภาษาไทยของหมวด — **คีย์ที่ไม่รู้จักคืนคีย์ดิบ** ดีกว่าเงียบ/ว่าง */
+export function categoryLabel(key: string): string {
+  return CATEGORY_LABELS_BY_KEY[key] ?? key
+}
+
+const CATEGORY_ICONS_BY_KEY: Record<string, string | undefined> = CATEGORY_ICONS
+
+/** ไอคอนของหมวด — คีย์ที่ไม่รู้จักได้ไอคอนกลาง ๆ (ไม่ใช่ค่าว่างที่ทำให้ป้ายยุบหาย) */
+export function categoryIcon(key: string): string {
+  return CATEGORY_ICONS_BY_KEY[key] ?? 'bi-tag'
+}
+
+/**
+ * แคบ `string` → `EventCategory` (type guard ของจริง ไม่ใช่ cast)
+ *
+ * ⚠️ **ห้ามแทนด้วย `as EventCategory`** — ค่าที่ไม่รู้จักจะผ่านด่านไปถึง payload แล้ว backend
+ *    ตอบ 422 ซึ่งผู้ใช้เห็นเป็น "บันทึกไม่สำเร็จ" โดยไม่รู้ว่าอะไรผิด · ที่นี่เรา *ตัดสินใจ*
+ *    กับค่าที่ไม่รู้จักได้ (ไม่ส่งไปเลย) ซึ่ง cast เปิดทางให้ทำไม่ได้
+ */
+export function isEventCategory(key: string): key is EventCategory {
+  return CATEGORY_LABELS_BY_KEY[key] !== undefined
+}
+
+/**
+ * ค่าหมวด → ค่าที่ **ส่งไป backend ได้** — คีย์ที่ไม่รู้จัก ⇒ `undefined` (**= ไม่ส่ง**)
+ *
+ * ⭐ ทำไมต้องเป็นชื่อฟังก์ชัน ไม่ใช่ inline ternary ในสองที่: ค่านี้ถูกใช้ **ทั้งสองข้าง**
+ *    ของการเทียบ diff (`buildCreate` กับ `toBaseline`) ⇒ ถ้าข้างหนึ่งแปลงคีย์แปลกเป็นอย่างอื่น
+ *    อีกข้างไม่แปลง diff จะ "เห็นว่าต่าง" แล้ว **ยิง PATCH ทับค่าที่ผู้ใช้ไม่ได้แตะ**
+ *
+ * 🚨 **ห้ามคืน `'other'` แทนคีย์ที่ไม่รู้จัก** — `'other'` เป็นค่าจริงที่มีความหมาย
+ *    ("หมวดอื่น ๆ") ไม่ใช่ถังพักของ "ไม่รู้จัก" ⇒ คืนไปเมื่อไรคือ **ลดชั้นข้อมูลโดยผู้ใช้ไม่ได้สั่ง**
+ *    และอ่านไม่ออกด้วยว่าถูกเขียนทับ · ฝั่งสร้างกิจกรรมไม่มีปัญหาเพราะ backend ใส่ DEFAULT ให้เอง
+ */
+export function categoryPayload(value: string): EventCategory | undefined {
+  return isEventCategory(value) ? value : undefined
+}
 
 export const STATUS_LABELS: Record<EventStatus, string> = {
   draft: 'ฉบับร่าง',
@@ -95,6 +189,15 @@ export interface Event {
   registration_deadline: string | null
   /** `null` = ไม่จำกัดจำนวน (ไม่ใช่ 0 — `capacity` ต้อง > 0 ถ้ามีค่า) */
   capacity: number | null
+  /**
+   * หมวดกิจกรรม — **ประกาศเป็น `string` ไม่ใช่ `EventCategory` โดยเจตนา**
+   *
+   * ⚠️ เหตุผลเดียวกับ `status`: ฝั่ง backend ประกาศ `EventOut.category` เป็น `str` (input เข้ม ·
+   *    output หลวม) ⇒ ถ้าที่นี่ประกาศเป็น union แคบ TypeScript จะ **โกหก** ว่าไม่มีทางได้ค่าอื่น
+   *    แล้ววันที่ backend เพิ่มหมวดใหม่ หน้าจอจะพังตอน runtime ทั้งที่ type-check ผ่าน
+   *    ⇒ ใช้ `categoryLabel()`/`categoryIcon()` ซึ่งมีทางถอยให้คีย์แปลกเสมอ
+   */
+  category: string
   status: EventStatus
   published_at: string | null
   cancelled_at: string | null
@@ -128,6 +231,8 @@ export interface PublicEvent {
   event_date: string
   registration_deadline: string | null
   capacity: number | null
+  /** ดูคำอธิบายที่ `Event.category` — หลวมโดยเจตนา ใช้ `categoryLabel()` อ่าน */
+  category: string
   status: EventStatus
   published_at: string | null
   cancelled_at: string | null
@@ -135,6 +240,17 @@ export interface PublicEvent {
   waitlisted_count: number
   seats_remaining: number | null
   is_registration_open: boolean
+  /**
+   * ⏳ เวลาที่ "ปิดรับ" จริง (4.5) = `min(วันจัด, กำหนดปิดรับ)` — คำนวณที่ SQL
+   *
+   * ⭐ **ต้องอ่านค่านี้ ไม่ใช่ `registration_deadline`** — กิจกรรมที่ไม่ได้ตั้งกำหนด
+   *    ปิดรับจะปิดที่ *วันจัด* ⇒ `registration_deadline` เป็น `null` และฝั่งจอที่อ่าน
+   *    แต่คอลัมน์นั้นจะสรุปว่า "ไม่มีการปิดรับ" แล้วไม่เตือนทั้งที่เป็นกลุ่มที่พลาดมากที่สุด
+   *
+   * ℹ️ ไม่เป็น `| null` — `LEAST(event_date, …)` โดยที่ `event_date` เป็น NOT NULL
+   *    ⇒ ค่านี้เป็น NULL ไม่ได้ (ดูเหตุผลเต็มใน `EventPublicOut` ฝั่ง backend)
+   */
+  closes_at: string
   my_registration_status: RegistrationStatus | null
 }
 
@@ -218,6 +334,15 @@ export interface EventCreate {
   event_date: string
   registration_deadline?: string | null
   capacity?: number | null
+  /**
+   * หมวด (D4) — ไม่ส่ง = backend ใช้ `'other'` ให้ (คอลัมน์ `NOT NULL DEFAULT 'other'`)
+   *
+   * ⚠️ เป็น **`EventCategory` แคบ** ต่างจากตอนอ่าน (`Event.category` เป็น `string` หลวม)
+   *    ⇒ ตอน PATCH ต้องแคบด้วย `isEventCategory()` ก่อนส่ง — ถ้าค่าปัจจุบันใน DB ไม่ใช่คีย์
+   *    ที่เรารู้จัก (backend ใหม่กว่า) มันจะกลายเป็น `undefined` ⇒ **ไม่ถูกส่งไป ⇒ ค่าเดิม
+   *    ไม่ถูกเขียนทับ** ซึ่งเป็นพฤติกรรมที่ต้องการ (ห้ามลดชั้นข้อมูลเพราะผู้ใช้แก้ช่องอื่น)
+   */
+  category?: EventCategory
 }
 
 /**
@@ -264,9 +389,127 @@ export function seatsLabel(seatsRemaining: number | null): string | null {
   return `ว่างอีก ${seatsRemaining} ที่`
 }
 
+/**
+ * ⚠️ **คำเตือนเรื่องที่นั่งสำหรับ *การ์ดที่ต้องเตือนเท่านั้น*** — คืน `null` เมื่อไม่ใช่เรื่องด่วน
+ *
+ * 🚨 **ห้ามใช้ `seatsLabel()` แทนกัน** — สองตัวนี้ตอบคำถามคนละข้อ:
+ *
+ *    | ฟังก์ชัน | คำถาม | `remaining = 12` |
+ *    |---|---|---|
+ *    | `seatsLabel` | "เหลือกี่ที่?" | `'ว่างอีก 12 ที่'` |
+ *    | `seatsWarning` | "ต้องรีบไหม?" | `null` (ไม่ต้องเตือน) |
+ *
+ *    ⇒ สลับกันเมื่อไหร่ บล็อก "ใกล้ปิดรับ" จะเต็มไปด้วยป้าย "ว่างอีก 40 ที่" ที่ไม่ได้บอกอะไร
+ *      และเมื่อทุกแถวมีป้าย ป้ายก็ไม่มีความหมายอีกต่อไป (ปัญหาคลาสสิกของสัญญาณเตือน)
+ *
+ * ⚠️ `null` (ไม่จำกัดจำนวน) กับ `0` (เต็ม) คนละเรื่อง — `null` ต้องไม่มีป้าย ส่วน `0`
+ *    ต้องขึ้น "เต็มแล้ว" **ไม่ใช่ซ่อน** เพราะกิจกรรมที่เต็มแล้วยัง "ไม่ปิดรับ" (สมัครได้
+ *    แต่จะได้คิวสำรอง) ซึ่งเป็นข้อมูลที่คนอ่านต้องรู้ก่อนกด
+ */
+export function seatsWarning(seatsRemaining: number | null): string | null {
+  if (seatsRemaining === null) return null
+  if (seatsRemaining <= 0) return 'เต็มแล้ว — สมัครได้แต่จะได้คิวสำรอง'
+  if (seatsRemaining <= 3) return `เหลืออีก ${seatsRemaining} ที่`
+  return null
+}
+
+/**
+ * จำนวนมิลลิวินาทีของเขตเวลาไทย — ใช้แปลง instant เป็น "วันตามปฏิทินไทย" (4.5)
+ *
+ * ⚠️ ต้องเป็นค่าคงที่บวก ไม่ใช่ `toLocaleString` — เพราะเราต้องการ *ดัชนีวัน* มาลบกัน
+ *    ไม่ใช่ข้อความ ⇒ วิธีนี้ไม่ขึ้นกับ locale ของเบราว์เซอร์ (นักเรียนบางคนตั้งเครื่องเป็น
+ *    EN/US ซึ่ง `th-TH` จะถูกเมิน) และ**ไม่ขึ้นกับ timezone เครื่อง** เพราะบวก offset เอง
+ */
+const BKK_OFFSET_MS = 7 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** ดัชนีวันตามปฏิทินไทย (จำนวนวันนับจาก epoch) — ใช้ลบกันเพื่อหาผลต่าง "วัน" */
+function bangkokDayIndex(d: Date): number {
+  return Math.floor((d.getTime() + BKK_OFFSET_MS) / DAY_MS)
+}
+
+/**
+ * ป้ายบอกว่าอีกนานแค่ไหนจะปิดรับ (4.5)
+ * — "ปิดรับวันนี้ · เหลืออีก 3 ชม." / "ปิดรับพรุ่งนี้" / "ปิดรับในอีก 5 วัน"
+ *
+ * ⭐ **นับเป็น "วันตามปฏิทินไทย" ไม่ใช่ `diff / 24 ชม."** — ต่างกันจริง: กิจกรรมที่ปิด
+ *    วันพรุ่งนี้ 01:00 น. กับตอนนี้ 23:00 น. ห่างกันแค่ 2 ชั่วโมง แต่นักเรียนอ่านว่า
+ *    "พรุ่งนี้" ทันทีที่เที่ยงคืนผ่านไป ⇒ ถ้าใช้ 24-ชม. จะขึ้น "ปิดรับวันนี้" ทั้งคืน
+ *    ซึ่งทำให้คนที่เปิดอ่านตอนดึกเข้าใจผิดว่าหมดเขตไปแล้ว
+ *
+ * ⚠️ รับ `closes_at` จาก backend (= `min(วันจัด, กำหนดปิดรับ)`) **ห้ามคำนวณเองที่นี่** —
+ *    กิจกรรมที่ไม่ได้ตั้งกำหนดปิดรับจะปิดที่ *วันจัด* ซึ่งเป็นกลุ่มที่พลาดมากที่สุด
+ *    เพราะไม่มี deadline ให้เห็น (ดูคอมเมนต์ใน `EventPublicOut.closes_at` ฝั่ง backend)
+ *
+ * ⚠️ `now` รับเข้ามาได้เพื่อให้เทสต์กำหนดเวลาเองได้ (ค่าเริ่มต้น = เวลาจริง)
+ *    **ห้ามเรียก `new Date()` ข้างใน** ไม่งั้นเทสต์จะผูกกับเวลาที่รันและล้มแบบสุ่ม
+ */
+export function closingLabel(closesAt: string, now: Date = new Date()): string {
+  const closes = new Date(closesAt)
+  // วันที่เพี้ยน (ค่าที่ backend ส่งมาอ่านไม่ได้) → ไม่โยน — ป้ายที่ว่างเปล่าดีกว่าจอขาว
+  if (Number.isNaN(closes.getTime())) return ''
+
+  const diffMs = closes.getTime() - now.getTime()
+  if (diffMs <= 0) return 'ปิดรับแล้ว'
+
+  const dayDiff = bangkokDayIndex(closes) - bangkokDayIndex(now)
+  if (dayDiff <= 0) {
+    // ยังไม่ข้ามวันตามปฏิทิน ⇒ ปัดลง (บอก "4 ชม." ตอนเหลือ 3.5 จะทำให้คนเลื่อนไปทำอย่างอื่น)
+    // แต่ไม่ต่ำกว่า 1 — "เหลืออีก 0 ชม." อ่านแล้วเหมือนหมดเขตแล้วทั้งที่ยังสมัครได้
+    const hours = Math.max(1, Math.floor(diffMs / (60 * 60 * 1000)))
+    return `ปิดรับวันนี้ · เหลืออีก ${hours} ชม.`
+  }
+  if (dayDiff === 1) return 'ปิดรับพรุ่งนี้'
+  return `ปิดรับในอีก ${dayDiff} วัน`
+}
+
+/**
+ * ป้าย "ฉันเกี่ยวข้องกับกิจกรรมนี้แล้วหรือยัง" (4.5) — คืน `null` = ยังไม่สมัคร
+ *
+ * ⭐ **คืน `null` ไม่ใช่ `''`** โดยเจตนา — `null` มีความหมายว่า "ยังไม่สมัคร ⇒ จอต้อง
+ *    แสดง *ปุ่มสมัคร*" ส่วน `''` จะทำให้เทมเพลตต้องเขียน `v-if="x !== ''"` ซึ่งเป็น
+ *    กติกาที่ซ่อนอยู่ในเทมเพลต (ย้ายออกมาเทสต์ไม่ได้ ตาม docs/rules/frontend.md)
+ *
+ * ⚠️ `'cancelled'` **ไม่ต้องมีเคส** — backend แปลงเป็น `null` ให้แล้วใน `_public_row()`
+ *    เพราะ "ยกเลิกแล้ว" กับ "ยังไม่เคยสมัคร" ต้องเห็นเหมือนกัน (ทั้งคู่ = สมัครใหม่ได้)
+ *    ⇒ ถ้าเผลอเพิ่มเคส 'cancelled' ที่นี่ จะไม่มีวันทำงาน และทำให้คนอ่านเข้าใจผิด
+ *      ว่ามีทางที่ค่านั้นหลุดมาถึง
+ *
+ * ⚠️ `'waitlisted'` **ต้องมีป้าย ≠ "สมัครแล้ว"** — คนที่อยู่ในคิวสำรองยังไม่มีที่นั่ง
+ *    ⇒ การขึ้น "สมัครแล้ว" จะทำให้เขาไม่ไปดูว่าตัวเองได้ที่นั่งหรือยัง
+ */
+export function registrationChip(status: string | null): string | null {
+  if (status === 'checked_in') return 'เช็คอินแล้ว'
+  if (status === 'registered') return 'สมัครแล้ว'
+  if (status === 'waitlisted') return 'อยู่ในคิวสำรอง'
+  return null
+}
+
 /** ลิงก์ไปหน้ารายละเอียด — ที่เดียวที่รู้ว่า path คืออะไร (ใช้ทั้งการ์ดและหลังกดลงทะเบียน) */
 export function eventPath(eventId: number): string {
   return `/app/events/${eventId}`
+}
+
+/**
+ * URL **เต็ม** ของกิจกรรม สำหรับเอาออกนอกแอพ (QR บนโปสเตอร์ · ลิงก์ใน LINE) — 4.4
+ *
+ * 🚨 **ต้องเป็น URL เต็มที่มี origin เสมอ ห้ามเอา `eventPath()` ไปฝัง QR ตรง ๆ** —
+ *    QR ที่เก็บแค่ `/app/events/7` นั้น **มือถือสแกนแล้วเปิดไม่ได้เลย** เพราะไม่มีโดเมน
+ *    ⇒ กล้องจะขึ้นว่า "ไม่พบข้อมูล" หรือค้นหา `app/events/7` บน Google
+ *    · อาการจะดูเหมือน "QR พัง" ทั้งที่โค้ด QR ถูกทุกบรรทัด และหาสาเหตุยากมาก
+ *
+ * ⚠️ **รับ `origin` เข้ามา ไม่เรียก `window.location` เอง** — เพื่อให้เป็นฟังก์ชันบริสุทธิ์ที่
+ *    เทสต์ได้ (โปรเจกต์นี้ไม่ mount component) และเผื่อวันที่ต้องสร้างลิงก์ให้โดเมนอื่น
+ *
+ * ⚠️ เดิมใช้ `new URL(path, origin)` แล้ว แต่เปลี่ยนเป็นต่อสตริงเพราะ:
+ *    `new URL` **โยน** เมื่อ origin ไม่ใช่ URL ที่ถูกต้อง ⇒ ต้องมี try/catch ในเทมเพลต
+ *    ทั้งที่ทางเดียวที่จะได้ origin แปลกคือ deployed ผิดที่ ซึ่งการต่อสตริงให้ผลที่อ่านออกกว่า
+ *    (`"".concat('/app/events/7')` = `/app/events/7` ที่ยัง *เห็น* ว่าผิด) ไม่ใช่หน้าจอพัง
+ *
+ * @param origin `window.location.origin` ของผู้ใช้ปัจจุบัน — ตัด `/` ท้ายทิ้งก่อนต่อ
+ */
+export function eventShareUrl(eventId: number, origin: string): string {
+  return `${origin.replace(/\/+$/, '')}${eventPath(eventId)}`
 }
 
 /**

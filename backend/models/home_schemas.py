@@ -38,6 +38,31 @@ class UnvotedBoardItem(BaseModel):
     vote_count: int  # จำนวนโหวตของทั้งบอร์ด (ไม่ใช่ของฉัน) — ให้เห็นว่าคนอื่นสนใจแค่ไหน
 
 
+class ClosingSoonEventItem(BaseModel):
+    """กิจกรรมที่ยังเปิดรับและกำลังจะปิดรับ — "กิจกรรมใกล้ปิดรับ" (4.5)
+
+    ⭐ **ไม่ใช่ `EventPublicOut` โดยเจตนา** — บล็อกในหน้าแรกเป็น *สรุป* ไม่ใช่หน้ารายการ
+       ⇒ `EventPublicOut` ลาก `description` / `cover_image_url` / ตัวนับอีก 4 ตัว
+       ที่การ์ดนี้ไม่ได้ใช้เข้ามาด้วย · ประกาศเป็น schema ของตัวเองทำให้การเพิ่มฟิลด์
+       ฝั่ง detail ไม่ทำให้หน้าแรกหนักขึ้นโดยไม่มีใครตั้งใจ
+
+    ⚠️ **ไม่มี `is_registration_open`** — คิวรีที่ดึงมาเข้าเงื่อนไข "ยังเปิดรับ" อยู่แล้ว
+       ⇒ ค่าจะเป็น `true` ทุกแถวเสมอ ⇒ ฟิลด์ที่ไม่เคยเป็นเท็จคือฟิลด์ที่คนอ่านโค้ด
+       จะเข้าใจผิดว่ามีกรณีเท็จ (และมีคนเขียน `if` กันไว้ ซึ่งไม่มีวันทำงาน)
+    """
+
+    id: int
+    title: str
+    location: Optional[str] = None
+    event_date: datetime
+    closes_at: datetime  # min(วันจัด, กำหนดปิดรับ) — คำนวณที่ SQL · NULL ไม่ได้ (ดูเหตุผลใน EventPublicOut)
+    # `None` = ไม่จำกัดจำนวน (ไม่ใช่ 0) — 0 แปลว่าเต็ม ⇒ ฝั่งจอต้องเช็ค `=== null` ก่อนเทียบ
+    seats_remaining: Optional[int] = None
+    # "registered" / "checked_in" / None — คนละความหมายกับ `seats_remaining`
+    # ⇒ จอใช้ตัดสินว่าแถวนี้ควรมี *ปุ่มสมัคร* หรือ *ป้าย "สมัครแล้ว"*
+    my_registration_status: Optional[str] = None
+
+
 class HomeSummaryOut(BaseModel):
     """ก้อนเดียวจบของหน้าแรก
 
@@ -54,4 +79,9 @@ class HomeSummaryOut(BaseModel):
     pending_on_me_total: int  # ยอดจริง (ไม่จำกัด QUEUE_LIMIT) — ใช้ขึ้น "และอีก N เรื่อง"
     unvoted_boards: List[UnvotedBoardItem]
     unvoted_boards_total: int
+    # กิจกรรมใกล้ปิดรับ (4.5) — คิวที่ 3 ต่อจากสองคิวก่อน
+    # ⚠️ **ไม่กรองตามการสมัครของฉัน** (ดูเหตุผลใน `list_closing_soon_events`) ⇒ บล็อกนี้
+    #    มีของให้เห็นได้แม้สมัครไปหมดแล้ว — ซึ่งเป็นตอนที่มันมีค่าที่สุด ("อย่าลืมไป")
+    closing_soon_events: List[ClosingSoonEventItem]
+    closing_soon_events_total: int
     stats: PersonalStatsOut

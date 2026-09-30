@@ -7,6 +7,9 @@ import { useNotificationsStore } from '@/stores/notifications';
 import { getHomeSummary } from '@/services/home';
 import type { HomeSummary } from '@/types/home';
 import { remainingLabel, voteCountLabel } from '@/types/home';
+// กติกาที่เกี่ยวกับ "กิจกรรม" อยู่ใน `@/types/event` — การ์ดหน้าแรกเป็นแค่ *ผู้ใช้* ของมัน
+// ⇒ `EventDetail.vue` เรียกใช้ตัวเดียวกันได้โดยไม่ต้อง import จากโมดูลของหน้าแรก
+import { closingLabel, registrationChip, seatsWarning } from '@/types/event';
 import { getDashboardSummary } from '@/services/dashboard';
 import type { DashboardSummary } from '@/types/dashboard';
 import { listReports } from '@/services/board';
@@ -176,6 +179,13 @@ const pendingRestLabel = computed(() =>
 );
 const unvotedRestLabel = computed(() =>
   remainingLabel(unvotedTotal.value, unvotedBoards.value.length, 'บอร์ด'),
+);
+
+// ⏳ กิจกรรมใกล้ปิดรับ (4.5)
+const closingSoon = computed(() => home.value?.closing_soon_events ?? []);
+const closingSoonTotal = computed(() => home.value?.closing_soon_events_total ?? 0);
+const closingSoonRestLabel = computed(() =>
+  remainingLabel(closingSoonTotal.value, closingSoon.value.length, 'กิจกรรม'),
 );
 
 const statusMap = computed<Record<string, number>>(() => {
@@ -687,6 +697,95 @@ const annIconColor: Record<string, string> = {
 
           <p v-if="unvotedRestLabel" class="pt-2 text-center text-[11px] font-semibold text-stone-400">
             {{ unvotedRestLabel }} — <RouterLink to="/app/boards" class="text-[#B91C1C] hover:underline">ดูใน PIRI Boards</RouterLink>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ⏳ กิจกรรมใกล้ปิดรับ (4.5) ============
+         ⭐ แสดงเฉพาะเมื่อ **มีของ** (หรือกำลังโหลด) — กติกาเดียวกับบล็อก "โหวตที่ยังไม่โหวต"
+         ข้างบน ⇒ ไม่มี empty state ให้รกตา · การที่บล็อกโผล่ขึ้นมาเอง *คือ* การเตือน
+
+         ⚠️ `closes_at` มาจาก backend = min(วันจัด, กำหนดปิดรับ) — **ห้าม** เอา
+            `registration_deadline` มาคิดเองที่นี่ (กิจกรรมที่ไม่ตั้งกำหนดจะปิดที่วันจัด
+            ซึ่งเป็นกลุ่มที่พลาดมากที่สุด เพราะไม่มี deadline ให้เห็น)
+         ⚠️ แถวที่ฉันสมัครแล้ว **ยังต้องอยู่ในบล็อกนี้** — "สมัครแล้ว" ≠ "เรียบร้อย"
+            สิ่งที่ต่างคือปุ่ม (ป้าย "สมัครแล้ว" แทน "ดูรายละเอียด") ไม่ใช่การมีอยู่ของแถว -->
+    <section
+      v-if="!homeError && (loadingHome || closingSoon.length > 0)"
+      class="overflow-hidden rounded-2xl border border-stone-200 bg-white"
+      data-testid="closing-soon-card"
+    >
+      <div class="flex items-center justify-between gap-3 px-6 pb-1 pt-6">
+        <div class="flex items-center gap-3">
+          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+            <i class="bi bi-hourglass-split text-lg"></i>
+          </span>
+          <div>
+            <h2 class="text-base font-bold tracking-tight text-stone-900 sm:text-lg">กิจกรรมใกล้ปิดรับ</h2>
+            <!-- ⚠️ ใช้ "ยังไม่ปิดรับ" ไม่ใช่ "ยังสมัครได้อยู่" — กิจกรรมที่เต็มแล้วก็อยู่ในบล็อกนี้
+                 (สมัครได้แต่จะได้คิวสำรอง) ⇒ คำเดิมจะขัดกับป้าย "เต็มแล้ว" ในแถวเดียวกัน -->
+            <p class="text-[11px] font-medium text-stone-400 sm:text-xs">ยังไม่ปิดรับ — เหลือเวลาอีกไม่มาก</p>
+          </div>
+        </div>
+        <RouterLink
+          to="/app/events"
+          class="flex shrink-0 items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-[#B91C1C] transition-colors hover:bg-stone-100"
+        >
+          กิจกรรมทั้งหมด <i class="bi bi-arrow-right"></i>
+        </RouterLink>
+      </div>
+
+      <div class="px-6 pb-6 pt-3">
+        <div v-if="loadingHome" class="space-y-2">
+          <div v-for="n in 2" :key="n" class="h-14 animate-pulse rounded-2xl bg-stone-100"></div>
+        </div>
+        <div v-else class="space-y-1">
+          <RouterLink
+            v-for="ev in closingSoon"
+            :key="ev.id"
+            :to="{ name: 'event-detail', params: { id: ev.id } }"
+            class="group flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors hover:bg-stone-50"
+          >
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+              <i class="bi bi-calendar-event"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold text-stone-800 group-hover:text-[#B91C1C]">{{ ev.title }}</span>
+              <span class="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-stone-400">
+                <!-- ป้ายเวลาปิดรับ — หัวใจของการ์ดนี้ จึงใช้สี amber ให้ต่างจากบรรทัดอื่น -->
+                <span class="font-bold text-amber-700">{{ closingLabel(ev.closes_at) }}</span>
+                <template v-if="ev.location">
+                  <span class="text-stone-300">•</span>
+                  <span class="inline-flex items-center gap-1"><i class="bi bi-geo-alt"></i> {{ ev.location }}</span>
+                </template>
+                <!-- `seatsWarning` คืน null เมื่อ **ไม่จำกัดจำนวน หรือยังเหลือเยอะ** ⇒ ไม่มีป้ายโผล่
+                     (⚠️ ไม่ใช่ `seatsLabel` — ตัวนั้นตอบ "เหลือกี่ที่" ซึ่งจะขึ้น "ว่างอีก 40 ที่"
+                      ที่ไม่ได้บอกอะไร และทำให้ป้ายที่มีอยู่จริงไม่มีความหมาย) -->
+                <template v-if="seatsWarning(ev.seats_remaining)">
+                  <span class="text-stone-300">•</span>
+                  <span class="font-semibold text-stone-500">{{ seatsWarning(ev.seats_remaining) }}</span>
+                </template>
+              </span>
+            </span>
+            <!-- `registrationChip` คืน null = ยังไม่สมัคร ⇒ แสดงป้ายเชิญชวนให้กด -->
+            <span
+              v-if="registrationChip(ev.my_registration_status)"
+              class="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700"
+            >
+              {{ registrationChip(ev.my_registration_status) }}
+            </span>
+            <span
+              v-else
+              class="hidden shrink-0 rounded-full bg-[#B91C1C]/10 px-2.5 py-1 text-[10px] font-bold text-[#B91C1C] sm:inline"
+            >
+              ดูรายละเอียด
+            </span>
+            <i class="bi bi-chevron-right text-xs text-stone-300 transition-transform group-hover:translate-x-0.5"></i>
+          </RouterLink>
+
+          <p v-if="closingSoonRestLabel" class="pt-2 text-center text-[11px] font-semibold text-stone-400">
+            {{ closingSoonRestLabel }} — <RouterLink to="/app/events" class="text-[#B91C1C] hover:underline">ดูกิจกรรมทั้งหมด</RouterLink>
           </p>
         </div>
       </div>

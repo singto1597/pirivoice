@@ -24,6 +24,7 @@ import asyncpg
 from core.dependencies import get_db_pool, get_current_user
 from core.exceptions import NotFoundError, ForbiddenError, ValidationError
 from models.event_schemas import (
+    EVENT_CATEGORIES,
     EventCreateRequest,
     EventUpdateRequest,
     # D2 — input มาก่อน output เหมือนสองตัวบน
@@ -39,6 +40,14 @@ from models.event_schemas import (
 from services import event_service
 
 router = APIRouter(prefix="/events", tags=["Events"])
+
+# 🏷️ ตัวกรองหมวด (D4) ใช้ร่วมกันทั้งสอง endpoint — สร้าง **ครั้งเดียวจากลิสต์จริง**
+# ⚠️ เขียน regex ด้วยมือจะเพี้ยนจาก `EventCategory` ทันทีที่มีคนเพิ่มหมวด (แล้วอาการคือ
+#    "เพิ่มหมวดใหม่แล้วกรองไม่ได้" ซึ่งหาสาเหตุยาก เพราะค่าใหม่ผ่าน schema ได้ปกติ)
+# ⚠️ ทำไมต้องมี `pattern` ที่นี่ **ทั้งที่ service ตรวจซ้ำ** — `pattern` ทำให้ FastAPI
+#    ตอบ **422** ตั้งแต่ชั้น request (แบบเดียวกับ `status`/`scope`) ⇒ ทั้ง API มี
+#    พฤติกรรมเดียวกันหมด · ส่วนด่านใน service เป็นชั้นที่สองสำหรับผู้เรียกที่ไม่ผ่าน HTTP
+_CATEGORY_PATTERN = "^(" + "|".join(EVENT_CATEGORIES) + ")$"
 
 
 def _ensure_user(user_ctx: dict) -> int:
@@ -74,6 +83,14 @@ async def list_public_events(
             "กรองช่วงเวลา: upcoming (ยังไม่ถึงวันจัด) / past (ผ่านไปแล้ว) / all (ทั้งหมด)"
         ),
     ),
+    category: Optional[str] = Query(
+        None,
+        pattern=_CATEGORY_PATTERN,
+        description=(
+            "กรองหมวดกิจกรรม (D4): academic/sports/arts/service/club/meeting/other "
+            "— ไม่ส่งมา = ทุกหมวด"
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user_ctx: dict = Depends(get_current_user),
@@ -83,7 +100,7 @@ async def list_public_events(
     uid = _ensure_user(user_ctx)
     try:
         result = await event_service.list_public_events(
-            pool, uid, scope=scope, limit=limit, offset=offset
+            pool, uid, scope=scope, category=category, limit=limit, offset=offset
         )
     except ValidationError as e:
         raise _err(e)
@@ -186,6 +203,14 @@ async def list_events(
             "published (เผยแพร่แล้ว) / cancelled (ยกเลิก) / deleted (ถูกลบ) / all (ทั้งหมด)"
         ),
     ),
+    category: Optional[str] = Query(
+        None,
+        pattern=_CATEGORY_PATTERN,
+        description=(
+            "กรองหมวดกิจกรรม (D4): academic/sports/arts/service/club/meeting/other "
+            "— ไม่ส่งมา = ทุกหมวด"
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user_ctx: dict = Depends(get_current_user),
@@ -195,7 +220,7 @@ async def list_events(
     uid = _ensure_user(user_ctx)
     try:
         result = await event_service.list_events(
-            pool, uid, status=status, limit=limit, offset=offset
+            pool, uid, status=status, category=category, limit=limit, offset=offset
         )
     except (ForbiddenError, ValidationError) as e:
         raise _err(e)

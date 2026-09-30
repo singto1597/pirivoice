@@ -3,6 +3,7 @@ import type {
   CheckInPayload,
   CheckInResult,
   Event,
+  EventCategory,
   EventCreate,
   EventListResponse,
   EventListStatus,
@@ -28,13 +29,22 @@ import type {
 // ============ ฝั่งนักเรียน ============
 
 export async function listPublicEvents(
-  params: { scope?: EventScope; limit?: number; offset?: number } = {},
+  params: {
+    scope?: EventScope
+    /** หมวด (D4) — ไม่ส่ง = ทุกหมวด (⚠️ ต่างจาก `category: 'other'` ที่แปลว่า "เฉพาะอื่น ๆ") */
+    category?: EventCategory
+    limit?: number
+    offset?: number
+  } = {},
 ): Promise<PublicEventListResponse> {
-  const { scope, limit, offset } = params
+  const { scope, category, limit, offset } = params
   return (await api.get('/api/events/public', {
     params: {
       // ส่ง scope เฉพาะเมื่อระบุ — ให้ backend ใช้ค่า default 'upcoming' ของตัวเอง
       scope: scope || undefined,
+      // ⚠️ **`undefined` = ทุกหมวด** ไม่ใช่ค่าเริ่มต้นอย่าง `'other'` ⇒ ห้ามใส่ `?? 'other'`
+      //    (จะกลายเป็น "กรองเอาแต่หมวดอื่น ๆ" ซึ่งไม่มีใครขอ และหาสาเหตุยากมาก)
+      category: category || undefined,
       limit: limit ?? 20,
       offset: offset ?? 0,
     },
@@ -69,12 +79,19 @@ export async function cancelMyRegistration(eventId: number): Promise<MyRegistrat
 // ============ ฝั่งผู้จัดการ (ต้องมี MANAGE_EVENTS) ============
 
 export async function listEvents(
-  params: { status?: EventListStatus; limit?: number; offset?: number } = {},
+  params: {
+    status?: EventListStatus
+    /** หมวด (D4) — ไม่ส่ง = ทุกหมวด (เหมือนฝั่ง public) */
+    category?: EventCategory
+    limit?: number
+    offset?: number
+  } = {},
 ): Promise<EventListResponse> {
-  const { status, limit, offset } = params
+  const { status, category, limit, offset } = params
   return (await api.get('/api/events', {
     params: {
       status: status || undefined,
+      category: category || undefined,
       limit: limit ?? 20,
       offset: offset ?? 0,
     },

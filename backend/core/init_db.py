@@ -647,6 +647,13 @@ async def init_db(pool: asyncpg.Pool):
                 #     "ลบผู้ใช้ = หลักฐานหาย") ⇒ LEFT JOIN เอาเองตอนอ่าน
                 #   - unique (event_id, user_id) **ไม่มี partial predicate** โดยเจตนา —
                 #     ยกเลิก = พลิก status ไม่ใช่ลบแถว ⇒ ประวัติการสมัครไม่หาย
+                #   - `category` (D4 / migration 026) — **แหล่งความจริงอยู่ที่
+                #     migrations/026_event_category.py** · ที่นี่ mirror ให้ DB ใหม่ครบในรอบเดียว
+                #     ⚠️ CHECK ที่ลิสต์ค่าตายตัว ⇒ เพิ่มหมวดใหม่ต้องออก migration ใหม่ **และ**
+                #        แก้ที่นี่ + `EventCategory` (event_schemas) + `EVENT_CATEGORIES` (FE)
+                #     ⚠️ `NOT NULL DEFAULT 'other'` โดยเจตนา — ไม่ปล่อย NULL เพราะจะเกิด
+                #        "สามสถานะ" ที่ผู้ใช้แยกไม่ออก ("ไม่ระบุ"/"อื่น ๆ"/ค่าจริง) และการกรอง
+                #        ต้องเขียน `IS NULL OR ...` ทุกที่ · 'other' = "อื่น ๆ" ซึ่งเป็นคำตอบจริง
                 await conn.execute("""
                     CREATE TABLE IF NOT EXISTS events (
                         id SERIAL PRIMARY KEY,
@@ -657,6 +664,7 @@ async def init_db(pool: asyncpg.Pool):
                         event_date TIMESTAMP WITH TIME ZONE NOT NULL,
                         registration_deadline TIMESTAMP WITH TIME ZONE,
                         capacity INTEGER,
+                        category VARCHAR(20) NOT NULL DEFAULT 'other',
                         status VARCHAR(20) NOT NULL DEFAULT 'draft',
                         published_at TIMESTAMP WITH TIME ZONE,
                         cancelled_at TIMESTAMP WITH TIME ZONE,
@@ -668,7 +676,10 @@ async def init_db(pool: asyncpg.Pool):
                         CONSTRAINT chk_events_status
                             CHECK (status IN ('draft', 'published', 'cancelled')),
                         CONSTRAINT chk_events_capacity
-                            CHECK (capacity IS NULL OR capacity > 0)
+                            CHECK (capacity IS NULL OR capacity > 0),
+                        CONSTRAINT chk_events_category
+                            CHECK (category IN ('academic', 'sports', 'arts', 'service',
+                                                'club', 'meeting', 'other'))
                     );
                 """)
                 await conn.execute("""

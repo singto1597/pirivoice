@@ -4,10 +4,15 @@ import { RouterLink } from 'vue-router'
 import PaginationBar from '@/components/PaginationBar.vue'
 import { listPublicEvents } from '@/services/event'
 import {
+  CATEGORY_LABELS,
+  EVENT_CATEGORIES,
   EVENT_SCOPES,
   REGISTRATION_ICONS,
   REGISTRATION_LABELS,
   SCOPE_LABELS,
+  categoryIcon,
+  categoryLabel,
+  isEventCategory,
   seatsLabel,
   type EventScope,
   type PublicEvent,
@@ -30,16 +35,41 @@ const events = ref<PublicEvent[]>([])
 const total = ref(0)
 const page = ref(1)
 const scope = ref<EventScope>('upcoming')
+/**
+ * ตัวกรองหมวด (D4) — **`''` = ทุกหมวด** · เก็บเป็น `string` เพราะค่ามาจาก `<select>`
+ * ⚠️ อย่าส่ง `''` ต่อให้ backend — ต้องแปลงเป็น `undefined` (ดู `load()`) ไม่งั้นได้ 422
+ */
+const category = ref('')
 const isLoading = ref(true)
 const error = ref('')
 
 const isEmpty = computed(() => !isLoading.value && !error.value && events.value.length === 0)
+
+/**
+ * ข้อความตอนว่าง — ต้องแยก "ยังไม่มีกิจกรรม" ออกจาก "ตัวกรองซ่อนอยู่"
+ * (การ์ด 0 ใบเหมือนกันเป๊ะ แต่ความหมายตรงข้าม ⇒ ข้อความกลาง ๆ จะทำให้เข้าใจผิดว่ากิจกรรมหาย)
+ */
+const emptyText = computed(() => {
+  if (category.value) return `ยังไม่มีกิจกรรมหมวด "${categoryLabel(category.value)}" ในช่วงนี้`
+  return scope.value === 'past' ? 'ยังไม่มีกิจกรรมที่ผ่านไปแล้ว' : 'ยังไม่มีกิจกรรมในเงื่อนไขนี้'
+})
 
 onMounted(load)
 
 function switchScope(s: EventScope) {
   if (scope.value === s) return
   scope.value = s
+  page.value = 1
+  load()
+}
+
+function onCategoryChange() {
+  page.value = 1
+  load()
+}
+
+function clearCategory() {
+  category.value = ''
   page.value = 1
   load()
 }
@@ -55,6 +85,7 @@ async function load() {
   try {
     const res = await listPublicEvents({
       scope: scope.value,
+      category: isEventCategory(category.value) ? category.value : undefined,
       limit: PAGE_SIZE,
       offset: (page.value - 1) * PAGE_SIZE,
     })
@@ -113,6 +144,18 @@ function seatsText(e: PublicEvent): string {
           {{ SCOPE_LABELS[s] }}
         </button>
       </div>
+      <!-- ตัวกรองหมวด (D4) — <select> เพราะ 7 หมวดจะเบียดแถวช่วงเวลาจนอ่านไม่ออกบนมือถือ -->
+      <select
+        v-model="category"
+        aria-label="กรองตามหมวดกิจกรรม"
+        data-testid="public-category-filter"
+        class="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        @change="onCategoryChange"
+      >
+        <option value="">ทุกหมวด</option>
+        <option v-for="c in EVENT_CATEGORIES" :key="c" :value="c">{{ CATEGORY_LABELS[c] }}</option>
+      </select>
+
       <span class="text-sm text-stone-400 ml-auto tabular-nums">
         {{ total.toLocaleString('en-US') }} กิจกรรม
       </span>
@@ -145,12 +188,20 @@ function seatsText(e: PublicEvent): string {
     <!-- ว่าง -->
     <div v-else-if="isEmpty" class="border border-dashed border-stone-200 rounded-2xl bg-white p-12 text-center text-stone-400">
       <div class="text-4xl mb-2"><i class="bi bi-calendar-x"></i></div>
-      <p class="text-stone-500">
-        {{ scope === 'past' ? 'ยังไม่มีกิจกรรมที่ผ่านไปแล้ว' : 'ยังไม่มีกิจกรรมในเงื่อนไขนี้' }}
-      </p>
-      <p v-if="scope === 'upcoming'" class="text-sm text-stone-400 mt-1">
+      <p class="text-stone-500">{{ emptyText }}</p>
+      <p v-if="scope === 'upcoming' && !category" class="text-sm text-stone-400 mt-1">
         รอสภาประกาศกิจกรรมใหม่ แล้วกลับมาเช็คอีกครั้ง
       </p>
+      <!-- บอกทางออกเมื่อ "ว่างเพราะตัวกรอง" — นักเรียนที่เห็นจอว่างจะเลิกหาทันทีถ้าไม่มีปุ่มนี้ -->
+      <button
+        v-else-if="category"
+        type="button"
+        data-testid="clear-public-category-filter"
+        class="mt-4 inline-flex items-center gap-2 rounded-lg bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-200"
+        @click="clearCategory"
+      >
+        <i class="bi bi-x-lg"></i> ล้างตัวกรองหมวด
+      </button>
     </div>
 
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -196,7 +247,13 @@ function seatsText(e: PublicEvent): string {
           </div>
 
           <h3 class="font-semibold text-stone-900 leading-snug mb-1 line-clamp-2">{{ e.title }}</h3>
-          <p v-if="e.description" class="text-sm text-stone-500 mb-3 line-clamp-2">{{ e.description }}</p>
+          <p v-if="e.description" class="text-sm text-stone-500 mb-2 line-clamp-2">{{ e.description }}</p>
+
+          <span
+            class="mb-3 inline-flex w-fit items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700"
+          >
+            <i :class="`bi ${categoryIcon(e.category)}`"></i> {{ categoryLabel(e.category) }}
+          </span>
 
           <div class="mt-auto pt-2 border-t border-stone-200 space-y-1.5 text-xs text-stone-500">
             <div>
