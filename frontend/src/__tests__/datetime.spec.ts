@@ -4,6 +4,7 @@ import {
   fmtDateTime,
   fmtDateShort,
   fmtDayGroup,
+  dayGroupKind,
   fmtRelative,
   fmtTime,
   formatThaiDateTimeInput,
@@ -276,5 +277,36 @@ describe('fmtDayGroup — ป้ายหัวกลุ่มของลิส
     const days = ['2026-10-15', '2026-10-14', '2026-10-13', '2026-10-12']
     const labels = days.map((d) => fmtDayGroup(`${d}T09:00:00+07:00`, NOW))
     expect(new Set(labels).size).toBe(labels.length)
+  })
+})
+
+describe('dayGroupKind — ชนิดของกลุ่มวัน (สัญญาที่ NotificationCenter พึ่ง)', () => {
+  const NOW = new Date('2026-10-15T09:00:00+07:00')
+
+  it('คืนชนิดตรงกับป้ายที่ fmtDayGroup แสดง — ทั้งสองต้องไม่มีทางไม่ตรงกัน', () => {
+    const cases: Array<[string, string, string]> = [
+      ['2026-10-15T09:00:00+07:00', 'today', 'วันนี้'],
+      ['2026-10-14T23:59:00+07:00', 'yesterday', 'เมื่อวาน'],
+      ['2026-10-13T09:00:00+07:00', 'date', '13 ต.ค. 2569'],
+    ]
+    for (const [iso, kind, label] of cases) {
+      expect(dayGroupKind(iso, NOW)).toBe(kind)
+      expect(fmtDayGroup(iso, NOW)).toBe(label)
+    }
+  })
+
+  it('★ "เมื่อวาน" ต้องเป็น yesterday ตามปฏิทินไทย ไม่ใช่ตาม 24 ชั่วโมง', () => {
+    // 14 ต.ค. 23:00 → ห่างจาก 15 ต.ค. 09:00 แค่ 10 ชม. แต่เป็น "เมื่อวาน" ตามปฏิทิน
+    expect(dayGroupKind('2026-10-14T23:00:00+07:00', NOW)).toBe('yesterday')
+    // 15 ต.ค. 00:30 → ห่าง 8.5 ชม. เท่านั้น และเป็น "วันนี้"
+    expect(dayGroupKind('2026-10-15T00:30:00+07:00', NOW)).toBe('today')
+  })
+
+  it('🔴 วันที่อ่านไม่ได้ = invalid ไม่ใช่ date — ไม่งั้นแถวจะพิมพ์ "Invalid Date"', () => {
+    // เจตนา: `invalid` ต้อง *แยก* จาก `date` เพราะ NotificationCenter ใช้ค่านี้ตัดสินว่า
+    // จะแสดงผลเป็นเวลานาฬิกาหรือไม่ ⇒ ถ้ายุบรวมกัน fmtTime('') จะได้ "Invalid Date"
+    expect(dayGroupKind('', NOW)).toBe('invalid')
+    expect(dayGroupKind('ไม่ใช่วันที่', NOW)).toBe('invalid')
+    expect(dayGroupKind('2026-10-13T09:00:00+07:00', NOW)).not.toBe('invalid')
   })
 })

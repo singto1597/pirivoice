@@ -18,7 +18,7 @@ import {
 } from '@/router/unavailable'
 import { deepLinkTarget } from '@/router/deepLink'
 import { useNotificationsStore } from '@/stores/notifications'
-import { fmtDayGroup, fmtRelative } from '@/datetime'
+import { fmtDayGroup, dayGroupKind, fmtRelative, fmtTime, type DayGroupKind } from '@/datetime'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppChip from '@/components/ui/AppChip.vue'
 import AppSheet from '@/components/ui/AppSheet.vue'
@@ -169,17 +169,21 @@ async function load() {
  *    ตัวเดียวกับ `fmtRelative` อยู่แล้ว
  */
 interface DayGroup {
+  kind: DayGroupKind
   label: string
   items: NotificationItem[]
 }
 
 const dayGroups = computed<DayGroup[]>(() => {
+  // ⚠️ **`now` ตัวเดียวสำหรับทั้งรอบ** — ส่งไปทั้ง `fmtDayGroup` และ `dayGroupKind`
+  //    ถ้าปล่อยให้แต่ละตัวเรียก `new Date()` เอง ที่เส้นแบ่งวันป้ายกับชนิดจะไม่ตรงกันได้
+  const now = new Date()
   const out: DayGroup[] = []
   for (const n of items.value) {
-    const label = fmtDayGroup(n.created_at)
+    const label = fmtDayGroup(n.created_at, now)
     const last = out[out.length - 1]
     if (last && last.label === label) last.items.push(n)
-    else out.push({ label, items: [n] })
+    else out.push({ kind: dayGroupKind(n.created_at, now), label, items: [n] })
   }
   return out
 })
@@ -216,6 +220,30 @@ const emptyState = computed(() => {
 
 function iconFor(n: NotificationItem): string {
   return NOTIFICATION_TYPE_ICONS[n.type] || 'bi bi-bell'
+}
+
+/**
+ * ⏱️ เวลาท้ายแถว — **หัวกลุ่มบอก "วัน" ไปแล้ว แถวจึงไม่ต้องบอกวันซ้ำ**
+ *
+ * ⚠️ **ทำไมไม่ใช้ `fmtRelative()` ตรง ๆ อย่างเดียว:** มันคืน **วันที่จริง** เมื่อเกิน 7 วัน
+ *    (พฤติกรรมที่ถูกของมัน — "45 วันที่แล้ว" ก็ต้องลบกันในหัวอยู่ดี) ⇒ แถวที่อยู่ใต้หัวกลุ่ม
+ *    "21 ก.ย. 2569" จะพิมพ์ **"21 ก.ย. 2569" ซ้ำคำต่อคำ** กับหัวกลุ่มที่อยู่ห่างขึ้นไป 8px
+ *    ซึ่งเป็นความซ้ำแบบเดียวกับที่ทั้งรอบนี้กำลังเก็บกวาด ⇒ กลุ่มที่เป็นวันที่จริงให้ใช้
+ *    **เวลานาฬิกา** (`fmtTime`) ซึ่ง *เพิ่ม* ข้อมูลแทนการย้ำ
+ *
+ * 🔴 **รับ `kind` ของหัวกลุ่มเข้ามา ไม่เทียบสตริงไทยและไม่คำนวณซ้ำเอง** —
+ *    (1) เทียบ `label === 'วันนี้'` ตรง ๆ จะ **พังเงียบ ๆ** ถ้ามีคนแก้คำใน `fmtDayGroup`
+ *        (ไม่ใช่ type error ไม่ใช่เทสต์พัง) ⇒ ใช้ `DayGroupKind` ที่มี type คุม
+ *    (2) คำนวณ `dayGroupKind()` ซ้ำที่นี่จะได้ `now` คนละค่ากับหัวกลุ่ม ⇒ ที่เส้นแบ่งวัน
+ *        หัวกลุ่มอาจเป็น `วันนี้` ขณะที่แถวตัดสินเป็น `date` แล้วได้ "วันนี้" + เวลานาฬิกา
+ *        ซึ่งอ่านไม่ออกว่าของวันไหน · ใช้ค่าที่หัวกลุ่มคำนวณมาแล้ว = ไม่มีทางไม่ตรงกัน
+ *
+ * ⚠️ `invalid` = วันที่อ่านไม่ได้ ⇒ คืน `''` ไม่ใช่ `fmtTime()` (ซึ่งจะได้ `Invalid Date`)
+ */
+function rowTime(n: NotificationItem, kind: DayGroupKind): string {
+  if (kind === 'today' || kind === 'yesterday') return fmtRelative(n.created_at)
+  if (kind === 'invalid') return ''
+  return fmtTime(n.created_at)
 }
 
 // ✅ mark อ่านรายการเดียว (ไม่ navigate)
@@ -497,9 +525,9 @@ function go(n: NotificationItem) {
               <span class="min-w-0 flex-1">
                 <span class="flex items-start justify-between gap-2">
                   <span class="text-sm font-bold leading-snug text-ink-1">{{ n.title }}</span>
-                  <!-- เวลาแบบ relative — "3 วันที่แล้ว" ตอบ "อันไหนใหม่" ได้โดยไม่ต้องลบในหัว -->
+                  <!-- เวลาท้ายแถว — ดู `rowTime()` ว่าทำไมต้องขึ้นกับป้ายของหัวกลุ่ม -->
                   <span class="shrink-0 whitespace-nowrap text-[11px] text-ink-3">
-                    {{ fmtRelative(n.created_at) }}
+                    {{ rowTime(n, group.kind) }}
                   </span>
                 </span>
                 <span class="mt-0.5 line-clamp-2 block text-sm leading-snug text-ink-2">
