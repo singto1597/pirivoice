@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import PaginationBar from '@/components/PaginationBar.vue'
+// 🕐 เวลามาจากโมดูลกลาง — **ห้ามประกาศซ้ำในไฟล์นี้** (เดิมก๊อปอยู่ 4 ไฟล์แล้วเพี้ยนจากกัน)
+import { fmtDateTime, fmtTime, toLocalInput } from '@/datetime'
 import {
   cancelEvent,
   checkInRegistration,
@@ -304,31 +306,6 @@ async function runAction(e: Event, kind: 'publish' | 'cancel' | 'delete' | 'rest
   }
 }
 
-/**
- * `YYYY-MM-DDTHH:MM` **ในเขตเวลาไทย** สำหรับ `<input type="datetime-local">`
- *
- * ⚠️ **ห้ามใช้ `toISOString().slice(0,16)`** — ได้เวลา UTC ⇒ พอเปิดฟอร์มแก้ไข ฟิลด์จะโชว์
- *    เวลาที่น้อยไป 7 ชั่วโมง และถ้าผู้ใช้กดบันทึกโดยไม่แตะอะไร ค่าที่ส่งกลับจะเพี้ยนทันที
- *    ⚠️ และ **ห้ามใช้ `new Date(iso)` แบบ date-only** — กิจกรรมเป็น timestamptz จึงใช้ได้
- *    แต่ต้องอ่าน "ชิ้นส่วน" ออกมาในโซน Bangkok ไม่ใช่โซนเครื่องผู้ใช้
- */
-const BKK_PARTS = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Asia/Bangkok',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-})
-
-function toLocalInput(iso: string | null): string {
-  if (!iso) return ''
-  const parts = BKK_PARTS.formatToParts(new Date(iso))
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
-  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
-}
-
 /** ค่าฟอร์ม → payload สร้าง · ช่องว่างของฟิลด์ที่ไม่บังคับ = `null` (สั่งล้างค่า) ไม่ใช่ `undefined` */
 function buildCreate(): EventCreate {
   const cap = form.value.capacity.trim()
@@ -550,27 +527,6 @@ async function handleCheckIn(r: EventRegistration) {
   } finally {
     regActingId.value = null
   }
-}
-
-/** วันและเวลาจัดกิจกรรม — timestamptz จึงใช้ `new Date(iso)` ได้ตรง ๆ */
-function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-/** เวลาสั้น ๆ (`HH:MM`) สำหรับตรา "เช็คอินแล้ว" — เช็คอินเกิดวันงานเสมอ วันที่จึงซ้ำกับหัวข้อ */
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 function capacityText(e: Event): string {
