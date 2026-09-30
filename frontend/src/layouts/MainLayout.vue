@@ -103,10 +103,11 @@ const routeTitles: Record<string, string> = {
   events: 'กิจกรรม',
   'event-detail': 'รายละเอียดกิจกรรม',
   'event-management': 'จัดการกิจกรรม',
-  // ✍️ สร้าง/แก้ไขกิจกรรม — **หน้าเต็มหน้า** ไม่ใช่ modal อีกแล้ว (รอบ 4)
+  // ✍️ สร้าง/แก้ไข/รายชื่อผู้สมัคร — **หน้าเต็มหน้า** ไม่ใช่ modal อีกแล้ว (รอบ 4)
   //    ถ้าไม่เพิ่มที่นี่ แถบหัวจะขึ้น "PIRIvoice" เฉย ๆ ซึ่งดูเหมือนหลุดออกจากระบบกิจกรรม
   'event-create': 'สร้างกิจกรรม',
   'event-edit': 'แก้ไขกิจกรรม',
+  'event-registrations': 'รายชื่อผู้สมัคร',
   'event-check-in': 'สแกนเช็คอิน',
   playbooks: 'P.R. Playbooks',
   'playbook-reader': 'อ่านหนังสือ',

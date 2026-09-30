@@ -177,6 +177,15 @@ const router = createRouter({
           meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
         },
         {
+          // 👥 รายชื่อผู้สมัคร + เช็คอินมือ (เดิมเป็น modal ในหน้า `events/manage` — รอบ 4)
+          // ⚠️ 3 ส่วน ⇒ ไม่ชนกับ `events/:id` (2 ส่วน) ⇒ ลำดับสลับกันได้
+          //    และคนละ literal กับ `events/:id/edit`/`check-in` ⇒ ไม่ชนกันอยู่แล้ว
+          path: 'events/:id/registrations',
+          name: 'event-registrations',
+          component: () => import('@/views/events/EventRegistrations.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS' },
+        },
+        {
           // หน้าสแกนเช็คอินหน้างาน (D2) — **สภาเท่านั้น**
           // ⚠️ ต้องมี `requiresPermission` เหมือน `events/manage` ไม่ใช่แค่ `requiresAuth`:
           //    ตัว endpoint ตรวจ MANAGE_EVENTS อยู่แล้ว แต่ถ้าไม่กันที่ route นักเรียนที่เดา URL
