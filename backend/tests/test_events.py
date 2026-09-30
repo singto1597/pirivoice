@@ -28,6 +28,8 @@ import json
 import random
 from datetime import datetime, timedelta, timezone
 
+import asyncpg
+
 import pytest
 import pytest_asyncio
 
@@ -172,6 +174,22 @@ def _as_utc(iso: str) -> datetime:
     """pydantic v2 เขียน UTC เป็น `Z` แต่ datetime.isoformat() เขียน `+00:00`
     ⇒ ต้องเทียบเป็น datetime ไม่ใช่เทียบสตริง (บทเรียน skills.md)"""
     return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+
+
+# สถานะ "ว่างเปล่า" ที่ `/my-registration` ต้องคืน **ทั้งก้อนเป๊ะ ๆ** (ยังไม่สมัคร / เพิ่งถอน)
+#
+# ⚠️ จงใจเทียบทั้ง dict ไม่ใช่เช็คทีละ key — เจตนาของเทสต์คือ "ไม่มีอะไรค้างอยู่เลย"
+#    ⇒ ถ้าเพิ่มฟิลด์ใหม่ใน `MyRegistrationOut` แล้วสองเทสต์นี้พัง **นั่นคือสัญญาณที่ถูกต้อง**
+#    (มีคนต้องมาตอบว่า "ว่าง" ยังแปลว่าว่างจริงไหม) ไม่ใช่ noise ที่ควรกดให้เงียบ
+#    — ตอน D2 เพิ่ม `check_in_token`/`checked_in_at` ก็พังแบบนี้ แล้วคำตอบคือ "ยังว่างจริง"
+_EMPTY_MY_REG = {
+    "registered": False,
+    "registration_id": None,
+    "status": None,
+    "queue_position": None,
+    "check_in_token": None,
+    "checked_in_at": None,
+}
 
 
 # ============================================================
@@ -566,6 +584,92 @@ async def test_full_event_seats_first_then_waitlists(ev_world, client, db_pool):
 
 
 @pytest.mark.asyncio
+async def test_waitlist_join_notifies_once_with_position(ev_world, client, db_pool):
+    """⭐ D3 — **การเข้าคิวต้องมีข้อความบอก** เพราะระบบ "ลดขั้น" ให้เงียบ ๆ
+
+    คนที่กดลงทะเบียนแล้วกิจกรรมเต็ม **ไม่ได้การ์ดที่ขอ** แต่ **ไม่เห็น error**
+    (นโยบาย auto-waitlist ของ D1) ⇒ ถ้าไม่มี notification เขาจะเข้าใจว่าสมัครติด
+    จนถึงวันงาน · และ **คนที่ได้ที่นั่งต้องไม่ได้ข้อความนี้** (เขาได้สิ่งที่ขอแล้ว)
+
+    ตรึง 4 อย่างที่พลาดได้จริง:
+      · ข้อความไปถึง **คนที่เข้าคิว** ไม่ใช่คนอื่น (และไม่ไปหาคนที่มีที่นั่ง)
+      · `queue_position` ในข้อความตรงกับที่ API คืน (2 ที่นี้เคยเถียงกันได้)
+      · **กดซ้ำไม่สร้างข้อความซ้ำ** — ขั้น 3 คืนค่าเดิมก่อนถึงจุดแจ้ง ⇒ ต้องได้ 1 ใบ
+      · `actor_id IS NULL` — ระบบเป็นคนพูด ไม่ใช่ตัวผู้ใช้ (ไม่งั้น `notify()` กรองทิ้ง
+        ด้วยกฎ "ไม่สแปมตัวเอง" แล้วข้อความจะ **หายทั้งใบโดยไม่มี error**)
+
+    mutation ที่ต้องทำให้แตก: ลบ `notification_service.notify(...)` ใน
+    `register_event()` (สาขา `new_status == "waitlisted"`)
+    """
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+
+    _register(client, ev_world, event_id, "alice")  # ได้ที่นั่ง
+    bob = _register(client, ev_world, event_id, "bob").json()
+    carol = _register(client, ev_world, event_id, "carol").json()
+    assert (bob["queue_position"], carol["queue_position"]) == (1, 2)
+
+    # เฉพาะสองคนที่เข้าคิว — alice (เจ้าของที่นั่ง) ต้องไม่อยู่ในรายชื่อ
+    assert await _notified_ids(db_pool, "event_waitlist_joined") == sorted([
+        ev_world["bob"]["user_id"], ev_world["carol"]["user_id"],
+    ])
+
+    # กดซ้ำตอนเป็นคิวอยู่แล้ว → ไม่เขียน `registered_at` ทับ (เทสต์ข้างบนคุมไว้)
+    # และ **ไม่แจ้งซ้ำ** — จำนวนต้องยังเท่าเดิม
+    _register(client, ev_world, event_id, "bob")
+    assert await _count_notifications(db_pool, "event_waitlist_joined") == 2
+
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT user_id, group_type, entity_type, entity_id, actor_id, body
+            FROM notifications WHERE type = 'event_waitlist_joined'
+            ORDER BY user_id
+            """
+        )
+    by_user = {r["user_id"]: r for r in rows}
+    first = by_user[ev_world["bob"]["user_id"]]
+    assert first["group_type"] == "event"
+    assert (first["entity_type"], first["entity_id"]) == ("event", event_id)
+    assert first["actor_id"] is None, "ระบบเป็นคนพูด — ถ้าใส่ actor_id = user_id จะถูกกรองทิ้ง"
+    # ⚠️ ตำแหน่งในข้อความต้องตรงกับที่ API คืน ไม่ใช่ค่าที่คำนวณคนละจังหวะ
+    assert "คิวที่ 1" in first["body"]
+    assert "คิวที่ 2" in by_user[ev_world["carol"]["user_id"]]["body"]
+
+
+@pytest.mark.asyncio
+async def test_no_waitlist_notification_when_promoted_person_re_joins(
+    ev_world, client, db_pool
+):
+    """คนที่ถูกเลื่อนขึ้นแล้ว "ไม่" ได้ข้อความเข้าคิว — คนละเหตุการณ์กันโดยสิ้นเชิง
+
+    ลำดับ: bob เข้าคิว (ได้ข้อความ) → alice ถอน ⇒ bob ถูกเลื่อน (ได้ `promoted`)
+    ⇒ ตอนนี้ bob มี **2 ใบ** คนละชนิด · ถ้าถอนแล้วสมัครใหม่ตอนเต็ม bob จะได้
+    `joined` ใบที่สอง (คนละรอบ) — แต่ห้ามได้ `promoted` ซ้ำโดยไม่มีใครถอน
+
+    ⚠️ เทสต์นี้กันความสับสนที่ **อ่านโค้ดไม่ออก**: สองไทป์นี้อยู่ใกล้กันใน `event_service`
+       และใช้ปลายทางเดียวกัน ⇒ การสลับ `type=` ระหว่างสองจุดจะไม่มีอะไรพังเลย
+       ถ้าไม่มีเทสต์ที่แยกสองเหตุการณ์ออกจากกัน
+    """
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+
+    _register(client, ev_world, event_id, "alice")
+    _register(client, ev_world, event_id, "bob")
+    cancelled = _cancel_reg(client, ev_world, event_id, "alice")
+    assert cancelled.status_code == 200, cancelled.text
+
+    bob_id = ev_world["bob"]["user_id"]
+    assert await _notified_ids(db_pool, "event_waitlist_joined") == [bob_id]
+    assert await _notified_ids(db_pool, "event_waitlist_promoted") == [bob_id]
+
+    # bob มีที่นั่งแล้ว ⇒ สมัครซ้ำต้องไม่เกิดข้อความใด ๆ เพิ่ม (ทั้งสองชนิด)
+    _register(client, ev_world, event_id, "bob")
+    assert await _count_notifications(db_pool, "event_waitlist_joined") == 1
+    assert await _count_notifications(db_pool, "event_waitlist_promoted") == 1
+
+
+@pytest.mark.asyncio
 async def test_re_register_on_full_event_does_not_demote_returning_user(
     ev_world, client, db_pool
 ):
@@ -702,10 +806,7 @@ async def test_my_registration_when_none_is_200_false(ev_world, client):
         f"/api/events/{event_id}/my-registration", headers=_auth(ev_world, "alice")
     )
     assert res.status_code == 200, res.text
-    assert res.json() == {
-        "registered": False, "registration_id": None,
-        "status": None, "queue_position": None,
-    }
+    assert res.json() == _EMPTY_MY_REG
 
 
 @pytest.mark.asyncio
@@ -799,10 +900,9 @@ async def test_cancel_promotes_next_and_notifies_them(ev_world, client, db_pool)
 
     res = _cancel_reg(client, ev_world, event_id, "alice")
     assert res.status_code == 200, res.text
-    assert res.json() == {
-        "registered": False, "registration_id": None,
-        "status": None, "queue_position": None,
-    }
+    # หลังถอนต้องกลับมา "ว่างเปล่า" เหมือนยังไม่เคยสมัคร — ไม่เหลือร่องรอยของที่นั่งเดิม
+    # (รวม `check_in_token` ที่ต้องหายไปด้วย ไม่งั้นคนที่ถอนแล้วยังถือบัตรเช็คอินได้)
+    assert res.json() == _EMPTY_MY_REG
 
     alice_row = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
     assert alice_row["status"] == "cancelled" and alice_row["cancelled_at"] is not None
@@ -1480,3 +1580,755 @@ async def test_capacity_check_constraint_rejects_zero(ev_world, db_pool):
                 VALUES ('ผิดกฎ', NOW() + INTERVAL '1 day', 0, 0, 0)
                 """
             )
+
+
+# ============================================================
+# 8) D2 — เช็คอินหน้างาน (QR + กดมือ)
+# ============================================================
+#
+# ⭐ หัวใจที่ต้องพิสูจน์ให้ได้ (ไม่ใช่แค่ "ยิงแล้วได้ 200"):
+#   · `checked_in` ยังนับเป็น **คนถือที่นั่ง** ⇒ ที่นั่งไม่หาย ไม่มีใครถูกเลื่อนคิวเกิน
+#   · สแกนซ้ำ **ไม่ทับ** `checked_in_at` ครั้งแรก (เวลาที่มาถึงคือหลักฐาน)
+#   · บัตรของกิจกรรมหนึ่ง **ใช้กับอีกกิจกรรมไม่ได้** (`registration_id` เป็น SERIAL ร่วมกัน)
+#   · รหัสที่ถูกแก้ไบต์เดียวต้องไม่ผ่าน
+#   · `waitlisted` / `cancelled` ต้องถูกปฏิเสธ **โดยไม่แตะ DB**
+
+def _check_in(client, world, event_id, who="manager", **body):
+    return client.post(
+        f"/api/events/{event_id}/check-in", json=body, headers=_auth(world, who)
+    )
+
+
+def _my_token(client, world, event_id, who) -> str:
+    res = client.get(f"/api/events/{event_id}/my-registration", headers=_auth(world, who))
+    assert res.status_code == 200, res.text
+    return res.json()["check_in_token"]
+
+
+@pytest.mark.asyncio
+async def test_check_in_requires_manage_events(ev_world, client, db_pool):
+    """★ นักเรียนเช็คอินให้ตัวเองไม่ได้ — แม้จะเป็นใบสมัครของตัวเอง
+
+    ⚠️ ด่านนี้สำคัญกว่าปกติ: "เช็คอินตัวเองได้" = ระบบที่ไม่ยืนยันอะไรเลย
+       (คนที่อยู่หน้างานเท่านั้นที่ยืนยันได้ว่ามีตัวตนอยู่หน้างาน)
+    """
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+
+    # `alice` = เจ้าของใบเอง · `plain` = สมาชิกสภาที่ไม่มีสิทธิ์จาก JSONB และไม่ใช่ is_admin
+    # (`granted` ไม่ได้อยู่ในลิสต์นี้โดยเจตนา — มัน**มี** MANAGE_EVENTS ⇒ ต้องผ่าน)
+    for who in ("alice", "plain"):
+        res = _check_in(client, ev_world, event_id, who, registration_id=reg["id"])
+        assert res.status_code == 403, f"{who} ต้องโดน 403 แต่ได้ {res.status_code}"
+
+    # ไม่มี token เลยก็ 401
+    res = client.post(f"/api/events/{event_id}/check-in", json={"registration_id": reg["id"]})
+    assert res.status_code == 401
+
+    # DB ยังไม่ถูกแตะ
+    assert (await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"]))["status"] == "registered"
+
+
+@pytest.mark.asyncio
+async def test_check_in_manual_sets_status_and_audit(ev_world, client, db_pool):
+    """กดมือจากรายชื่อ ⇒ สถานะเปลี่ยน + `checked_in_at` ถูกเขียน + audit ใน transaction เดียวกัน"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+
+    res = _check_in(client, ev_world, event_id, registration_id=reg["id"])
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status"] == "checked_in"
+    assert body["already_checked_in"] is False
+    assert body["method"] == "manual"
+    assert body["registration_id"] == reg["id"]
+    assert body["user_id"] == ev_world["alice"]["user_id"]
+    assert "alice" in (body["user_name"] or "")
+
+    row = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    assert row["status"] == "checked_in"
+    assert row["checked_in_at"] is not None
+
+    async with db_pool.acquire() as conn:
+        audit = await conn.fetchrow(
+            """
+            SELECT * FROM audit_logs
+            WHERE action = 'CHECK_IN_EVENT' AND entity_id = $1
+            ORDER BY id DESC LIMIT 1
+            """,
+            str(event_id),
+        )
+    assert audit is not None, "ต้องมี audit log ของการเช็คอิน"
+    assert audit["user_id"] == ev_world["manager"]["user_id"], "ผู้กระทำคือสภาที่สแกน"
+    new_values = json.loads(audit["new_values"])
+    assert new_values["method"] == "manual"
+    assert new_values["attendee_user_id"] == ev_world["alice"]["user_id"]
+
+
+@pytest.mark.asyncio
+async def test_check_in_by_qr_token(ev_world, client, db_pool):
+    """สแกนบัตรจริง — โทเคนมาจาก `my-registration` ของนักเรียน (ทางที่ QR บนจอใช้)"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "bob")
+    token = _my_token(client, ev_world, event_id, "bob")
+    assert token, "คนที่ถือที่นั่งต้องได้บัตร"
+
+    res = _check_in(client, ev_world, event_id, token=token)
+    assert res.status_code == 200, res.text
+    assert res.json()["method"] == "qr"
+    assert res.json()["user_id"] == ev_world["bob"]["user_id"]
+
+    row = await _db_reg(db_pool, event_id, ev_world["bob"]["user_id"])
+    assert row["status"] == "checked_in"
+
+
+@pytest.mark.asyncio
+async def test_check_in_twice_keeps_first_timestamp(ev_world, client, db_pool):
+    """★★ สแกนซ้ำ = 200 + `already_checked_in` และ **เวลาครั้งแรกต้องไม่ถูกทับ**
+
+    เวลาที่เช็คอินคือ "เวลาที่คนนี้มาถึง" ไม่ใช่ "เวลาที่สแกนล่าสุด" — ถ้าเขียนทับ
+    หลักฐานการมาถึงจะเพี้ยนทุกครั้งที่มีคนสแกนรัว (ซึ่งเกิดตลอดหน้างาน)
+    """
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    token = _my_token(client, ev_world, event_id, "alice")
+
+    first = _check_in(client, ev_world, event_id, token=token)
+    assert first.status_code == 200
+    first_at = first.json()["checked_in_at"]
+    assert first.json()["already_checked_in"] is False
+
+    second = _check_in(client, ev_world, event_id, token=token)
+    assert second.status_code == 200, "สแกนซ้ำต้องไม่เป็น error"
+    assert second.json()["already_checked_in"] is True
+    assert second.json()["checked_in_at"] == first_at, "เวลาครั้งแรกถูกทับ"
+
+    row = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    assert row["checked_in_at"] == _as_utc(first_at)
+
+
+@pytest.mark.asyncio
+async def test_check_in_token_of_other_event_is_rejected(ev_world, client, db_pool):
+    """★★ บัตรข้ามงาน ⇒ **400 พร้อมข้อความที่บอกสาเหตุจริง** ไม่ใช่ 404
+
+    🧪 mutation proof (ปิดการเทียบ `event_id` ใน service): เทสต์นี้ตก และได้ **404**
+       ไม่ใช่การหลุดเข้าไปเช็คอินสำเร็จ ⇒ **การเทียบนี้ไม่ได้กันการบุกรุก** (คิวรีกรอง
+       `r.event_id` อยู่แล้ว) — มันซื้อ *ข้อความ* ให้สภาแยกออกว่า "เด็กหยิบบัตรผิดงาน"
+       กับ "ระบบหาข้อมูลไม่เจอ" ซึ่งนำไปสู่การแก้ปัญหาคนละทาง
+       (เขียนเหตุผลให้ตรงกับที่พิสูจน์ได้ ไม่ใช่ให้ดูขลัง — ดู CLAUDE.md เรื่องความซื่อสัตย์ของหลักฐาน)
+    """
+    a = _create(client, ev_world)["id"]
+    b = _create(client, ev_world)["id"]
+    _publish(client, ev_world, a)
+    _publish(client, ev_world, b)
+    _register(client, ev_world, a, "carol")
+    token = _my_token(client, ev_world, a, "carol")
+
+    res = _check_in(client, ev_world, b, token=token)
+    assert res.status_code == 400, res.text
+    assert "กิจกรรมอื่น" in res.json()["detail"]
+
+    # ใบที่งาน A ต้องยังไม่ถูกเช็คอิน (การปฏิเสธต้องไม่ทำอะไรข้าง ๆ)
+    assert (await _db_reg(db_pool, a, ev_world["carol"]["user_id"]))["status"] == "registered"
+
+
+@pytest.mark.asyncio
+async def test_check_in_forged_or_tampered_token_is_400(ev_world, client, db_pool):
+    """รหัสที่ถูกแก้ — ทั้งแก้ลายเซ็นและแก้เลขข้างใน ⇒ 400 และ DB ไม่ขยับ"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    token = _my_token(client, ev_world, event_id, "alice")
+    head, sig = token.rsplit(":", 1)
+
+    for bad in (
+        f"{head}:{'A' * len(sig)}",                     # ลายเซ็นมั่ว
+        f"{head}:{sig[:-1]}{'A' if sig[-1] != 'A' else 'B'}",  # พลิกไบต์เดียว
+        "PIRI-EVT1:1:1:deadbeefdeadbeefdeadbe",
+        token.replace("PIRI-EVT1", "PIRI-EVT9"),
+    ):
+        res = _check_in(client, ev_world, event_id, token=bad)
+        assert res.status_code == 400, f"{bad!r} ต้องโดน 400 แต่ได้ {res.status_code}"
+
+    assert (await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"]))["status"] == "registered"
+
+
+@pytest.mark.asyncio
+async def test_check_in_rejects_waitlisted_without_touching_db(ev_world, client, db_pool):
+    """★ คิวสำรองเช็คอินไม่ได้ — และการปฏิเสธต้องไม่แตะ DB เลย"""
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    _register(client, ev_world, event_id, "bob")   # เต็ม ⇒ waitlisted
+    reg = await _db_reg(db_pool, event_id, ev_world["bob"]["user_id"])
+    assert reg["status"] == "waitlisted"
+    before = await _count_notifications(db_pool)
+
+    res = _check_in(client, ev_world, event_id, registration_id=reg["id"])
+    assert res.status_code == 400, res.text
+    assert "คิวสำรอง" in res.json()["detail"]
+
+    row = await _db_reg(db_pool, event_id, ev_world["bob"]["user_id"])
+    assert row["status"] == "waitlisted"
+    assert row["checked_in_at"] is None
+    assert await _count_notifications(db_pool) == before, "การปฏิเสธต้องไม่แจ้งใคร"
+
+
+@pytest.mark.asyncio
+async def test_check_in_waitlisted_person_has_no_token(ev_world, client, db_pool):
+    """คนที่ยังไม่มีที่นั่ง **ไม่ได้รับบัตร** — สวิตช์เดียวกับที่ UI ใช้ตัดสินว่าจะโชว์บัตรไหม"""
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    _register(client, ev_world, event_id, "bob")
+
+    assert _my_token(client, ev_world, event_id, "alice"), "คนถือที่นั่งต้องได้บัตร"
+    assert _my_token(client, ev_world, event_id, "bob") is None, "คิวสำรองต้องไม่ได้บัตร"
+
+
+@pytest.mark.asyncio
+async def test_check_in_cancelled_registration_is_400(ev_world, client, db_pool):
+    """ใบที่ถูกยกเลิกแล้วเช็คอินไม่ได้ (ข้อความต้องต่างจากเคสคิวสำรอง — คนละทางแก้)"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    _cancel_reg(client, ev_world, event_id, "alice")
+
+    res = _check_in(client, ev_world, event_id, registration_id=reg["id"])
+    assert res.status_code == 400, res.text
+    assert "ยกเลิก" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_check_in_unknown_registration_is_404(ev_world, client):
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+
+    res = _check_in(client, ev_world, event_id, registration_id=999999999)
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_check_in_registration_of_other_event_is_404(ev_world, client, db_pool):
+    """ใบของงาน A กดมือที่งาน B ⇒ 404 (ไม่ใช่ 200) — กัน `registration_id` ข้ามงาน"""
+    a = _create(client, ev_world)["id"]
+    b = _create(client, ev_world)["id"]
+    _publish(client, ev_world, a)
+    _publish(client, ev_world, b)
+    _register(client, ev_world, a, "alice")
+    reg = await _db_reg(db_pool, a, ev_world["alice"]["user_id"])
+
+    assert _check_in(client, ev_world, b, registration_id=reg["id"]).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_check_in_deleted_event_is_404(ev_world, client, db_pool):
+    """กิจกรรมที่ถูกลบ ⇒ 404 ให้ตรงกับ `list_registrations` (ไม่ให้เช็คอินเข้าข้อมูลผี)"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    res = client.delete(f"/api/events/{event_id}", headers=_auth(ev_world))
+    assert res.status_code == 200
+
+    assert _check_in(client, ev_world, event_id, registration_id=reg["id"]).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_check_in_body_needs_exactly_one_field(ev_world, client, db_pool):
+    """ส่งทั้งคู่ / ไม่ส่งอะไรเลย ⇒ 422 (ไม่เดาเจตนาให้ผู้ใช้)"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    token = _my_token(client, ev_world, event_id, "alice")
+
+    assert _check_in(client, ev_world, event_id).status_code == 422
+    assert _check_in(client, ev_world, event_id, token=token, registration_id=reg["id"]).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_check_in_does_not_change_seat_count_or_queue(ev_world, client, db_pool):
+    """★★ `checked_in` ยังนับเป็น **คนถือที่นั่ง** — เช็คอินต้องไม่ทำให้ที่นั่งว่างหรือเลื่อนคิว
+
+    (กับดักที่แผน §4.1 เตือนไว้: ถ้ามีใครถอด `'checked_in'` ออกจากชุด `status IN (...)`
+     ที่นับที่นั่ง ⇒ เช็คอินคนแรกแล้วระบบจะเห็นที่นั่งว่าง ⇒ เลื่อนคิวเกินจริง)
+    """
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    _register(client, ev_world, event_id, "bob")
+
+    assert _check_in(client, ev_world, event_id, registration_id=(
+        await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    )["id"]).status_code == 200
+
+    assert (await _db_reg(db_pool, event_id, ev_world["bob"]["user_id"]))["status"] == "waitlisted", (
+        "เช็คอินไม่ใช่การถอน ⇒ คิวต้องไม่ขยับ"
+    )
+    public = client.get(f"/api/events/public/{event_id}", headers=_auth(ev_world, "bob")).json()
+    assert public["registered_count"] == 1, "คนที่เช็คอินแล้วยังนับเป็นผู้ถือที่นั่ง"
+    assert public["seats_remaining"] == 0
+
+
+@pytest.mark.asyncio
+async def test_checked_in_person_cancel_promotes_next(ev_world, client, db_pool):
+    """★ เช็คอินแล้วถอน ⇒ ยังต้องเลื่อนคิวให้คนถัดไป (พิสูจน์ว่า `checked_in` อยู่ในชุด "ถือที่นั่ง" ของ `cancel_registration` ด้วย)"""
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    _register(client, ev_world, event_id, "bob")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    _check_in(client, ev_world, event_id, registration_id=reg["id"])
+
+    res = _cancel_reg(client, ev_world, event_id, "alice")
+    assert res.status_code == 200, res.text
+
+    assert (await _db_reg(db_pool, event_id, ev_world["bob"]["user_id"]))["status"] == "registered"
+    assert await _notified_ids(db_pool, "event_waitlist_promoted") == [ev_world["bob"]["user_id"]]
+
+
+@pytest.mark.asyncio
+async def test_check_in_sends_no_notification(ev_world, client, db_pool):
+    """★ เช็คอินต้องเงียบ — นักเรียนยืนอยู่ตรงหน้าสภาอยู่แล้ว"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    before = await _count_notifications(db_pool)
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+
+    assert _check_in(client, ev_world, event_id, registration_id=reg["id"]).status_code == 200
+    assert await _count_notifications(db_pool) == before
+    assert await _count(db_pool, "push_outbox") == 0
+
+
+@pytest.mark.asyncio
+async def test_check_in_token_is_stable_across_calls(ev_world, client):
+    """บัตรใบเดิมต้องได้รหัสเดิมทุกครั้งที่เปิดดู — ไม่งั้นนักเรียนที่แคปจอไว้ถือบัตรคนละใบกับหน้าเว็บ"""
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+
+    first = _my_token(client, ev_world, event_id, "alice")
+    assert first == _my_token(client, ev_world, event_id, "alice")
+
+
+@pytest.mark.asyncio
+async def test_register_response_carries_token_immediately(ev_world, client):
+    """★ สมัครเสร็จต้องได้บัตรทันทีในคำตอบเดียว — ไม่ต้องยิง `my-registration` ซ้ำอีกรอบ
+
+    (สำคัญกับคนที่สมัครตอนเน็ตช้า: หน้า detail ใช้คำตอบนี้วาดบัตรได้เลย)
+    """
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    body = _register(client, ev_world, event_id, "alice").json()
+    assert body["status"] == "registered"
+    assert body["check_in_token"]
+
+    # คิวสำรอง — ต้องเป็น None
+    full = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, full)
+    _register(client, ev_world, full, "alice")
+    wl = _register(client, ev_world, full, "bob").json()
+    assert wl["status"] == "waitlisted"
+    assert wl["check_in_token"] is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_clears_checked_in_at_but_keeps_it_in_audit(ev_world, client, db_pool):
+    """★★ ถอนหลังเช็คอิน ⇒ `checked_in_at` ถูกล้าง **แต่ค่าที่ล้างต้องไม่หายไปจากหลักฐาน**
+
+    ⭐ invariant ของตารางนี้คือ **`checked_in_at IS NOT NULL` ⟺ `status = 'checked_in'`**
+       ⇒ ถ้าปล่อยค่าเก่าค้าง แถว `cancelled` จะมี "เวลาที่มาถึง" ติดมาด้วย แล้วคำถาม
+       "คนนี้เช็คอินหรือยัง" จะตอบได้สองแบบที่ขัดกัน (ดู `status` หรือดู `checked_in_at`)
+       ⇒ **การถอนคือจุดที่ invariant นี้พังได้ง่ายที่สุด** และพังเงียบ (ไม่มีอะไร error)
+
+    ⚠️ แต่การล้างค่าเฉย ๆ = **ทำลายหลักฐานว่า "คนนี้เคยมาถึงกี่โมง"** ซึ่งเป็นข้อมูลที่
+       โรงเรียนต้องใช้ตอบย้อนหลัง (มาสาย/มาแต่ถอนกลางงาน) · ตารางเก็บไม่ได้แล้วก็ต้องเก็บ
+       ใน log ⇒ เทสต์นี้จึงยืนยัน **ทั้งสองครึ่ง**: คอลัมน์ว่าง และ `old_values` ยังมีค่าเดิม
+       (ครึ่งหลังคือครึ่งที่ลืมกันบ่อย — ล้างแล้วคิดว่าเสร็จ)
+    """
+    event_id = _create(client, ev_world)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+
+    assert _check_in(client, ev_world, event_id, registration_id=reg["id"]).status_code == 200
+    checked_in_at = (await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"]))["checked_in_at"]
+    assert checked_in_at is not None
+
+    assert _cancel_reg(client, ev_world, event_id, "alice").status_code == 200
+
+    row = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    assert row["status"] == "cancelled"
+    assert row["checked_in_at"] is None, "invariant พัง — แถวที่ถอนแล้วยังมีเวลาที่เช็คอินค้างอยู่"
+
+    async with db_pool.acquire() as conn:
+        audit = await conn.fetchrow(
+            """
+            SELECT * FROM audit_logs
+            WHERE action = 'UNREGISTER_EVENT' AND entity_id = $1
+            ORDER BY id DESC LIMIT 1
+            """,
+            str(event_id),
+        )
+    assert audit is not None
+    # ⭐ หลักฐานต้องรอด — ล้างคอลัมน์ได้ แต่ต้องเหลือร่องรอยว่าล้างอะไรทิ้ง
+    assert json.loads(audit["old_values"])["checked_in_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_re_register_clears_checked_in_at_from_the_previous_round(ev_world, client, db_pool):
+    """★★ สมัครใหม่บนแถวเดิม (unique index ⇒ ไม่มีแถวใหม่) ต้องไม่ลากเวลาที่เช็คอินของ **รอบก่อน** มาด้วย
+
+    ⭐ แถวนี้คือกับดักของ invariant: `register_event` เขียนทับ `status` เป็น `registered`
+       แต่ถ้าไม่ได้ล้าง `checked_in_at` ไปพร้อมกัน แถวสถานะ `registered` จะมีเวลาที่เช็คอิน
+       ค้างอยู่ ⇒ UI ที่อ่าน `checked_in_at` (แทน `status`) จะโชว์ "เช็คอินแล้ว" ให้คนที่
+       **ยังไม่ได้เช็คอินในรอบนี้** — และจะไม่มีใครรู้จนถึงวันงาน
+
+    ⚠️ คำตอบของ API ก็ต้องตรงกันด้วย ไม่ใช่แค่ DB — frontend ใช้ body ของ `register` วาดบัตร
+       ทันที (ไม่ยิง `my-registration` ซ้ำ) ⇒ ถ้า service คืน `None` ลอย ๆ ขณะที่ DB ยังมีค่าเก่า
+       สองที่จะเถียงกัน แล้วบัตรที่โชว์จะผิดโดยที่เทสต์ DB-only จับไม่ได้
+    """
+    event_id = _create(client, ev_world, capacity=1)["id"]
+    _publish(client, ev_world, event_id)
+    _register(client, ev_world, event_id, "alice")
+    reg = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    assert _check_in(client, ev_world, event_id, registration_id=reg["id"]).status_code == 200
+
+    assert _cancel_reg(client, ev_world, event_id, "alice").status_code == 200
+
+    # เติมที่นั่งให้ bob ก่อน ⇒ alice ที่กลับมาต้องได้ waitlisted ไม่ใช่ registered
+    # (ยังต้องล้างค่าเหมือนกัน — คนละสถานะแต่แถวเดียวกัน)
+    _register(client, ev_world, event_id, "bob")
+
+    res = _register(client, ev_world, event_id, "alice")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status"] == "waitlisted"
+    assert body["checked_in_at"] is None, "คำตอบของ API ต้องบอกว่า 'ยังไม่เช็คอิน'"
+
+    row = await _db_reg(db_pool, event_id, ev_world["alice"]["user_id"])
+    assert row["id"] == reg["id"], "ต้องเป็นแถวเดิม ไม่ใช่แถวใหม่"
+    assert row["checked_in_at"] is None, "เวลาที่เช็คอินของรอบก่อนค้างอยู่ในแถวใหม่"
+
+
+# ============================================================
+# 11) D4 — หมวดกิจกรรม (`category`)
+# ============================================================
+#
+# ⭐ หัวใจที่ต้องพิสูจน์ (ไม่ใช่แค่ "ส่งค่าไปแล้วได้ค่าเดิม"):
+#
+#   1. **ค่าไม่ถูกทิ้งเงียบ ๆ** — แผนเตือนไว้ตรง ๆ ว่า `_EDITABLE_COLUMNS` เป็น allowlist
+#      ⇒ เพิ่มคอลัมน์แล้วไม่แตะ `_ROW_COLUMNS` **และ** schema ⇒ เขียนลง DB ได้แต่อ่านไม่ขึ้น
+#      ซึ่งเป็นความผิดที่ **เทสต์ที่ดูแค่ HTTP 200 จับไม่ได้** (200 = "สำเร็จ" ทั้งที่ค่าหาย)
+#      ⇒ ทุกเทสต์ที่นี่อ่าน **DB ตรง ๆ** ประกอบเสมอ
+#   2. **ตัวกรองหมายถึงสิ่งที่พูด** — `None` = ทุกหมวด **ไม่ใช่** หมวด `other`
+#      (เป็นบั๊กคลาสสิกของ `if category:` กับ `if category is not None:`)
+#   3. **CHECK ที่ DB ทำงานจริง** — พิสูจน์ด้วยการ INSERT ค่าที่ผิด **ตรงเข้าไปในตาราง**
+#      เพราะชั้น API กรองไว้ก่อนถึง DB ⇒ ถ้าดูแค่ HTTP จะไม่รู้เลยว่าด่าน DB มีอยู่จริง
+
+# ค่าที่ระบบรู้จัก — ต้องตรงกับ `EventCategory` (backend) และ `EVENT_CATEGORIES` (frontend)
+_KNOWN_CATEGORIES = ("academic", "sports", "arts", "service", "club", "meeting", "other")
+
+
+async def _db_category(db_pool, event_id):
+    async with db_pool.acquire() as conn:
+        return await conn.fetchval("SELECT category FROM events WHERE id = $1", event_id)
+
+
+async def _count_events(db_pool):
+    async with db_pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM events")
+
+
+@pytest.mark.asyncio
+async def test_create_without_category_defaults_to_other(ev_world, client, db_pool):
+    """ไม่ส่ง `category` มา ⇒ ได้ `other` **ใน DB จริง** (ไม่ใช่แค่ใน response)
+
+    ⭐ สัญญาที่สำคัญคือ "สร้างกิจกรรมได้เหมือนเดิม" — ฟอร์ม/สคริปต์เดิมที่ไม่มีฟิลด์นี้
+       ต้องไม่พัง (คอลัมน์เป็น `NOT NULL` ⇒ ถ้า default หลุด จะได้ 500 ไม่ใช่ 400)
+    """
+    event_id = _create(client, ev_world)["id"]
+    assert await _db_category(db_pool, event_id) == "other"
+
+
+@pytest.mark.asyncio
+async def test_create_and_patch_category_round_trip(ev_world, client, db_pool):
+    """★★ เทสต์หลักของ D4 — สร้างด้วยหมวดหนึ่ง แก้เป็นอีกหมวด แล้ว **อ่านจาก DB**
+
+    ตรึงกับดัก "ค่าถูกทิ้งเงียบ ๆ" ทั้งสองทาง:
+      · ขาเขียน — `_EDITABLE_COLUMNS` ต้องมี `category` ไม่งั้น PATCH จะไม่เขียนอะไรเลย
+      · ขาอ่าน — `_ROW_COLUMNS` + `EventOut` ต้องมี ไม่งั้น response จะคืน `other` ลอย ๆ
+        (ค่า default ของ schema) แทนค่าจริง — ซึ่ง **ดูเหมือนสำเร็จ** ทุกประการ
+    """
+    created = _create(client, ev_world, category="sports")
+    event_id = created["id"]
+    assert created["category"] == "sports"
+    assert await _db_category(db_pool, event_id) == "sports"
+
+    res = client.patch(
+        f"/api/events/{event_id}", json={"category": "arts"}, headers=_auth(ev_world)
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["category"] == "arts"
+    assert await _db_category(db_pool, event_id) == "arts"
+
+    # อ่านซ้ำผ่าน GET — พิสูจน์ว่าค่ามาจากคอลัมน์จริง ไม่ใช่ค่าที่ค้างอยู่ใน response ของ PATCH
+    fetched = client.get(f"/api/events?status=live", headers=_auth(ev_world)).json()
+    row = next(i for i in fetched["items"] if i["id"] == event_id)
+    assert row["category"] == "arts"
+
+
+@pytest.mark.asyncio
+async def test_unknown_category_is_rejected_with_422_not_500(ev_world, client, db_pool):
+    """🚨 ค่าที่ DB ไม่รู้จักต้องได้ **422 พร้อมข้อความที่อ่านออก** ไม่ใช่ 500 จาก CHECK violation
+
+    ⭐ นี่คือเหตุผลที่ต้องมี `EventCategory` (Literal) **ทั้งที่มี CHECK ที่ DB แล้ว** —
+       สองชั้นทำคนละอย่าง: DB กันข้อมูลเสียถาวร · schema แปลงเป็นคำตอบที่ผู้ใช้อ่านออก
+       ⇒ ถ้าถอด Literal ออก เทสต์นี้จะได้ 500 (asyncpg CheckViolationError หลุดเป็น
+         unexpected error ที่ router ไม่ได้ดัก) ซึ่ง **ไม่มีใครรู้ว่าต้องแก้ตรงไหน**
+
+    ⚠️ **422 ไม่ใช่ 400 โดยเจตนา** — เป็นการตรวจที่ชั้น schema (body) ซึ่งทั้งระบบใช้ 422
+       เหมือนกันหมด (`test_create_validation_422` · `test_list_events_bad_status_is_422`)
+       ⇒ ผู้ใช้เห็นข้อความไทยจาก `api.ts` ที่แปลง `detail[]` ให้อยู่แล้ว
+       · ส่วน **query param** ของตัวกรองก็ 422 เช่นกัน (มาจาก `pattern=` ที่ router
+         ไม่ใช่จาก service) — ดู `test_unknown_category_filter_is_422_on_both_lists`
+
+    ⚠️ และต้องไม่มีแถวถูกสร้างด้วย — การปฏิเสธต้องไม่ทิ้งขยะไว้
+    """
+    before = await _count_events(db_pool)
+
+    res = client.post(
+        "/api/events", json=_body(category="ท่องเที่ยว"), headers=_auth(ev_world)
+    )
+    assert res.status_code == 422, res.text
+    assert await _count_events(db_pool) == before
+
+    event_id = _create(client, ev_world)["id"]
+    patched = client.patch(
+        f"/api/events/{event_id}", json={"category": "ไม่รู้จัก"}, headers=_auth(ev_world)
+    )
+    assert patched.status_code == 422, patched.text
+    assert await _db_category(db_pool, event_id) == "other", "ค่าของเดิมต้องไม่ถูกแตะ"
+
+
+@pytest.mark.asyncio
+async def test_patch_category_null_is_422_and_leaves_value_untouched(ev_world, client, db_pool):
+    """`category: null` = คำขอที่ทำไม่ได้ ⇒ **422** ไม่ใช่ 500 (NotNullViolation)
+
+    ⚠️ คอลัมน์เป็น `NOT NULL` ⇒ ถ้าปล่อย `null` ผ่าน schema ไปถึง SQL จะได้
+       `NotNullViolationError` = 500 ซึ่งอ่านไม่ออกว่าใครผิด
+       · ต่างจาก `location`/`capacity` ที่ `null` มีความหมายว่า "ล้างค่า" จริง ๆ
+       · เทสต์นี้จึงต้องคู่กับการยืนยันว่า **ค่าเดิมยังอยู่** — ไม่ใช่แค่ "ไม่พัง"
+
+    📌 เทสต์นี้คือด่านของ `_reject_null_category` — pydantic v2 **ไม่เรียก validator
+       เมื่อฟิลด์ไม่ถูกส่งมา** ⇒ ตัวนั้นยิงเฉพาะตอนได้ `null` มาจริง ๆ ซึ่งเทสต์นี้พิสูจน์
+       · และมีเทสต์คู่กันที่พิสูจน์ว่า **"ไม่ส่ง" ยังคงทำงานถูก** (ค่าคงเดิม) —
+         `test_create_and_patch_category_round_trip` ส่ง `{"category": "arts"}` เท่านั้น
+    """
+    event_id = _create(client, ev_world, category="club")["id"]
+
+    res = client.patch(
+        f"/api/events/{event_id}", json={"category": None}, headers=_auth(ev_world)
+    )
+    assert res.status_code == 422, res.text
+    assert await _db_category(db_pool, event_id) == "club"
+
+
+@pytest.mark.asyncio
+async def test_category_filter_distinguishes_none_from_other(ev_world, client, db_pool):
+    """★ `category=None` (ไม่ส่งมา) = **ทุกหมวด** · `category=other` = **เฉพาะ other**
+
+    🚨 กับดักที่เทสต์นี้จับ: เขียน `if category:` แทน `if category is not None:`
+       ⇒ สตริงว่างจะกลายเป็น "ไม่กรอง" (ซึ่งบังเอิญถูก) แต่โค้ดที่เผลอเขียน
+         `if category != "other"` หรือใช้ `or` ในการเลือกค่า จะรวมสองความหมายเข้าด้วยกัน
+       · ที่เจ็บจริงคือผู้ใช้ที่ **อยากดูเฉพาะ "อื่น ๆ"** แล้วได้ทั้งหมดแทน — ซึ่ง
+         "ดูเหมือนทำงาน" เพราะได้รายการมาแสดงเต็มไปหมด
+    """
+    sports_id = _create(client, ev_world, category="sports", title="แข่งกีฬา")["id"]
+    other_id = _create(client, ev_world, category="other", title="อื่น ๆ")["id"]
+
+    async def ids(**params):
+        res = client.get("/api/events?status=live", params=params, headers=_auth(ev_world))
+        assert res.status_code == 200, res.text
+        return {i["id"] for i in res.json()["items"]}
+
+    every = await ids()
+    assert {sports_id, other_id} <= every, "ไม่ส่ง category ⇒ ต้องได้ทุกหมวด"
+
+    only_other = await ids(category="other")
+    assert other_id in only_other
+    assert sports_id not in only_other, (
+        "กรอง 'other' แล้วยังเห็นหมวดอื่น — นี่คืออาการของ `if category:` ที่หลุด"
+    )
+
+    only_sports = await ids(category="sports")
+    assert only_sports == {sports_id}
+
+
+@pytest.mark.asyncio
+async def test_unknown_category_filter_is_422_on_both_lists(ev_world, client, db_pool):
+    """กรองด้วยหมวดที่ไม่มีอยู่ **ไม่ใช่** "ได้ลิสต์ว่าง" — ต้องเป็น 422
+
+    ⚠️ สองอย่างนี้ผู้ใช้ตีความต่างกันมาก: ลิสต์ว่างอ่านได้ว่า "ไม่มีกิจกรรมหมวดนี้"
+       ซึ่งเป็นข้อมูลที่ผิด ⇒ ต้องบอกว่า "คำขอผิด" ไม่ใช่ "ไม่มีข้อมูล"
+       (หลักเดียวกับ `scope`/`status` ที่ปฏิเสธด้วย 422 ผ่าน `pattern=` เหมือนกัน)
+
+    ⭐ เทสต์นี้ยิง **ทั้งสอง endpoint** โดยเจตนา — pattern ถูกประกาศเป็น `_CATEGORY_PATTERN`
+       ตัวเดียวแล้วอ้างสองที่ ⇒ ถ้ามีคนเผลอเขียน regex ซ้ำเฉพาะที่ใดที่หนึ่ง
+       (ซึ่งจะเพี้ยนจาก `EventCategory` ทันทีที่มีคนเพิ่มหมวด) ที่นี่จะจับได้
+    """
+    _create(client, ev_world)
+
+    for url in ("/api/events?status=live", "/api/events/public?scope=all"):
+        res = client.get(url, params={"category": "quidditch"}, headers=_auth(ev_world))
+        assert res.status_code == 422, f"{url} → {res.status_code}: {res.text}"
+
+
+@pytest.mark.asyncio
+async def test_public_list_carries_and_filters_category(ev_world, client, db_pool):
+    """ฝั่งนักเรียนก็เห็นหมวด และกรองได้ — ใช้ตัวกรอง **คนละชุด param** กับฝั่งจัดการ
+
+    ⚠️ ฝั่ง public มี `_MY_REG_JOIN` จอง `$1` ไว้ ⇒ เลข placeholder ของ count กับ rows
+       **ไม่เท่ากัน** (ดู `_envelope`) ⇒ เทสต์นี้คือด่านที่จับ "สลับเลข placeholder"
+       ซึ่งจะพังเป็น `the server expects N arguments` — แต่ถ้าเลขบังเอิญตรงกัน
+       (เช่นตอนไม่ส่ง category) ก็จะผ่าน ⇒ ต้องยิง **ทั้งตอนกรองและตอนไม่กรอง**
+    """
+    meeting_id = _create(client, ev_world, category="meeting")["id"]
+    service_id = _create(client, ev_world, category="service")["id"]
+    for eid in (meeting_id, service_id):
+        _publish(client, ev_world, eid)
+
+    all_res = client.get("/api/events/public?scope=all", headers=_auth(ev_world, "alice"))
+    assert all_res.status_code == 200, all_res.text
+    assert {i["id"] for i in all_res.json()["items"]} >= {meeting_id, service_id}
+
+    filtered = client.get(
+        "/api/events/public?scope=all",
+        params={"category": "meeting"},
+        headers=_auth(ev_world, "alice"),
+    )
+    assert filtered.status_code == 200, filtered.text
+    body = filtered.json()
+    assert {i["id"] for i in body["items"]} == {meeting_id}
+    # ⚠️ `total` ต้องถูกกรองด้วย ไม่ใช่ยอดรวมทั้งตาราง — ตัวนับผิดจะทำให้ UI แสดง
+    #    "มี 2 รายการ" ทั้งที่โชว์ 1 แถว (และ pagination เพี้ยน)
+    assert body["total"] == 1
+    assert body["items"][0]["category"] == "meeting"
+
+
+@pytest.mark.asyncio
+async def test_db_check_constraint_rejects_unknown_category(db_pool):
+    """🔒 พิสูจน์ **CHECK ที่ฐานข้อมูล** — ยิง INSERT ตรงเข้าตาราง ข้ามชั้น API
+
+    ⭐ ทำไมต้องมีเทสต์นี้ทั้งที่ชั้น API กรองแล้ว: `EventCategory` เป็น **โค้ด Python**
+       ซึ่งกันได้เฉพาะเส้นทางที่ผ่าน Pydantic · ส่วน `CHECK` เป็น **สัญญาของข้อมูล**
+       ที่กันทุกเส้นทาง (สคริปต์, seed, psql, หรือโค้ดในอนาคตที่ลืมใช้ schema)
+       ⇒ ถ้าเทสต์นี้หายไป การเผลอลบ CHECK จะไม่มีอะไรจับได้เลย
+
+    ⚠️ เทสต์นี้จะไม่มีทางผ่านถ้า CHECK ถูกถอด — และจะไม่ผ่านถ้าใส่ค่าได้ (นั่นคือประเด็น)
+    """
+    async with db_pool.acquire() as conn:
+        uid = await conn.fetchval("SELECT id FROM users LIMIT 1")
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(
+                """
+                INSERT INTO events (title, event_date, category, created_by)
+                VALUES ('หมวดเถื่อน', NOW() + INTERVAL '1 day', 'quidditch', $1)
+                """,
+                uid,
+            )
+        # และค่า NULL ก็ต้องไม่ผ่านเช่นกัน — คอลัมน์เป็น NOT NULL
+        with pytest.raises(asyncpg.NotNullViolationError):
+            await conn.execute(
+                """
+                INSERT INTO events (title, event_date, category, created_by)
+                VALUES ('ไม่มีหมวด', NOW() + INTERVAL '1 day', NULL, $1)
+                """,
+                uid,
+            )
+
+
+@pytest.mark.asyncio
+async def test_migration_026_is_idempotent_and_backfills_by_default(ev_world, client, db_pool):
+    """★★ migration 026 รันซ้ำได้ และ **ไม่ต้องมี UPDATE backfill** เลย
+
+    ⭐ สองข้อที่พิสูจน์ที่นี่ (ที่อื่นพิสูจน์ไม่ได้):
+
+      1. **`upgrade()` รันซ้ำไม่ error** — ๓ คำสั่งของ 026 เป็น
+         `DROP CONSTRAINT IF EXISTS` → `ADD COLUMN IF NOT EXISTS` → `ADD CONSTRAINT`
+         ⚠️ `ADD CONSTRAINT` **ไม่ idempotent** (ตัวอื่นมี `IF EXISTS`/`IF NOT EXISTS` คุมไว้)
+         ⇒ ลำดับนี้เท่านั้นที่ปลอดภัย · ถ้ามีคนสลับหรือถอด `DROP` ออก
+         การรัน migration ซ้ำ (เช่นบน DB ที่สร้างจาก `init_db.py` ซึ่งมี constraint อยู่แล้ว)
+         จะพังด้วย `constraint already exists` — และพัง **ตอน deploy** ไม่ใช่ตอนเทสต์ปกติ
+
+      2. **แถวที่มีอยู่ก่อนได้ `'other'` จาก DEFAULT ไม่ใช่ NULL** — เอกสารของ 026 อ้างว่า
+         "ไม่ต้อง backfill" · คำอ้างนั้นจะกลายเป็นเท็จทันทีที่ใครเปลี่ยน `NOT NULL DEFAULT 'other'`
+         เป็นคอลัมน์ที่ nullable หรือ `ADD COLUMN category` เฉย ๆ (ซึ่งจะได้ NULL กับทุกแถว
+         แล้ว `EventOut` จะคืน `null` ไปให้นักเรียนเห็นช่องว่าง)
+
+    ⚠️ ทำใน transaction แล้ว **rollback** (แบบเดียวกับ `test_migration_025_recreates_schema_when_missing`)
+       — DDL ใน PostgreSQL เป็น transactional ⇒ ถอยกลับได้จริง ไม่ทิ้งสภาพให้เทสต์ไฟล์อื่นพัง
+    """
+    mig = importlib.import_module("migrations.026_event_category")
+
+    # สร้าง "แถวที่มีมาก่อน migration" — ต้องอยู่นอก tx ที่เราจะ rollback ไม่งั้นหายไปด้วย
+    event_id = _create(client, ev_world, category="sports")["id"]
+
+    async with db_pool.acquire() as conn:
+        tx = conn.transaction()
+        await tx.start()
+        try:
+            # ย้อนสภาพกลับเป็น "DB ก่อน 026" — ไม่มีทั้งคอลัมน์และ constraint
+            await conn.execute("ALTER TABLE events DROP CONSTRAINT IF EXISTS chk_events_category")
+            await conn.execute("ALTER TABLE events DROP COLUMN IF EXISTS category")
+            assert (
+                await conn.fetchval(
+                    """
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_name = 'events' AND column_name = 'category'
+                    """
+                )
+                == 0
+            )
+
+            await mig.upgrade(conn)
+            await mig.upgrade(conn)  # ← หัวใจ: รันซ้ำต้องไม่ error
+
+            col = await conn.fetchrow(
+                """
+                SELECT is_nullable, column_default FROM information_schema.columns
+                WHERE table_name = 'events' AND column_name = 'category'
+                """
+            )
+            assert col is not None, "026 ต้องสร้างคอลัมน์ category"
+            assert col["is_nullable"] == "NO", "คอลัมน์ต้องเป็น NOT NULL"
+            assert "other" in (col["column_default"] or ""), (
+                "ต้องมี DEFAULT 'other' — ไม่มีแล้วแถวเดิมจะได้ NULL"
+            )
+
+            constraints = {
+                r["conname"]
+                for r in await conn.fetch(
+                    "SELECT conname FROM pg_constraint WHERE conrelid = 'events'::regclass"
+                )
+            }
+            assert "chk_events_category" in constraints
+
+            # ⭐ แถวที่สร้างไว้ **ก่อน** คอลัมน์มีอยู่ ต้องได้ 'other' จาก DEFAULT เอง
+            assert (
+                await conn.fetchval("SELECT category FROM events WHERE id = $1", event_id) == "other"
+            ), "แถวเดิมต้องไม่เป็น NULL — นี่คือเหตุผลที่ 026 ไม่ต้องมี UPDATE backfill"
+        finally:
+            await tx.rollback()
+
+    # ถอยกลับจริง — ค่าที่เทสต์สร้างไว้ยังอยู่และยังเป็นค่าที่ตั้งไว้
+    assert await _db_category(db_pool, event_id) == "sports"

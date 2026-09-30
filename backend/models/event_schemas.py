@@ -16,9 +16,9 @@
 (แถวเดียวพังทั้งหน้า) โดยไม่ได้อะไรกลับมา ⇒ **input เข้ม · output หลวมโดยเจตนา**
 """
 from datetime import datetime, timedelta, timezone
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, get_args
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ต้องตรงกับ CHECK constraint `chk_events_status` ใน migration 025 / init_db
 EventStatus = Literal["draft", "published", "cancelled"]
@@ -30,6 +30,29 @@ EventStatus = Literal["draft", "published", "cancelled"]
 #    จาก `piri_boards.board_type` ที่ E1 ต้องไป DROP CONSTRAINT) ⇒ ใส่รอไว้เลยฟรี
 #    โดยที่ service ยังไม่เคยเขียนค่านี้
 RegistrationStatus = Literal["registered", "waitlisted", "cancelled", "checked_in"]
+
+# ต้องตรงกับ CHECK constraint `chk_events_category` (migration 026 / init_db)
+#
+# ⚠️ **สัญญา 4 ทาง** — เพิ่มหมวดใหม่ต้องแก้ให้ครบทั้ง 4 ที่ (ไม่งั้นมีที่ใดที่หนึ่งเพี้ยน):
+#   1. `migrations/026_event_category.py` — `CATEGORIES` + migration ใหม่ (CHECK ตายตัว)
+#   2. `core/init_db.py` — CHECK ใน CREATE TABLE (mirror)
+#   3. ที่นี่ (`EventCategory`) — ด่านที่ชั้น API ⇒ 400 พร้อมข้อความไทย แทน 500 จาก DB
+#   4. `frontend/src/types/event.ts` (`EVENT_CATEGORIES`) — ป้ายไทย + ตัวกรอง
+#
+# ⭐ ทำไมต้องมี Literal ที่นี่ **ทั้งที่มี CHECK ที่ DB แล้ว** — CHECK ให้ 500
+#    (asyncpg CheckViolationError) ซึ่งผู้ใช้เห็นเป็น "เซิร์ฟเวอร์พัง" · ที่นี่ให้ 400
+#    พร้อมข้อความที่อ่านออก ⇒ สองชั้นนี้ไม่ได้ซ้ำกัน แต่ทำหน้าที่คนละอย่าง
+EventCategory = Literal[
+    "academic", "sports", "arts", "service", "club", "meeting", "other"
+]
+
+# ลิสต์เดียวกับ `EventCategory` ในรูป tuple — สำหรับโค้ดที่ต้อง **วน/ตรวจด้วยค่าจริง**
+# (เช่นสร้างเงื่อนไข SQL) ซึ่งทำกับ `Literal` ตรง ๆ ไม่ได้
+#
+# ⭐ **สกัดจาก `Literal` เอง ไม่ได้พิมพ์ซ้ำ** (แบบเดียวกับที่ `board_schemas.REPORT_REASONS`
+#    เป็น tuple เดี่ยว ๆ แล้ว service import ไปใช้) ⇒ เพิ่มหมวดที่ `EventCategory` ที่เดียว
+#    แล้วที่นี่ตามมาเอง **ไม่มีทางที่สองที่จะเพี้ยนจากกัน**
+EVENT_CATEGORIES: tuple = get_args(EventCategory)
 
 # เขตเวลาโรงเรียน — ใช้ตัวเดียวกับ `dashboard_service.BKK` / `issue_countdowns`
 BKK = timezone(timedelta(hours=7))
@@ -109,6 +132,9 @@ class EventCreateRequest(BaseModel):
     registration_deadline: Optional[datetime] = None
     # None = ไม่จำกัดจำนวน · 0 **ไม่ใช่** "ไม่จำกัด" (CHECK `capacity > 0` กันไว้)
     capacity: Optional[int] = Field(None, ge=1, le=100000)
+    # ⭐ มีค่า default = ไม่ส่งมาก็ได้ — คอลัมน์เป็น `NOT NULL DEFAULT 'other'` ⇒
+    #    กิจกรรมที่ไม่ได้เลือกหมวดยังสร้างได้ (ฟอร์มเก่า/การเรียก API ตรง ๆ ไม่พัง)
+    category: EventCategory = "other"
 
     @field_validator("title")
     @classmethod
@@ -155,6 +181,25 @@ class EventUpdateRequest(BaseModel):
     event_date: Optional[datetime] = None
     registration_deadline: Optional[datetime] = None
     capacity: Optional[int] = Field(None, ge=1, le=100000)
+    # ⚠️ **`category` ไม่รับ `null`** (ต่างจาก `location`/`capacity` ที่ null = ล้างค่า)
+    #    เพราะคอลัมน์เป็น `NOT NULL` ⇒ ถ้าปล่อยผ่าน จะไปพังที่ DB เป็น
+    #    `NotNullViolationError` = **500** ซึ่งอ่านไม่ออกว่าใครผิด (ดู `_reject_null_category`)
+    category: Optional[EventCategory] = None
+
+    @field_validator("category")
+    @classmethod
+    def _reject_null_category(cls, v: Optional[str]) -> Optional[str]:
+        """🚨 `category: null` ต้องได้ **400 ไม่ใช่ 500**
+
+        ⚠️ pydantic v2 **ไม่เรียก validator เมื่อฟิลด์ไม่ถูกส่งมา** (ต่างจากเรียกด้วย
+           `None`) ⇒ ตัวนี้ทำงานเฉพาะตอนผู้เรียกส่ง `null` มาจริง ๆ ซึ่งเป็นสิ่งที่ต้องปฏิเสธ
+           · "ไม่ส่งมา" = คงค่าเดิม (ถูกต้อง — `exclude_unset` ที่ router)
+           · "ส่ง null มา" = คำขอที่ขอสิ่งที่ทำไม่ได้ (หมวดต้องมีค่าเสมอ)
+        ⇒ ไม่มีทาง "ล้างหมวด" ได้โดยเจตนา การจะเลิกระบุหมวดให้ส่ง `"other"` มาแทน
+        """
+        if v is None:
+            raise ValueError("หมวดกิจกรรมต้องมีค่าเสมอ (ถ้าไม่ระบุให้ส่ง 'other')")
+        return v
 
     @field_validator("title")
     @classmethod
@@ -202,6 +247,10 @@ class EventOut(BaseModel):
     event_date: datetime
     registration_deadline: Optional[datetime] = None
     capacity: Optional[int] = None
+    # ⚠️ ประกาศเป็น `str` ไม่ใช่ `EventCategory` — **แบบเดียวกับ `status` ด้านล่าง**
+    #    ⇒ ค่าที่ไม่รู้จักจาก DB (เช่นเพิ่มหมวดใหม่แล้ว frontend ยังเป็นรุ่นเก่า) ต้อง
+    #    **ไม่ทำให้ response ทั้งใบพัง** ด้วย ValidationError · ฝั่ง UI มี fallback อยู่แล้ว
+    category: str = "other"
     status: str
     published_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
@@ -235,6 +284,9 @@ class EventPublicOut(BaseModel):
     event_date: datetime
     registration_deadline: Optional[datetime] = None
     capacity: Optional[int] = None
+    # หมวดกิจกรรม (D4) — **ผ่านออกไปถึงนักเรียน** เพราะใช้ทำป้าย + ตัวกรองบนลิสต์
+    # ⚠️ เป็น `str` ไม่ใช่ `EventCategory` ด้วยเหตุผลเดียวกับ `EventOut.category`
+    category: str = "other"
     status: str
     published_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
@@ -242,6 +294,19 @@ class EventPublicOut(BaseModel):
     waitlisted_count: int = 0
     seats_remaining: Optional[int] = None
     is_registration_open: bool = False
+    # ⏳ เวลาที่ "ปิดรับ" จริง (4.5) — `min(วันจัด, กำหนดปิดรับ)` คำนวณที่ SQL
+    #
+    # ⭐ ต้องส่งค่านี้ออกไป **ไม่ใช่ให้ frontend เอา `registration_deadline` ไปใช้เอง** —
+    #    กิจกรรมที่ไม่ได้ตั้งกำหนดปิดรับจะปิดที่ *วันจัด* ⇒ ฝั่งจอที่อ่านแต่
+    #    `registration_deadline` (ซึ่งเป็น NULL) จะสรุปว่า "ไม่มีการปิดรับ" แล้วแสดง
+    #    "ปิดรับในอีก -" หรือแย่กว่านั้นคือซ่อนแถวทิ้ง ทั้งที่เป็นกิจกรรมที่คนพลาดมากที่สุด
+    #
+    # ℹ️ **ไม่เป็น Optional** ต่างจากคอลัมน์ต้นทาง — `LEAST(event_date, ...)` โดยที่
+    #    `event_date` เป็น NOT NULL ⇒ ค่านี้เป็น NULL ไม่ได้ · และทุกเส้นทางที่สร้าง
+    #    `EventPublicOut` ล้วน SELECT ผ่าน `_PUBLIC_COLUMNS` ทั้งสิ้น (grep ยืนยัน)
+    #    ⇒ ถ้าประกาศ Optional ฝั่งจอจะต้องเขียนด่านกัน NULL ที่ไม่มีวันเกิด ซึ่งกลายเป็น
+    #    ทางที่บั๊กซ่อนได้ (เผลอใส่ fallback ที่กลืนค่าจริงทิ้ง)
+    closes_at: datetime
     my_registration_status: Optional[str] = None
 
 
@@ -293,8 +358,62 @@ class MyRegistrationOut(BaseModel):
 
     แยกจาก `EventPublicOut.my_registration_status` เพราะสองอันตอบคำถามต่างกัน:
     อันนั้นตอบ "ฉันสมัครหรือยัง" ในลิสต์ · อันนี้ตอบ "ได้คิวที่เท่าไร" ในหน้า detail
+
+    ⭐ `check_in_token` (D2) = ข้อความที่จะวาดเป็น **บัตรเช็คอิน** — ส่งมา **เฉพาะเมื่อถือที่นั่งจริง**
+    (`registered`/`checked_in`) · คนที่อยู่ในคิวสำรองได้ `None` เพราะยังไม่มีที่นั่งให้เช็คอิน
+    ⇒ ฝั่ง UI ใช้ค่านี้เป็นสวิตช์ของ "บัตร" ไปด้วยในตัว ไม่ต้องเทียบ `status` เองอีกรอบ
+
+    ⚠️ ไม่ใช่ความลับระดับรหัสผ่าน (มันฝัง `event_id`/`registration_id` ตรง ๆ) — สิ่งที่กันการปลอม
+       คือลายเซ็น ไม่ใช่การปิดบังตัวเลข (ดู `core/check_in_token.py`)
     """
     registered: bool
     registration_id: Optional[int] = None
     status: Optional[str] = None
     queue_position: Optional[int] = None
+    check_in_token: Optional[str] = None
+    # ⭐ เวลาที่เช็คอิน (D2) — ส่งมาเพราะนักเรียนต้องเห็นเองได้ว่า "มากี่โมง"
+    #    ไม่ต้องไปถามสภา · และมันคือ **เวลาที่มาถึงจริง** ซึ่งไม่ถูกเขียนทับตอนสแกนซ้ำ
+    checked_in_at: Optional[datetime] = None
+
+
+class CheckInRequest(BaseModel):
+    """คำขอเช็คอิน — **ต้องส่งมาอย่างใดอย่างหนึ่งพอดี** ไม่ใช่อย่างละนิดหรือทั้งคู่
+
+    | โหมด | ส่งอะไร | ใครใช้ |
+    |---|---|---|
+    | `qr` | `token` (จาก QR ที่นักเรียนถือ) | สภาสแกนบัตร |
+    | `manual` | `registration_id` | สภากดจากรายชื่อผู้สมัคร (กล้องพัง/นักเรียนลืมมือถือ) |
+
+    ⚠️ **ต้องมีโหมด manual ตั้งแต่รอบแรก** — กล้องคือสิ่งที่พังได้ทุกวัน (ไม่ให้สิทธิ์ ·
+       ไม่มีกล้อง · แบตหมด · มือถือรุ่นเก่า) และวันที่กล้องพังคือ **วันงาน** ซึ่งแก้ไขทีหลังไม่ได้
+       ⇒ "สแกน QR" เป็นทางที่ *สะดวก* ไม่ใช่ทางที่ *ต้องใช้*
+    """
+    token: Optional[str] = Field(None, max_length=200)
+    registration_id: Optional[int] = Field(None, ge=1)
+
+    @model_validator(mode="after")
+    def _exactly_one(self):
+        given = [v for v in (self.token, self.registration_id) if v is not None]
+        if len(given) != 1:
+            raise ValueError("ต้องส่ง token หรือ registration_id อย่างใดอย่างหนึ่งเท่านั้น")
+        return self
+
+
+class CheckInResultOut(BaseModel):
+    """ผลการเช็คอิน — หน้าจอสภาต้องเห็น **ชื่อคน** เพื่อยืนยันด้วยตาก่อนปล่อยเข้า
+
+    ⭐ `already_checked_in` = "คนนี้เช็คอินไปแล้วก่อนหน้านี้" ⇒ **ไม่ใช่ error** (สแกนซ้ำเป็นเรื่อง
+    ปกติมาก: บัตรเปิดค้างไว้แล้วสแกนรัว · สแกนสองเครื่องพร้อมกัน) ⇒ ตอบ **200 ทั้งคู่** แล้วให้ UI
+    แสดง "เช็คอินแล้วเมื่อ HH:MM" ต่างหาก — ถ้าตอบ 4xx ผู้สภาในสนามจะอ่านว่า "ระบบพัง"
+
+    ⭐ `method` = `qr` หรือ `manual` — ค่าที่ service ตัดสินจาก *ทางที่คำขอเข้ามา* และถูกเขียนลง
+    audit log ด้วย ⇒ ย้อนหลังได้ว่าแถวไหนเกิดจากการสแกนจริง (ดู `core/check_in_token.py`)
+    """
+    registration_id: int
+    event_id: int
+    user_id: int
+    user_name: Optional[str] = None
+    status: str
+    checked_in_at: Optional[datetime] = None
+    already_checked_in: bool = False
+    method: str

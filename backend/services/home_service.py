@@ -18,10 +18,14 @@ dashboard / announcements) ซึ่งแปลว่าเปิดหน้�
 `pool.acquire()` เองทั้งหมด (pool max = 10) ⇒ ที่นี่เรียก **เรียงกันแบบ await**
 และปล่อย connection ของตัวเองก่อนทุกครั้ง · **ห้ามใช้ `asyncio.gather`** เพราะจะยึด
 connection พร้อมกันหลายใบโดยไม่จำเป็น
+
+⭐ กติกาเดียวกันนี้คุม `event_service.list_closing_soon_events` (4.5) ด้วย — มัน
+`pool.acquire()` เองเหมือนกัน ⇒ เรียกต่อ **หลัง** `_queues()` คืนค่า (ที่จุดนั้น
+connection ของ `_queues` ถูกคืนเข้าพูลแล้ว) ไม่ใช่เรียกซ้อนข้างใน `_queues`
 """
 import asyncpg
 
-from services import issue_service, me_service, public_service
+from services import event_service, issue_service, me_service, public_service
 
 # จำนวนรายการสูงสุดต่อคิว — หน้าแรกไม่ใช่หน้าคิวเต็ม
 QUEUE_LIMIT = 5
@@ -106,6 +110,9 @@ async def get_home_summary(pool: asyncpg.Pool, user_id: int) -> dict:
     my_issues = await issue_service.my_issue_summary(pool, user_id)
     stats = await me_service.get_personal_stats(pool, user_id)
     pending_on_me, pending_total, unvoted, unvoted_total = await _queues(pool, user_id)
+    # ⏳ คิวที่ 3 (4.5) — เรียก **หลัง** `_queues` ปล่อย connection แล้ว ไม่ใช่ซ้อนข้างใน
+    #    (เหตุผลอยู่ใน docstring ของโมดูลนี้: pool max = 10 และห้ามยึด connection ซ้อนกัน)
+    closing = await event_service.list_closing_soon_events(pool, user_id, limit=QUEUE_LIMIT)
 
     return {
         "announcements": announcements,
@@ -114,6 +121,8 @@ async def get_home_summary(pool: asyncpg.Pool, user_id: int) -> dict:
         "pending_on_me_total": pending_total,
         "unvoted_boards": unvoted,
         "unvoted_boards_total": unvoted_total,
+        "closing_soon_events": closing["items"],
+        "closing_soon_events_total": closing["total"],
         "stats": stats,
     }
 

@@ -47,6 +47,9 @@ export interface HomeSummary {
   pending_on_me_total: number
   unvoted_boards: UnvotedBoardItem[]
   unvoted_boards_total: number
+  /** กิจกรรมใกล้ปิดรับ (4.5) — ⚠️ **ไม่กรองตามการสมัครของฉัน** ⇒ มีแถวที่สมัครแล้วปนได้ */
+  closing_soon_events: ClosingSoonEventItem[]
+  closing_soon_events_total: number
   stats: PersonalStats
 }
 
@@ -70,3 +73,34 @@ export function remainingLabel(total: number, shown: number, noun = 'เรื�
 export function voteCountLabel(count: number): string {
   return count > 0 ? `มีผู้โหวตแล้ว ${count} คน` : 'ยังไม่มีใครโหวต — คุณเป็นคนแรกได้'
 }
+
+/**
+ * กิจกรรมที่ยังเปิดรับและกำลังจะปิดรับ — "กิจกรรมใกล้ปิดรับ" (4.5)
+ *
+ * ⭐ `closes_at` มาจาก backend ( = `min(วันจัด, กำหนดปิดรับ)`) **ไม่ใช่**
+ *    `registration_deadline` — กิจกรรมที่ไม่ได้ตั้งกำหนดปิดรับจะปิดที่ *วันจัด*
+ *    ⇒ ฝั่งจอ **ห้าม** เอา `registration_deadline` มาตัดสินอะไรเอง (ดูคอมเมนต์
+ *    ใน `EventPublicOut.closes_at`)
+ *
+ * ⚠️ ไม่มี `is_registration_open` — backend กรองมาแล้วว่ายังเปิดรับ ⇒ ทุกแถวเป็น `true`
+ *    เสมอ การเพิ่มฟิลด์ที่ไม่มีวันเป็นเท็จทำให้คนอ่านโค้ดเขียน `if` กันโดยเปล่าประโยชน์
+ *
+ * ⚠️ ไม่มี `description` / `cover_image_url` โดยเจตนา — การ์ดนี้เป็นบรรทัดเดียว
+ *    ⇒ บรรทัดที่ยาวจะดันความสูงจนการ์ดอื่นเสียทรง
+ */
+export interface ClosingSoonEventItem {
+  id: number
+  title: string
+  location: string | null
+  event_date: string
+  closes_at: string
+  /**
+   * `null` = ไม่จำกัดจำนวน (ไม่ใช่ 0 — 0 แปลว่าเต็ม ⇒ สมัครได้แต่จะได้คิวสำรอง)
+   * ⇒ ใช้ `seatsWarning()` จาก `@/types/event` อ่านค่า **ไม่ใช่ `seatsLabel()`**
+   *    (ตัวหลังมี threshold ต่างกัน — ดูคอมเมนต์ที่ `seatsWarning`)
+   */
+  seats_remaining: number | null
+  /** 'registered' / 'checked_in' / null — ใช้ตัดสินว่าจอแสดง *ปุ่มสมัคร* หรือ *ป้ายสมัครแล้ว* */
+  my_registration_status: string | null
+}
+

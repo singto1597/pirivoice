@@ -5,6 +5,7 @@ import Swal from 'sweetalert2'
 import PaginationBar from '@/components/PaginationBar.vue'
 import {
   cancelEvent,
+  checkInRegistration,
   createEvent,
   deleteEvent,
   listEvents,
@@ -14,12 +15,18 @@ import {
   updateEvent,
 } from '@/services/event'
 import {
+  CATEGORY_LABELS,
+  EVENT_CATEGORIES,
   EVENT_LIST_STATUSES,
   LIST_STATUS_LABELS,
   REGISTRATION_ICONS,
   REGISTRATION_LABELS,
   STATUS_ICONS,
   STATUS_LABELS,
+  categoryIcon,
+  categoryLabel,
+  categoryPayload,
+  isEventCategory,
   type Event,
   type EventCreate,
   type EventListStatus,
@@ -51,6 +58,17 @@ const items = ref<Event[]>([])
 const total = ref(0)
 const page = ref(1)
 const statusFilter = ref<EventListStatus>('live')
+/**
+ * ตัวกรองหมวด (D4) — **`''` = ทุกหมวด** (ไม่ใช่ `'other'` ซึ่งแปลว่า "เฉพาะหมวดอื่น ๆ")
+ *
+ * ⚠️ เก็บเป็น `string` เปล่าเพราะค่ามาจาก `<select>` (DOM ให้สตริงเสมอ) ⇒ ด่านแคบอยู่ที่
+ *    `load()` ด้วย `isEventCategory()` ไม่ใช่ที่ type ของ ref
+ *    · แบบเดียวกับ `subcategoryFilter` ใน `ReceivedIssues.vue` (`''` = ทุกหมวดย่อย)
+ *
+ * ⚠️ **ส่ง `''` ตรง ๆ ไม่ได้** — จะกลายเป็น `category=` ใน querystring ซึ่งไม่ตรง pattern
+ *    ฝั่ง backend ⇒ **422** (ไม่ใช่ "ไม่กรอง") · ต้องแปลงเป็น `undefined` เสมอ
+ */
+const categoryFilter = ref('')
 const isLoading = ref(true)
 const hasError = ref(false)
 
@@ -75,6 +93,13 @@ const form = ref({
   event_date: '',
   registration_deadline: '',
   capacity: '',
+  /**
+   * ⚠️ ประกาศเป็น **`string` ไม่ใช่ `EventCategory`** โดยเจตนา — ค่ามันมาจาก `<select>` ที่
+   *    เราเติมตัวเลือกแปลก ๆ เข้าไปได้ (ดู `categoryOptions`) ⇒ ถ้าประกาศแคบไว้ จะต้อง cast
+   *    ตอนอ่านค่า ซึ่งกลบความจริงว่ามันอาจไม่ใช่คีย์ที่รู้จัก
+   *    · ด่านจริงอยู่ที่ `buildCreate()` ซึ่งใช้ `isEventCategory()` แคบก่อนส่ง
+   */
+  category: 'other' as string,
 })
 
 // ── modal รายชื่อผู้สมัคร ──
@@ -85,8 +110,35 @@ const regTotal = ref(0)
 const regPage = ref(1)
 const regLoading = ref(false)
 const regError = ref('')
+/**
+ * id ของแถวที่กำลังเช็คอินอยู่ (D2) — **เก็บเป็น id ต่อแถว ไม่ใช่ boolean ของทั้ง modal**
+ *
+ * ⭐ เก็บ id เพื่อให้ **สปินเนอร์ขึ้นที่แถวที่กดเท่านั้น** — ถ้าใช้ boolean ปุ่มทุกแถวจะหมุนพร้อมกัน
+ *    แล้วสภาไม่รู้ว่าแถวไหนกำลังทำงาน (ตอนเลื่อนหารายชื่อในคิวที่ยาว อันนี้สำคัญ)
+ *
+ * ⚠️ **แต่การล็อกเป็นของทั้ง modal โดยเจตนา** (`:disabled="regActingId !== null"`) — *ไม่ใช่*
+ *    การเช็คอินหลายคนพร้อมกัน · เพราะทุกครั้งที่สำเร็จจะ `loadRegistrations()` ใหม่ทั้งชุด
+ *    ⇒ สองคำขอที่ทับกันจะโหลดชนกัน แล้วรายชื่อที่ได้อาจเป็นชุดก่อนการเช็คอินอีกคน
+ *    (ป้ายสถานะกับความจริงไม่ตรงกันชั่วขณะ ซึ่งสภาจะอ่านว่า "กดไม่ติด")
+ *    · ราคาที่จ่ายคือรอ ~200 ms ต่อคน ซึ่งไม่ใช่คอขวดของงานจริง (คอขวดคือคนเดินมาถึงประตู)
+ *    · งานที่ต้องเร็วระดับนั้นคือ **หน้าสแกน** ซึ่งทำงานคนละแบบ (ไม่มีรายชื่อให้โหลดซ้ำ)
+ */
+const regActingId = ref<number | null>(null)
 
 const isEmpty = computed(() => !isLoading.value && !hasError.value && items.value.length === 0)
+
+/**
+ * ข้อความตอนว่าง — **ต้องแยกให้ออกว่า "ไม่มีของ" กับ "ตัวกรองซ่อนอยู่"**
+ *
+ * ⚠️ ทั้งสองกรณีแสดงผลเหมือนกันเป๊ะ (การ์ด 0 ใบ) แต่ความหมายตรงข้าม: กรณีหลังของ *มีอยู่จริง*
+ *    ⇒ ข้อความกลาง ๆ อย่าง "ยังไม่มีกิจกรรมในระบบ" จะทำให้สภาตกใจแล้วไปสร้างซ้ำ
+ */
+const emptyText = computed(() => {
+  if (categoryFilter.value) {
+    return `ไม่มีกิจกรรมในหมวด "${categoryLabel(categoryFilter.value)}" ตามตัวกรองที่เลือก`
+  }
+  return statusFilter.value === 'live' ? 'ยังไม่มีกิจกรรมในระบบ' : 'ไม่มีกิจกรรมในสถานะนี้'
+})
 
 const formError = computed(() => {
   if (!form.value.title.trim()) return 'ต้องกรอกชื่อกิจกรรม'
@@ -113,6 +165,7 @@ async function load() {
   try {
     const res = await listEvents({
       status: statusFilter.value,
+      category: isEventCategory(categoryFilter.value) ? categoryFilter.value : undefined,
       limit: PAGE_SIZE,
       offset: (page.value - 1) * PAGE_SIZE,
     })
@@ -141,6 +194,38 @@ function switchStatus(s: EventListStatus) {
   page.value = 1
   load()
 }
+
+/** เปลี่ยนหมวด ⇒ กลับไปหน้า 1 เสมอ (ไม่งั้นอาจค้างอยู่หน้า 3 ของผลลัพธ์ชุดใหม่ที่สั้นกว่า) */
+function onCategoryChange() {
+  page.value = 1
+  load()
+}
+
+/** ปุ่มในสถานะว่าง — ล้างตัวกรองหมวด **แล้วโหลดใหม่** (ไม่ใช่แค่เคลียร์ค่าแล้วรอ) */
+function clearCategoryFilter() {
+  categoryFilter.value = ''
+  page.value = 1
+  load()
+}
+
+/**
+ * ตัวเลือกใน `<select>` ของฟอร์ม — ปกติคือ `EVENT_CATEGORIES` ทั้งชุด
+ *
+ * ⭐ **แต่ถ้าหมวดของแถวที่กำลังแก้ไม่ใช่คีย์ที่ frontend รู้จัก** (backend ใหม่กว่า) ต้องเติม
+ *    ค่านั้นเข้าไปเป็นตัวเลือก ไม่งั้น `<select>` จะแสดง **ว่าง** แล้วถ้าผู้ใช้กดบันทึก
+ *    ค่าจะกลายเป็น `'other'` เงียบ ๆ — คือ **ลดชั้นข้อมูลโดยที่ผู้ใช้ไม่ได้สั่ง**
+ *    (และคู่กับ `buildCreate()` ที่ไม่ส่งคีย์แปลกออกไป ⇒ ค่าเดิมใน DB ไม่ถูกแตะ)
+ */
+const categoryOptions = computed<readonly { value: string; label: string }[]>(() => {
+  const known: { value: string; label: string }[] = EVENT_CATEGORIES.map((c) => ({
+    value: c,
+    label: CATEGORY_LABELS[c],
+  }))
+  const current = form.value.category
+  return isEventCategory(current)
+    ? known
+    : [{ value: current, label: `${current} (ไม่รู้จัก)` }, ...known]
+})
 
 function onPageChange(n: number) {
   page.value = n
@@ -255,6 +340,8 @@ function buildCreate(): EventCreate {
     event_date: form.value.event_date,
     registration_deadline: form.value.registration_deadline || null,
     capacity: cap === '' ? null : Number(cap),
+    // คีย์ที่ไม่รู้จัก ⇒ `undefined` = ไม่ส่ง (ดู `categoryPayload`) — ไม่เดาว่าเป็น 'other'
+    category: categoryPayload(form.value.category),
   }
 }
 
@@ -268,6 +355,9 @@ function toBaseline(e: Event): EventCreate {
     event_date: toLocalInput(e.event_date),
     registration_deadline: toLocalInput(e.registration_deadline),
     capacity: e.capacity,
+    // ⚠️ ต้องใช้ `categoryPayload()` ตัวเดียวกับ `buildCreate()` — คีย์แปลกจะได้ `undefined`
+    //    **ทั้งสองข้าง** ⇒ diff ไม่เห็นว่าต่าง ⇒ ไม่ยิง PATCH ⇒ ค่าเดิมใน DB ไม่ถูกทับ
+    category: categoryPayload(e.category),
   }
 }
 
@@ -284,6 +374,7 @@ function openAdd() {
     event_date: '',
     registration_deadline: '',
     capacity: '',
+    category: 'other',
   }
   modalOpen.value = true
 }
@@ -302,6 +393,9 @@ function openEdit(e: Event) {
     event_date: base.event_date,
     registration_deadline: base.registration_deadline ?? '',
     capacity: base.capacity === null ? '' : String(base.capacity),
+    // ⚠️ อ่านจาก **แถวจริง** (`e.category`) ไม่ใช่ `base.category` — คีย์แปลกต้องไม่ถูกแปลง
+    //    เป็น 'other' ตั้งแต่เปิดฟอร์ม (ดู `categoryOptions` ที่เติมตัวเลือกนั้นให้)
+    category: e.category,
   }
   modalOpen.value = true
 }
@@ -329,6 +423,7 @@ function buildPatch(): EventUpdate {
     patch.registration_deadline = next.registration_deadline
   }
   if (base.capacity !== next.capacity) patch.capacity = next.capacity
+  if (base.category !== next.category) patch.category = next.category
   return patch
 }
 
@@ -411,6 +506,52 @@ function closeRegistrations() {
   regTotal.value = 0
 }
 
+/**
+ * เช็คอินจากรายชื่อ (D2) — **ทางสำรองที่ต้องมีเสมอ**
+ *
+ * ใช้เมื่อนักเรียนลืมมือถือ/แบตหมด/กล้องสภาไม่ทำงาน — ซึ่งเกิดทุกงาน และเกิดในวันที่
+ * แก้ไขอะไรไม่ได้ ⇒ ปุ่มนี้คือเหตุผลที่ endpoint รับ `registration_id` ได้ด้วย ไม่ใช่แค่โทเคน
+ *
+ * ⚠️ **`already_checked_in` ไม่ใช่ error** — สแกนซ้ำ/กดซ้ำเป็นเรื่องปกติ ⇒ แสดงเป็นข้อความ
+ *    "เช็คอินไปแล้วเมื่อ HH:MM" ไม่ใช่แจ้งเตือนสีแดง (เหตุผลเดียวกับฝั่งหน้าสแกน)
+ */
+async function handleCheckIn(r: EventRegistration) {
+  if (!regEvent.value || regActingId.value !== null) return
+  regActingId.value = r.id
+  try {
+    const res = await checkInRegistration(regEvent.value.id, { registration_id: r.id })
+    // โหลดรายชื่อใหม่เพื่อให้ป้ายสถานะ/เวลาเป็นค่าที่ server เขียนจริง ไม่ใช่การเดาที่ frontend
+    await loadRegistrations()
+
+    const who = res.user_name ?? `ผู้ใช้ #${res.user_id}`
+    const when = res.checked_in_at ? `เมื่อ ${fmtTime(res.checked_in_at)} น.` : ''
+    // ⚠️ ใช้ `text:` **ไม่ใช่ `html:`** — `who` คือชื่อที่ผู้ใช้ตั้งเองได้ (หน้า ProfileEdit)
+    //    ⇒ ใส่ลง `html` เมื่อไร ชื่ออย่าง `<img src=x onerror=...>` จะรันในเบราว์เซอร์สภา
+    //    · SweetAlert2 ใส่ `text` ด้วย `textContent` จึงปลอดภัยโดยธรรมชาติ
+    if (res.already_checked_in) {
+      await Swal.fire({
+        icon: 'info',
+        title: 'คนนี้เช็คอินไปแล้ว',
+        text: when ? `${who} · ${when} · เวลาเดิม ไม่ได้นับซ้ำ` : who,
+        confirmButtonText: 'เข้าใจแล้ว',
+        confirmButtonColor: '#B91C1C',
+      })
+    } else {
+      await Swal.fire({
+        icon: 'success',
+        title: 'เช็คอินสำเร็จ',
+        text: when ? `${who} · ${when}` : who,
+        timer: 1600,
+        showConfirmButton: false,
+      })
+    }
+  } catch (e) {
+    await Swal.fire({ icon: 'error', title: 'เช็คอินไม่สำเร็จ', text: errText(e) })
+  } finally {
+    regActingId.value = null
+  }
+}
+
 /** วันและเวลาจัดกิจกรรม — timestamptz จึงใช้ `new Date(iso)` ได้ตรง ๆ */
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString('th-TH', {
@@ -418,6 +559,15 @@ function fmtDateTime(iso: string): string {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** เวลาสั้น ๆ (`HH:MM`) สำหรับตรา "เช็คอินแล้ว" — เช็คอินเกิดวันงานเสมอ วันที่จึงซ้ำกับหัวข้อ */
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('th-TH', {
+    timeZone: 'Asia/Bangkok',
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -471,6 +621,21 @@ function capacityText(e: Event): string {
           {{ LIST_STATUS_LABELS[s] }}
         </button>
       </div>
+
+      <!-- ตัวกรองหมวด (D4) — ใช้ <select> ไม่ใช่ชิป เพราะ 7 หมวดจะไปเบียดแถวสถานะจนอ่านไม่ออก -->
+      <select
+        v-model="categoryFilter"
+        aria-label="กรองตามหมวดกิจกรรม"
+        data-testid="category-filter"
+        class="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        @change="onCategoryChange"
+      >
+        <option value="">ทุกหมวด</option>
+        <option v-for="c in EVENT_CATEGORIES" :key="c" :value="c">
+          {{ CATEGORY_LABELS[c] }}
+        </option>
+      </select>
+
       <span class="ml-auto text-sm tabular-nums text-stone-400">
         {{ total.toLocaleString('en-US') }} กิจกรรม
       </span>
@@ -508,11 +673,22 @@ function capacityText(e: Event): string {
     >
       <div class="mb-2 text-4xl"><i class="bi bi-calendar-plus"></i></div>
       <p class="text-stone-500">
-        {{ statusFilter === 'live' ? 'ยังไม่มีกิจกรรมในระบบ' : 'ไม่มีกิจกรรมในสถานะนี้' }}
+        {{ emptyText }}
       </p>
-      <p v-if="statusFilter === 'live'" class="mt-1 text-sm text-stone-400">
+      <p v-if="statusFilter === 'live' && !categoryFilter" class="mt-1 text-sm text-stone-400">
         เริ่มจากกด "สร้างกิจกรรม" แล้วเผยแพร่ให้นักเรียนเห็น
       </p>
+      <!-- ⚠️ ต้องบอกทางออกเมื่อ "ว่างเพราะตัวกรอง" — ไม่งั้นสภาจะอ่านว่า "กิจกรรมหายไปหมด"
+           แล้วไปสร้างซ้ำ ซึ่งเป็นความเสียหายจริง (ไม่ใช่แค่ข้อความไม่สวย) -->
+      <button
+        v-else-if="categoryFilter"
+        type="button"
+        data-testid="clear-category-filter"
+        class="mt-4 inline-flex items-center gap-2 rounded-lg bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-200"
+        @click="clearCategoryFilter"
+      >
+        <i class="bi bi-x-lg"></i> ล้างตัวกรองหมวด ({{ categoryLabel(categoryFilter) }})
+      </button>
     </div>
 
     <!-- รายการ -->
@@ -531,6 +707,13 @@ function capacityText(e: Event): string {
                 }"
               >
                 <i :class="`bi ${STATUS_ICONS[e.status]}`"></i> {{ STATUS_LABELS[e.status] }}
+              </span>
+              <!-- หมวด (D4) — ใช้ categoryLabel/categoryIcon ไม่ใช่ CATEGORY_LABELS[c] ตรง ๆ
+                   เพราะ e.category เป็น string หลวม (backend อาจมีหมวดที่เราไม่รู้จัก) -->
+              <span
+                class="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700"
+              >
+                <i :class="`bi ${categoryIcon(e.category)}`"></i> {{ categoryLabel(e.category) }}
               </span>
               <span
                 v-if="e.deleted_at"
@@ -771,6 +954,25 @@ function capacityText(e: Event): string {
               </div>
 
               <div>
+                <label for="ev-category" class="mb-1 block text-xs font-semibold text-stone-500">
+                  หมวดกิจกรรม
+                </label>
+                <select
+                  id="ev-category"
+                  v-model="form.category"
+                  data-testid="form-category"
+                  class="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+                >
+                  <option v-for="o in categoryOptions" :key="o.value" :value="o.value">
+                    {{ o.label }}
+                  </option>
+                </select>
+                <p class="mt-1 text-[11px] text-stone-400">
+                  ใช้กรองในรายการกิจกรรม — ไม่กระทบใครที่สมัครไว้แล้ว
+                </p>
+              </div>
+
+              <div>
                 <label for="ev-cover" class="mb-1 block text-xs font-semibold text-stone-500">
                   ลิงก์ภาพปก
                 </label>
@@ -838,6 +1040,16 @@ function capacityText(e: Event): string {
                 <h2 class="text-base font-bold text-stone-900">รายชื่อผู้สมัคร</h2>
                 <p class="truncate text-[12px] text-stone-400">{{ regEvent?.title }}</p>
               </div>
+              <!-- ทางไปหน้าสแกน — อยู่ในหัว modal เพื่อให้เจอตั้งแต่ยังไม่เลื่อนดูรายชื่อ -->
+              <RouterLink
+                v-if="regEvent"
+                :to="`/app/events/${regEvent.id}/check-in`"
+                class="mr-1 shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-bold text-[#B91C1C] transition-colors hover:bg-red-50"
+                data-testid="open-scanner-link"
+                @click="closeRegistrations"
+              >
+                <i class="bi bi-qr-code-scan mr-1"></i>สแกน
+              </RouterLink>
               <button
                 type="button"
                 @click="closeRegistrations"
@@ -878,7 +1090,11 @@ function capacityText(e: Event): string {
                     <p class="truncate text-sm font-medium text-stone-800">
                       {{ r.user_name ?? `ผู้ใช้ #${r.user_id}` }}
                     </p>
-                    <p class="text-[11px] text-stone-400">
+                    <!-- เช็คอินแล้ว → โชว์ "เวลาที่มาถึง" แทนเวลาสมัคร ซึ่งเป็นข้อมูลที่สภาใช้จริง -->
+                    <p v-if="r.status === 'checked_in' && r.checked_in_at" class="text-[11px] text-emerald-600">
+                      <i class="bi bi-person-check mr-0.5"></i>เช็คอิน {{ fmtTime(r.checked_in_at) }} น.
+                    </p>
+                    <p v-else class="text-[11px] text-stone-400">
                       {{ fmtDateTime(r.registered_at) }}
                     </p>
                   </div>
@@ -894,6 +1110,26 @@ function capacityText(e: Event): string {
                     <i :class="`bi ${REGISTRATION_ICONS[r.status]}`"></i>
                     {{ REGISTRATION_LABELS[r.status] }}
                   </span>
+                  <!--
+                    ปุ่มเช็คอินมือ — เฉพาะแถวที่ "ถือที่นั่งจริงและยังไม่เช็คอิน"
+                    ⚠️ ไม่มีให้คิวสำรอง (ยังไม่มีที่นั่งให้เช็คอิน — backend ตอบ 400) และไม่มีให้
+                       คนที่เช็คอินแล้ว/ถูกยกเลิก ⇒ ซ่อนปุ่มที่เป็นไปไม่ได้ไว้ตั้งแต่ต้น ดีกว่า
+                       ให้กดแล้วเจอ error ที่อธิบายว่าทำไมกดไม่ได้
+                  -->
+                  <button
+                    v-if="r.status === 'registered'"
+                    type="button"
+                    :disabled="regActingId !== null"
+                    class="shrink-0 rounded-lg bg-[#B91C1C] px-2.5 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[#991B1B] disabled:opacity-50"
+                    :data-testid="`checkin-btn-${r.id}`"
+                    @click="handleCheckIn(r)"
+                  >
+                    <i
+                      :class="regActingId === r.id ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-person-check'"
+                      class="mr-0.5"
+                    ></i>
+                    เช็คอิน
+                  </button>
                 </li>
               </ul>
             </div>

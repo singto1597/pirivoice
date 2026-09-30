@@ -24,8 +24,12 @@ import asyncpg
 from core.dependencies import get_db_pool, get_current_user
 from core.exceptions import NotFoundError, ForbiddenError, ValidationError
 from models.event_schemas import (
+    EVENT_CATEGORIES,
     EventCreateRequest,
     EventUpdateRequest,
+    # D2 — input มาก่อน output เหมือนสองตัวบน
+    CheckInRequest,
+    CheckInResultOut,
     EventOut,
     EventListOut,
     EventPublicOut,
@@ -36,6 +40,14 @@ from models.event_schemas import (
 from services import event_service
 
 router = APIRouter(prefix="/events", tags=["Events"])
+
+# 🏷️ ตัวกรองหมวด (D4) ใช้ร่วมกันทั้งสอง endpoint — สร้าง **ครั้งเดียวจากลิสต์จริง**
+# ⚠️ เขียน regex ด้วยมือจะเพี้ยนจาก `EventCategory` ทันทีที่มีคนเพิ่มหมวด (แล้วอาการคือ
+#    "เพิ่มหมวดใหม่แล้วกรองไม่ได้" ซึ่งหาสาเหตุยาก เพราะค่าใหม่ผ่าน schema ได้ปกติ)
+# ⚠️ ทำไมต้องมี `pattern` ที่นี่ **ทั้งที่ service ตรวจซ้ำ** — `pattern` ทำให้ FastAPI
+#    ตอบ **422** ตั้งแต่ชั้น request (แบบเดียวกับ `status`/`scope`) ⇒ ทั้ง API มี
+#    พฤติกรรมเดียวกันหมด · ส่วนด่านใน service เป็นชั้นที่สองสำหรับผู้เรียกที่ไม่ผ่าน HTTP
+_CATEGORY_PATTERN = "^(" + "|".join(EVENT_CATEGORIES) + ")$"
 
 
 def _ensure_user(user_ctx: dict) -> int:
@@ -71,6 +83,14 @@ async def list_public_events(
             "กรองช่วงเวลา: upcoming (ยังไม่ถึงวันจัด) / past (ผ่านไปแล้ว) / all (ทั้งหมด)"
         ),
     ),
+    category: Optional[str] = Query(
+        None,
+        pattern=_CATEGORY_PATTERN,
+        description=(
+            "กรองหมวดกิจกรรม (D4): academic/sports/arts/service/club/meeting/other "
+            "— ไม่ส่งมา = ทุกหมวด"
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user_ctx: dict = Depends(get_current_user),
@@ -80,7 +100,7 @@ async def list_public_events(
     uid = _ensure_user(user_ctx)
     try:
         result = await event_service.list_public_events(
-            pool, uid, scope=scope, limit=limit, offset=offset
+            pool, uid, scope=scope, category=category, limit=limit, offset=offset
         )
     except ValidationError as e:
         raise _err(e)
@@ -183,6 +203,14 @@ async def list_events(
             "published (เผยแพร่แล้ว) / cancelled (ยกเลิก) / deleted (ถูกลบ) / all (ทั้งหมด)"
         ),
     ),
+    category: Optional[str] = Query(
+        None,
+        pattern=_CATEGORY_PATTERN,
+        description=(
+            "กรองหมวดกิจกรรม (D4): academic/sports/arts/service/club/meeting/other "
+            "— ไม่ส่งมา = ทุกหมวด"
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user_ctx: dict = Depends(get_current_user),
@@ -192,7 +220,7 @@ async def list_events(
     uid = _ensure_user(user_ctx)
     try:
         result = await event_service.list_events(
-            pool, uid, status=status, limit=limit, offset=offset
+            pool, uid, status=status, category=category, limit=limit, offset=offset
         )
     except (ForbiddenError, ValidationError) as e:
         raise _err(e)
@@ -256,6 +284,36 @@ async def list_registrations(
         page_size=result["page_size"],
         pages=result["pages"],
     )
+
+
+@router.post("/{event_id}/check-in", response_model=CheckInResultOut)
+async def check_in_registration(
+    event_id: int,
+    req: CheckInRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """เช็คอินผู้เข้าร่วม (D2) — **สแกน QR** (`token`) หรือ **กดมือจากรายชื่อ** (`registration_id`)
+
+    ⚠️ **คืน 200 เสมอทั้งการเช็คอินครั้งแรกและการสแกนซ้ำ** — แยกด้วย `already_checked_in`
+       ใน body · สแกนรัว/สแกนสองเครื่องเป็นเรื่องปกติหน้างาน ⇒ การตอบ 4xx จะทำให้สภาอ่านว่า
+       "ระบบพัง" แล้วหันไปจดใส่กระดาษ (ซึ่งคือความล้มเหลวของฟีเจอร์ ไม่ใช่ของผู้ใช้)
+
+    ⚠️ ต้องมีสิทธิ์ `MANAGE_EVENTS` (ตรวจใน service) — **นักเรียนเช็คอินตัวเองไม่ได้**
+       โดยเจตนา: การเช็คอินคือการยืนยันว่า "มีตัวตนอยู่ที่หน้างาน" ซึ่งคนที่อยู่หน้างานยืนยันให้ตัวเอง
+       ไม่ได้ · ถ้าวันหน้าต้องการ "นักเรียนเช็คอินเอง" นั่นคือฟีเจอร์ใหม่ (คนละการตัดสินใจ) ไม่ใช่
+       การผ่อนด่านนี้
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        result = await event_service.check_in_registration(
+            pool, uid, event_id,
+            token=req.token, registration_id=req.registration_id,
+        )
+    except (NotFoundError, ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return CheckInResultOut(**result)
 
 
 @router.patch("/{event_id}", response_model=EventOut)

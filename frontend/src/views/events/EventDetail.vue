@@ -8,9 +8,19 @@ import {
   getPublicEvent,
   registerForEvent,
 } from '@/services/event'
-import { seatsLabel, type MyRegistration, type PublicEvent } from '@/types/event'
+import {
+  categoryIcon,
+  categoryLabel,
+  checkInCardState,
+  closingLabel,
+  eventShareUrl,
+  seatsLabel,
+  type MyRegistration,
+  type PublicEvent,
+} from '@/types/event'
 import type { ApiError } from '@/services/api'
 import { goUnavailable } from '@/router/unavailable'
+import QrCode from '@/components/QrCode.vue'
 
 /**
  * 📅 รายละเอียดกิจกรรม (ฝั่งนักเรียน) + ลงทะเบียน / ถอน
@@ -40,6 +50,49 @@ const isRegistered = computed(() => mine.value?.registered === true)
 const isFull = computed(() => event.value?.seats_remaining === 0)
 const seatsText = computed(() => seatsLabel(event.value?.seats_remaining ?? null) ?? 'ไม่จำกัดจำนวน')
 
+// ── แชร์กิจกรรม (4.4) ──
+/**
+ * URL เต็มของกิจกรรม — **ค่าเดียวที่ใช้ทั้ง QR และปุ่มคัดลอก**
+ *
+ * ⭐ ทำให้เป็น computed ตัวเดียวโดยเจตนา: ถ้า QR กับการคัดลอกประกอบลิงก์กันคนละที่
+ *    วันหนึ่งจะมีคนแก้ข้างเดียว (เช่นเติม UTM) แล้ว **QR กับข้อความที่แชร์ไม่ตรงกัน**
+ *    ซึ่งผู้ใช้จะไม่มีทางรู้เลยจนกว่าจะมีคนสแกนแล้วเจอคนละหน้า
+ */
+const shareUrl = computed(() =>
+  event.value ? eventShareUrl(event.value.id, window.location.origin) : '',
+)
+
+/** ช่องลิงก์ — ใช้ `.select()` ตอนคัดลอกอัตโนมัติไม่ได้ (ต้องมี element จริงให้เลือก) */
+const shareInput = ref<HTMLInputElement | null>(null)
+
+/**
+ * คัดลอกลิงก์ — มีทางถอยเสมอ
+ *
+ * ⚠️ `navigator.clipboard` **เป็น undefined ได้** (หน้า http ที่ไม่ใช่ localhost ไม่ถือเป็น
+ *    secure context) ⇒ ถ้าเรียกตรง ๆ จะโยน `TypeError` แล้วปุ่มดูเหมือนกดไม่ติด
+ *    · ทางถอยคือเลือกข้อความในช่องให้ แล้วบอกให้กด Ctrl/⌘+C — ผู้ใช้ยังทำงานต่อได้
+ */
+async function copyShareUrl() {
+  try {
+    if (!navigator.clipboard) throw new Error('clipboard ไม่พร้อมใช้งาน')
+    await navigator.clipboard.writeText(shareUrl.value)
+    await Swal.fire({
+      icon: 'success',
+      title: 'คัดลอกลิงก์แล้ว',
+      timer: 1200,
+      showConfirmButton: false,
+    })
+  } catch {
+    shareInput.value?.select()
+    await Swal.fire({
+      icon: 'info',
+      title: 'คัดลอกอัตโนมัติไม่ได้',
+      text: 'ลิงก์ถูกเลือกไว้แล้ว — กด Ctrl/⌘ + C เพื่อคัดลอก',
+      confirmButtonText: 'เข้าใจแล้ว',
+    })
+  }
+}
+
 /** ลงทะเบียนได้เฉพาะเมื่อ: server บอกว่าเปิดรับ · ยังไม่ถูกยกเลิก · และเรายังไม่ได้ที่นั่ง/คิว */
 const canRegister = computed(
   () =>
@@ -47,6 +100,21 @@ const canRegister = computed(
     !isRegistered.value &&
     event.value.status !== 'cancelled' &&
     event.value.is_registration_open,
+)
+
+/**
+ * สถานะบัตรเช็คอิน — กติกาทั้งหมดอยู่ใน `checkInCardState()` (ทดสอบแยกได้ที่นั่น)
+ * ตรงนี้มีหน้าที่แค่หยิบ object ที่โหลดมาแล้วยัดเข้าไป
+ */
+const cardState = computed(() => checkInCardState(mine.value, event.value))
+
+/**
+ * โทเคนที่จะวาดเป็นคิวอาร์ — มีค่าเฉพาะตอน `cardState === 'qr'`
+ * ⚠️ ไม่ใช้ `mine?.check_in_token` ตรง ๆ ในเทมเพลต เพราะ TypeScript ที่นั่นไม่รู้จัก
+ *    ความเชื่อมโยงระหว่าง `cardState` กับตัวโทเคน ⇒ ต้องผ่านที่เดียวที่รู้
+ */
+const qrToken = computed(() =>
+  cardState.value === 'qr' ? (mine.value?.check_in_token ?? null) : null,
 )
 
 /**
@@ -153,6 +221,18 @@ function fmtDateTime(iso: string): string {
     minute: '2-digit',
   })
 }
+
+/**
+ * เวลาสั้น ๆ (`HH:MM`) — ใช้กับตรา "เช็คอินแล้ว" ซึ่งเกิด **วันงานเสมอ**
+ * ⇒ วันที่ซ้ำกับ `event_date` ที่โชว์อยู่ข้างบนอยู่แล้ว ใส่วันที่ลงไปมีแต่ทำให้อ่านยาก
+ */
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 </script>
 
 <template>
@@ -231,6 +311,13 @@ function fmtDateTime(iso: string): string {
         <span v-if="isFull && event.status !== 'cancelled'" class="text-[11px] font-semibold text-red-600">
           · ที่นั่งเต็ม
         </span>
+        <!-- หมวด (D4) — ml-auto ดันไปขวาสุด เพราะเป็นป้าย "ประเภท" ไม่ใช่ป้าย "สถานะ"
+             (ถ้าต่อกันเฉย ๆ ผู้อ่านจะเหมารวมว่าเป็นสถานะอีกอัน) -->
+        <span
+          class="ml-auto inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700"
+        >
+          <i :class="`bi ${categoryIcon(event.category)}`"></i> {{ categoryLabel(event.category) }}
+        </span>
       </div>
 
       <h1 class="text-xl sm:text-2xl font-bold text-stone-900 leading-snug break-words">
@@ -244,9 +331,20 @@ function fmtDateTime(iso: string): string {
         <div v-if="event.location">
           <i class="bi bi-geo-alt mr-1.5 text-stone-400"></i>{{ event.location }}
         </div>
-        <div v-if="event.registration_deadline">
+        <!-- ⏳ ปิดรับเมื่อไหร่ (4.5) — ใช้ `closes_at` = min(วันจัด, กำหนดปิดรับ) ที่ backend คิดให้
+             🚨 เดิมบล็อกนี้เป็น `v-if="event.registration_deadline"` ⇒ กิจกรรมที่ **ไม่ได้ตั้ง
+                กำหนดปิดรับ** (ซึ่งเป็นกลุ่มที่นักเรียนพลาดมากที่สุด เพราะไม่มีอะไรเตือน)
+                ไม่มีบรรทัดนี้เลย ทั้งที่ความจริงมันปิดรับที่ *วันจัด* ⇒ ผู้ใช้ไม่รู้เลยว่าหมดเขตเมื่อไหร่
+             ⚠️ ห้ามเทียบเวลาที่นี่ — `is_registration_open` มาจาก server (คำนวณใน SQL) -->
+        <div>
           <i class="bi bi-hourglass-split mr-1.5 text-stone-400"></i>
-          ปิดรับสมัคร {{ fmtDateTime(event.registration_deadline) }}
+          <template v-if="event.is_registration_open">
+            <span class="font-semibold text-stone-700">{{ closingLabel(event.closes_at) }}</span>
+            <span class="text-stone-400">
+              · {{ fmtDateTime(event.closes_at) }}<template v-if="!event.registration_deadline"> (พร้อมวันจัด)</template>
+            </span>
+          </template>
+          <template v-else>ปิดรับสมัครแล้ว</template>
         </div>
       </div>
 
@@ -289,6 +387,72 @@ function fmtDateTime(iso: string): string {
       </p>
     </div>
 
+    <!-- ════════ แชร์กิจกรรม (4.4) ════════ -->
+    <!--
+      ⚠️ **ซ่อนเมื่อกิจกรรมถูกยกเลิก** — เหตุผลเดียวกับบัตรเช็คอิน: การชวนคนมาสมัครกิจกรรม
+      ที่ถูกยกเลิกไปแล้วคือการส่งคนไปเจอทางตัน · ป้ายแดง "ยกเลิกแล้ว" และ URL ที่ยังใช้ได้
+      ก็เพียงพอสำหรับคนที่ลิงก์ค้างอยู่ในมือถือ
+      ⚠️ **ไม่ทำปุ่ม QR ซ้ำในหน้า EventManagement** — ที่นั่งของสภามีปุ่ม "ดูหน้าสาธารณะ" อยู่แล้ว
+      ซึ่งพามาที่การ์ดนี้ ⇒ ทำซ้ำเมื่อไรจะกลายเป็นสองที่ที่เพี้ยนจากกันได้
+    -->
+    <div
+      v-if="event.status !== 'cancelled'"
+      class="page-card p-5"
+      data-testid="share-card"
+    >
+      <h2 class="text-base font-bold text-stone-900 mb-1">
+        <i class="bi bi-qr-code mr-1 text-stone-500"></i> ชวนเพื่อนมาร่วมกิจกรรม
+      </h2>
+      <p class="text-xs text-stone-500 mb-4">
+        สแกนคิวอาร์เพื่อเปิดหน้านี้บนมือถือ — หรือคัดลอกลิงก์ไปส่งในกลุ่ม/LINE
+      </p>
+
+      <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+        <QrCode
+          :value="shareUrl"
+          :size="168"
+          alt="คิวอาร์โค้ดสำหรับเปิดหน้ากิจกรรมนี้"
+          class="shrink-0"
+        />
+
+        <div class="w-full min-w-0 flex-1 space-y-2.5">
+          <label for="event-share-url" class="block text-[11px] font-semibold text-stone-500">
+            ลิงก์กิจกรรม
+          </label>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <input
+              id="event-share-url"
+              ref="shareInput"
+              :value="shareUrl"
+              type="text"
+              readonly
+              data-testid="share-url"
+              class="w-full min-w-0 flex-1 rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-xs text-stone-600 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+              @focus="($event.target as HTMLInputElement).select()"
+            />
+            <button
+              type="button"
+              data-testid="copy-share-url"
+              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#991B1B]"
+              @click="copyShareUrl"
+            >
+              <i class="bi bi-clipboard"></i> คัดลอก
+            </button>
+          </div>
+
+          <!--
+            ⚠️ บอกล่วงหน้าว่า "ต้องล็อกอินก่อน" — คนที่ยังไม่เคยเข้าระบบจะสแกน QR แล้วเจอหน้า
+            ล็อกอิน ซึ่งอ่านได้ว่า "ลิงก์เสีย" · บอกตรงนี้จึงลดการตีความผิด (และระบบจำปลายทางไว้
+            แล้ว พอล็อกอินเสร็จจะกลับมาที่หน้านี้เอง)
+          -->
+          <p class="text-[11px] text-stone-400">
+            <i class="bi bi-info-circle mr-1"></i>ต้องเข้าสู่ระบบก่อนจึงจะลงทะเบียนได้
+            — ถ้ายังไม่ล็อกอิน ระบบจะพากลับมาที่หน้านี้หลังเข้าสู่ระบบ
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- ════════ สถานะของฉัน + ปุ่ม ════════ -->
     <div class="page-card p-5">
       <!-- ยกเลิกกิจกรรม — บอกก่อนปุ่มอื่น เพื่อไม่ให้ผู้ใช้สงสัยว่าทำไมกดไม่ได้ -->
@@ -318,6 +482,48 @@ function fmtDateTime(iso: string): string {
         <span class="block mt-0.5 text-[12px] text-amber-700">
           ที่นั่งเต็มชั่วคราว · ถ้ามีคนถอน ระบบจะเลื่อนที่นั่งให้คนแรกในคิวอัตโนมัติ
         </span>
+      </div>
+
+      <!-- ════════ บัตรเช็คอิน (D2) ════════ -->
+      <!--
+        QR = สิ่งที่นักเรียน "ถือ" ไปหน้างาน · ตราเขียว = ผ่านไปแล้ว
+        ⇒ สองสภาพนี้แทนกัน ไม่ใช่ซ้อนกัน (สแกนซ้ำได้แต่ไม่มีประโยชน์ — คนเช็คอินแล้ว
+        ต้องไม่เห็น QR อีก เพราะการแสกนซ้ำไม่ได้ให้อะไรและทำให้เข้าใจผิดว่ายังต้องสแกน)
+      -->
+      <div
+        v-if="cardState !== 'none'"
+        class="mb-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-5 text-center"
+        data-testid="checkin-card"
+      >
+        <template v-if="cardState === 'checked_in'">
+          <p class="text-4xl leading-none">✅</p>
+          <p class="mt-2 text-base font-bold text-emerald-700" data-testid="checked-in-stamp">
+            เช็คอินแล้ว
+          </p>
+          <p v-if="mine?.checked_in_at" class="mt-0.5 text-sm text-stone-500">
+            เมื่อ {{ fmtTime(mine.checked_in_at) }} น.
+          </p>
+        </template>
+
+        <template v-else-if="qrToken">
+          <p class="text-sm font-bold text-stone-800">บัตรเช็คอินของคุณ</p>
+          <p class="mt-0.5 text-[12px] text-stone-500">แสดงคิวอาร์นี้ให้สภาสแกนที่หน้างาน</p>
+          <div class="mt-3 flex justify-center">
+            <QrCode :value="qrToken" :size="200" alt="คิวอาร์เช็คอินกิจกรรมนี้" />
+          </div>
+          <!--
+            รหัสตัวอักษรใต้คิวอาร์ — ปลายทางของข้อความ "ใช้รหัสด้านล่างแทน" ใน `QrCode.vue`
+            ⚠️ ไม่ใช่ความลับ (ไม่มีอะไรเสียหายถ้าคนอื่นเห็น — ตัวกันการปลอมคือลายเซ็น
+               ไม่ใช่การปิดบังรหัส) ⇒ โชว์ตลอด ไม่ใช่ซ่อนรอให้ QR พังก่อน
+          -->
+          <p class="mt-3 text-[11px] text-stone-400">หรืออ่านรหัสนี้ให้สภาพิมพ์</p>
+          <p
+            class="mt-1 select-all break-all font-mono text-[11px] text-stone-600"
+            data-testid="checkin-token"
+          >
+            {{ qrToken }}
+          </p>
+        </template>
       </div>
 
       <!-- ปุ่มหลัก -->
