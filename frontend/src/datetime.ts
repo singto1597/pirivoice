@@ -228,11 +228,44 @@ export function fmtRelative(iso: string, now: Date = new Date()): string {
  * คืน `''` เมื่อวันที่อ่านไม่ได้ — ให้ผู้เรียก **ข้าม** ไป ไม่ใช่โชว์หัวกลุ่มเปล่า
  */
 export function fmtDayGroup(iso: string, now: Date = new Date()): string {
+  switch (dayGroupKind(iso, now)) {
+    case 'today':
+      return 'วันนี้'
+    case 'yesterday':
+      return 'เมื่อวาน'
+    case 'date':
+      return fmtDateShort(iso)
+    default:
+      return ''
+  }
+}
+
+/**
+ * 🏷️ **ชนิด** ของกลุ่มวัน — ใช้เมื่อผู้เรียกต้อง *ตัดสินใจ* จากชนิด ไม่ใช่แสดงป้าย
+ *
+ * ⭐ **ทำไมต้องแยกออกมาจาก `fmtDayGroup`:** `NotificationCenter.vue` ต้องรู้ว่าแถวควรโชว์
+ *    "เวลาสัมพัทธ์" หรือ "เวลานาฬิกา" ซึ่งขึ้นกับว่าหัวกลุ่มเป็น `วันนี้`/`เมื่อวาน` หรือ
+ *    วันที่จริง · ถ้ามันเทียบ **สตริงไทย** (`label === 'วันนี้'`) ตรง ๆ แล้วมีคนแก้คำใน
+ *    `fmtDayGroup` เป็นอย่างอื่น (หรือแก้เป็น "เมื่อวานนี้") ตรรกะนั้นจะ **เงียบ ๆ ตกไปที่
+ *    วันที่จริง** โดยไม่มีอะไรฟ้อง — ไม่ใช่ type error ไม่ใช่เทสต์พัง
+ *    ⇒ ที่นี่คืนค่าที่ **เทียบได้แบบมี type คุม** (`DayGroupKind`) ⇒ แก้คำที่เดียวไม่มีผล
+ *
+ * ⚠️ **`now` ต้องเป็นค่าเดียวกันกับที่ส่งให้ `fmtDayGroup`** ถ้าผู้เรียกเรียกทั้งสอง
+ *    ฟังก์ชันโดยไม่ส่ง `now` มันจะเรียก `new Date()` คนละครั้ง ⇒ ที่เส้นแบ่งวัน (เที่ยงคืน)
+ *    ป้ายกับชนิดอาจไม่ตรงกันได้ · ในทางปฏิบัติห่างกันไม่ถึงมิลลิวินาที แต่ผู้เรียกที่ต้องการ
+ *    ความถูกต้อง (เช่น computed ที่วนทั้งลิสต์) **ควรสร้าง `now` ตัวเดียวแล้วส่งไปทั้งคู่**
+ *
+ * ⚠️ `'invalid'` แยกออกมา ไม่ได้ยุบรวมกับ `'date'` — วันที่อ่านไม่ได้ต้องได้ *สตริงว่าง*
+ *    ไม่ใช่ `fmtDateShort()` ที่จะพิมพ์ "Invalid Date" ให้ผู้ใช้เห็น
+ */
+export type DayGroupKind = 'today' | 'yesterday' | 'date' | 'invalid'
+
+export function dayGroupKind(iso: string, now: Date = new Date()): DayGroupKind {
   const then = new Date(iso)
-  if (Number.isNaN(then.getTime())) return ''
+  if (Number.isNaN(then.getTime())) return 'invalid'
 
   const dayDiff = bangkokDayDiff(then, now)
-  if (dayDiff === 0) return 'วันนี้'
-  if (dayDiff === 1) return 'เมื่อวาน'
-  return fmtDateShort(iso)
+  if (dayDiff === 0) return 'today'
+  if (dayDiff === 1) return 'yesterday'
+  return 'date'
 }
