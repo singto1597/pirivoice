@@ -1,18 +1,32 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { listBoards } from '@/services/board'
 import { BOARD_TYPE_LABELS, boardTypeIcon, type BoardSummary, type BoardType } from '@/types/board'
 import PaginationBar from '@/components/PaginationBar.vue'
 import QuickSuggestionModal from '@/components/boards/QuickSuggestionModal.vue'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppChip from '@/components/ui/AppChip.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import { fmtRelative } from '@/datetime'
 
 /**
- * 📋 PIRI Boards — feed สาธารณะ (PIRI Vote + PIRI Talk + ข้อเสนอแนะ)
- * กรองตามประเภท (ทั้งหมด/โหวต/พูดคุย/ข้อเสนอแนะ) + ค้นหา + แบ่งหน้า
- * + ปุ่ม "เสนอไอเดีย" (E1) — ผู้ใช้ทั่วไปสร้างบอร์ดข้อเสนอได้เองโดยไม่ผ่านสภา
+ * 📋 PIRI Boards — รายการบอร์ดสาธารณะ (PIRI Vote + PIRI Talk + ข้อเสนอแนะ)
  *
- * ⚠️ ชนิดที่เพิ่มเข้ามาต้องกรองได้ทาง `?board_type=` ซึ่ง backend จำกัดด้วย
- *    `Query(pattern="^(vote|talk|suggestion)$")` ⇒ ค่าที่นี่ต้องเป็นหนึ่งในสามเท่านั้น
+ * ⚠️ ชนิดที่กรองได้ต้องเป็นหนึ่งในสามนี้เท่านั้น — backend จำกัดด้วย
+ *    `Query(pattern="^(vote|talk|suggestion)$")` ⇒ เพิ่มชนิดใหม่ต้องแก้ backend ก่อน
+ *
+ * 🔴 **ไม่มี `<h1>` และไม่มี eyebrow ในไฟล์นี้** — `<h1>` ของหน้าอยู่ที่ `AppHeader`
+ *    (R0.3) และ `routeTitles.boards = 'บอร์ด'` แสดงอยู่แล้ว ⇒ ชื่อเรื่องซ้ำสองที่
+ *    ⚠️ และ **ห้ามใส่ `uppercase tracking-*` กับข้อความไทย** — ภาษาไทยไม่มีตัวพิมพ์ใหญ่
+ *    และ letter-spacing ทำให้สระ/วรรณยุกต์ลอยห่างจากพยัญชนะ
+ *
+ * 🚧 **ยังไม่มี FAB สร้างข้อเสนอในรอบนี้โดยเจตนา** — `AppFab` เรนเดอร์เป็น `RouterLink`
+ *    และถูกวางที่ `MainLayout` ⇒ การเปิด modal จาก shell ต้องมีช่องทางส่ง action ข้าม
+ *    คอมโพเนนต์ ซึ่งยังไม่มีในสถาปัตยกรรมนี้ · ทางที่ถูกคือทำ `QuickSuggestionModal`
+ *    เป็น **หน้าเต็ม** (`/app/boards/new` ตามแบบ `event-create`) แล้วให้ FAB ชี้ไปที่นั่น
+ *    (skills #16: ฟอร์มต้องเป็นหน้าเต็ม) ⇒ เป็นงานคอมมิตถัดไป ไม่ใช่ยัดมาปนกับอันนี้
  */
 const router = useRouter()
 const boards = ref<BoardSummary[]>([])
@@ -25,13 +39,16 @@ const page = ref(1)
 const pageSize = 12
 const showSuggestionModal = ref(false)
 
-// แท็บกรองประเภท
-const TABS: Array<{ value: '' | BoardType; label: string; icon: string }> = [
-  { value: '', label: 'ทั้งหมด', icon: 'bi bi-grid' },
-  { value: 'vote', label: 'โหวต', icon: 'bi bi-bar-chart-fill' },
-  { value: 'talk', label: 'พูดคุย', icon: 'bi bi-chat-dots-fill' },
-  { value: 'suggestion', label: 'ข้อเสนอแนะ', icon: 'bi bi-lightbulb-fill' },
+/** ตัวกรองประเภท — **ไม่มีไอคอน** (ชิปมีที่จำกัด และป้ายไทยอ่านออกอยู่แล้ว) */
+const TYPE_FILTERS: Array<{ value: '' | BoardType; label: string }> = [
+  { value: '', label: 'ทั้งหมด' },
+  { value: 'vote', label: 'โหวต' },
+  { value: 'talk', label: 'พูดคุย' },
+  { value: 'suggestion', label: 'ข้อเสนอแนะ' },
 ]
+
+/** มีตัวกรอง/คำค้นค้างอยู่ไหม — ใช้เลือกข้อความของ empty state */
+const isFiltered = ref(false)
 
 onMounted(load)
 
@@ -61,6 +78,13 @@ function onPageChange(n: number) {
   load()
 }
 
+function clearFilters() {
+  q.value = ''
+  typeFilter.value = ''
+  page.value = 1
+  load()
+}
+
 async function load() {
   isLoading.value = true
   error.value = ''
@@ -73,145 +97,169 @@ async function load() {
     })
     boards.value = res.items
     total.value = res.total
+    isFiltered.value = Boolean(typeFilter.value || q.value.trim())
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ'
   } finally {
     isLoading.value = false
   }
 }
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
 </script>
 
 <template>
-  <div>
-    <!-- Editorial header -->
-    <div class="mb-6">
-      <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
-        <i class="bi bi-columns-gap mr-1"></i> Public Forum
-      </p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">PIRI Boards</h1>
-      <p class="text-sm text-stone-500 mt-1.5">
-        โหวต + พูดคุยสาธารณะ ที่สภานักเรียนอนุมัติแล้ว · ข้อเสนอแนะจากทุกคน
-      </p>
+  <div class="mx-auto max-w-5xl space-y-4 pb-4">
+    <!-- คำอธิบายหน้าอยู่ที่ `AppHeader` แล้ว ⇒ เหลือบรรทัดเดียวที่บอกว่า "ที่นี่มีอะไร" -->
+    <p class="text-sm text-ink-2">
+      โหวต + พูดคุยสาธารณะที่สภานักเรียนอนุมัติแล้ว · ข้อเสนอแนะจากทุกคน
+    </p>
+
+    <!-- 💡 เสนอไอเดีย — งานหลักของหน้านี้ ⇒ อยู่บนสุดและเต็มความกว้างบนมือถือ
+         ⚠️ `data-testid` คงไว้ — เป็น hook ที่อ้างอิงได้ และการย้ายปุ่มไม่ควรทำ hook หาย -->
+    <AppButton
+      data-testid="open-suggestion"
+      block
+      class="sm:w-auto"
+      @click="showSuggestionModal = true"
+    >
+      <template #icon><i class="bi bi-lightbulb" aria-hidden="true" /></template>
+      เสนอไอเดีย
+    </AppButton>
+
+    <!-- 🏷️ ชิปกรองประเภท — เลื่อนแนวนอน ไม่ตัดบรรทัด (`.chip-row` มีอยู่ใน main.css) -->
+    <div class="chip-row">
+      <AppChip
+        v-for="t in TYPE_FILTERS"
+        :key="t.value"
+        :label="t.label"
+        :active="typeFilter === t.value"
+        @click="switchType(t.value)"
+      />
     </div>
 
-    <!-- ปุ่มเสนอไอเดีย (E1) — ทุกคนที่ล็อกอินกดได้ ขึ้นบอร์ดทันที ไม่ต้องรอสภา -->
-    <button
-      type="button"
-      data-testid="open-suggestion"
-      @click="showSuggestionModal = true"
-      class="mb-5 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white hover:bg-brand-strong transition-colors"
-    >
-      <i class="bi bi-lightbulb"></i> เสนอไอเดีย
-    </button>
-
-    <!-- แถบกรอง + ค้นหา -->
-    <div class="flex flex-wrap items-center gap-2 mb-5">
-      <div class="flex gap-1 p-1 bg-stone-100 rounded-xl">
-        <button
-          v-for="t in TABS"
-          :key="t.value"
-          type="button"
-          @click="switchType(t.value)"
-          class="px-3.5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5"
-          :class="typeFilter === t.value ? 'bg-white border border-stone-200 text-brand' : 'text-stone-500 hover:text-stone-700'"
-        >
-          <i :class="t.icon"></i> {{ t.label }}
-        </button>
-      </div>
-
-      <div class="relative flex-1 min-w-[180px] sm:flex-none sm:w-72">
-        <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-sm"></i>
+    <!-- ค้นหา + จำนวน -->
+    <div class="flex items-center gap-3">
+      <div class="relative min-w-0 flex-1 sm:max-w-xs">
+        <i
+          class="bi bi-search absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-3"
+          aria-hidden="true"
+        />
         <input
           v-model="q"
           type="search"
+          aria-label="ค้นหาบอร์ด"
           placeholder="ค้นหาบอร์ด..."
-          class="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-brand"
+          class="w-full rounded-control border border-line bg-surface py-2.5 pr-3 pl-9 text-sm text-ink-1 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
         />
       </div>
-
-      <span class="text-sm text-stone-400 ml-auto tabular-nums">{{ total.toLocaleString('en-US') }} บอร์ด</span>
+      <span class="shrink-0 text-sm text-ink-3 tabular-nums">
+        {{ total.toLocaleString('en-US') }} บอร์ด
+      </span>
     </div>
 
     <!-- โหลด: skeleton การ์ด -->
-    <div v-if="isLoading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div v-for="n in 6" :key="n" class="page-card p-5 flex flex-col gap-3">
-        <div class="flex items-center justify-between">
-          <div class="h-5 w-16 bg-stone-100 animate-pulse rounded-md"></div>
-          <div class="h-3 w-14 bg-stone-100 animate-pulse rounded"></div>
+    <div v-if="isLoading" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <AppCard v-for="n in 6" :key="n" class="animate-pulse">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="h-5 w-16 rounded bg-canvas"></div>
+          <div class="h-3 w-14 rounded bg-canvas"></div>
         </div>
-        <div class="h-5 w-3/4 bg-stone-100 animate-pulse rounded"></div>
-        <div class="h-4 w-full bg-stone-100 animate-pulse rounded"></div>
-        <div class="h-4 w-5/6 bg-stone-100 animate-pulse rounded"></div>
-        <div class="h-4 w-full bg-stone-100 animate-pulse rounded mt-auto"></div>
-      </div>
+        <div class="mb-2 h-5 w-3/4 rounded bg-canvas"></div>
+        <div class="mb-1.5 h-4 w-full rounded bg-canvas"></div>
+        <div class="h-4 w-5/6 rounded bg-canvas"></div>
+      </AppCard>
     </div>
 
-    <!-- ข้อผิดพลาด -->
-    <div v-else-if="error" class="border-2 border-dashed border-stone-200 rounded-2xl py-20 px-6 text-center">
-      <i class="bi bi-wifi-off text-3xl text-stone-300 mb-3 inline-block"></i>
-      <p class="text-stone-600 font-medium">{{ error }}</p>
-      <button
-        type="button"
-        @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-strong transition-colors"
+    <!-- ผิดพลาด — 「ไม่มีการ์ดเส้นประ」 (R0: empty state ห้ามใช้ border-dashed) -->
+    <AppCard v-else-if="error" :padded="false" class="py-4">
+      <AppEmptyState icon="bi-wifi-off" title="โหลดบอร์ดไม่สำเร็จ" :description="error">
+        <AppButton variant="secondary" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
+
+    <!-- ว่าง — แยกข้อความตาม "ยังไม่มีของ" กับ "กรองแล้วไม่เจอ" (คนละสาเหตุ คนละทางออก) -->
+    <AppCard v-else-if="!boards.length" :padded="false" class="py-4">
+      <AppEmptyState
+        icon="bi-columns-gap"
+        :title="isFiltered ? 'ไม่พบบอร์ดที่ตรงกับเงื่อนไข' : 'ยังไม่มีบอร์ดในระบบ'"
+        :description="
+          isFiltered
+            ? 'ลองล้างคำค้นหรือเลือกประเภทอื่น'
+            : 'เมื่อสภานักเรียนอนุมัติเรื่องที่ขอเปิดโหวต/พูดคุย บอร์ดจะมาแสดงที่นี่'
+        "
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองอีกครั้ง
-      </button>
-    </div>
+        <AppButton v-if="isFiltered" variant="secondary" @click="clearFilters">
+          <template #icon><i class="bi bi-x-circle" aria-hidden="true" /></template>
+          ล้างตัวกรอง
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
-    <!-- ว่าง -->
-    <div v-else-if="!boards.length" class="border border-dashed border-stone-200 rounded-2xl bg-white p-12 text-center text-stone-400">
-      <div class="text-4xl mb-2"><i class="bi bi-columns-gap"></i></div>
-      <p class="text-stone-500">ยังไม่มีบอร์ดในเงื่อนไขนี้</p>
-    </div>
-
-    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <RouterLink
-        v-for="b in boards"
-        :key="b.id"
-        :to="{ name: 'board-detail', params: { id: b.id } }"
-        class="page-card card-hover p-5 flex flex-col"
-      >
-        <div class="flex items-center justify-between mb-2">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 text-[11px] font-semibold">
-            <i :class="boardTypeIcon(b.board_type)"></i> {{ BOARD_TYPE_LABELS[b.board_type] }}
-          </span>
-          <span class="text-xs text-stone-400">{{ fmtDate(b.created_at) }}</span>
-        </div>
-
-        <h3 class="font-semibold text-stone-900 leading-snug mb-1 line-clamp-2">{{ b.title }}</h3>
-        <p class="text-sm text-stone-500 mb-3 line-clamp-2">{{ b.description }}</p>
-
-        <div class="mt-auto">
-          <div v-if="b.tags.length" class="flex flex-wrap gap-1.5 mb-3">
-            <span v-for="tag in b.tags.slice(0, 4)" :key="tag" class="px-2 py-0.5 bg-stone-100 text-stone-600 text-[11px] rounded-full">
-              #{{ tag }}
+    <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- ⚠️ ทั้งการ์ดเป็นทางเข้าเดียว ⇒ `AppCard interactive` + `<RouterLink>` เป็น *ลูก*
+           ไม่ใช่ปุ่มซ้อนปุ่ม (HTML ไม่รองรับ `<button>` ซ้อน `<button>`) -->
+      <AppCard v-for="b in boards" :key="b.id" :padded="false" interactive>
+        <RouterLink
+          :to="{ name: 'board-detail', params: { id: b.id } }"
+          class="flex h-full flex-col rounded-card p-4 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none sm:p-5"
+        >
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <span
+              class="inline-flex items-center gap-1 rounded-md bg-canvas px-2 py-0.5 text-[11px] font-semibold text-ink-2"
+            >
+              <i :class="boardTypeIcon(b.board_type)" aria-hidden="true" />
+              {{ BOARD_TYPE_LABELS[b.board_type] }}
             </span>
+            <span class="shrink-0 text-xs text-ink-3">{{ fmtRelative(b.created_at) }}</span>
           </div>
-          <div class="flex items-center justify-between text-xs text-stone-500 pt-2 border-t border-stone-200">
-            <span class="truncate">
-              <i class="bi bi-person mr-1"></i>
-              {{ b.is_anonymous ? 'ไม่ระบุชื่อ' : b.author_name || 'สภานักเรียน' }}
-            </span>
-            <span class="flex items-center gap-3 shrink-0 ml-2">
-              <span v-if="b.board_type === 'vote'"><i class="bi bi-bar-chart mr-1"></i>{{ b.total_votes.toLocaleString('en-US') }}</span>
-              <span v-else><i class="bi bi-chat-left-text mr-1"></i>{{ b.comment_count.toLocaleString('en-US') }}</span>
-            </span>
+
+          <h3 class="mb-1 line-clamp-2 leading-snug font-semibold text-ink-1">{{ b.title }}</h3>
+          <p class="mb-3 line-clamp-2 text-sm text-ink-2">{{ b.description }}</p>
+
+          <div class="mt-auto">
+            <div v-if="b.tags.length" class="mb-3 flex flex-wrap gap-1.5">
+              <span
+                v-for="tag in b.tags.slice(0, 4)"
+                :key="tag"
+                class="rounded-full bg-canvas px-2 py-0.5 text-[11px] text-ink-2"
+              >
+                #{{ tag }}
+              </span>
+            </div>
+            <div
+              class="flex items-center justify-between gap-2 border-t border-line pt-2 text-xs text-ink-2"
+            >
+              <span class="truncate">
+                <i class="bi bi-person mr-1" aria-hidden="true" />
+                {{ b.is_anonymous ? 'ไม่ระบุชื่อ' : b.author_name || 'สภานักเรียน' }}
+              </span>
+              <span class="flex shrink-0 items-center gap-3">
+                <span v-if="b.board_type === 'vote'">
+                  <i class="bi bi-bar-chart mr-1" aria-hidden="true" />{{
+                    b.total_votes.toLocaleString('en-US')
+                  }}
+                </span>
+                <span v-else>
+                  <i class="bi bi-chat-left-text mr-1" aria-hidden="true" />{{
+                    b.comment_count.toLocaleString('en-US')
+                  }}
+                </span>
+              </span>
+            </div>
           </div>
-        </div>
-      </RouterLink>
+        </RouterLink>
+      </AppCard>
     </div>
 
-    <PaginationBar :total="total" :page="page" :page-size="pageSize" :loading="isLoading" @page-change="onPageChange" />
+    <PaginationBar
+      :total="total"
+      :page="page"
+      :page-size="pageSize"
+      :loading="isLoading"
+      @page-change="onPageChange"
+    />
 
     <QuickSuggestionModal v-model:open="showSuggestionModal" @created="onSuggestionCreated" />
   </div>
