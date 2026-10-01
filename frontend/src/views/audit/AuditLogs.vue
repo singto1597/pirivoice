@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import Swal from 'sweetalert2';
 import { listAuditLogs } from '@/services/audit';
 import type { AuditLogEntry } from '@/types/audit';
+import { fmtDateTimeSec } from '@/datetime';
 import PaginationBar from '@/components/PaginationBar.vue';
 
 // ===== ป้าย action → ภาษาไทย (ให้ตรงกับ backend dashboard_service.ACTION_LABELS) =====
@@ -143,13 +144,8 @@ watch(fQ, () => {
 onMounted(load);
 
 // ===== การแสดงผล =====
-function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
-}
+// 🕐 `fmtDateTimeSec` มาจาก `@/datetime` (R5.5) — **ตัวเดียวในระบบที่โชว์วินาที**
+//    เพราะที่นี่ผู้ดูแลต้องเรียงลำดับเหตุการณ์ที่เกิดในนาทีเดียวกัน (ดูคำเตือนใน `datetime.ts`)
 
 const expanded = ref<Set<string>>(new Set());
 
@@ -332,7 +328,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
           <tbody class="divide-y divide-stone-100">
             <template v-for="e in items" :key="e.id">
               <tr class="transition-colors hover:bg-stone-50">
-                <td class="whitespace-nowrap px-4 py-2.5 text-stone-500 tabular-nums">{{ fmtDateTime(e.created_at) }}</td>
+                <td class="whitespace-nowrap px-4 py-2.5 text-stone-500 tabular-nums">{{ fmtDateTimeSec(e.created_at) }}</td>
                 <td class="px-4 py-2.5">
                   <span class="font-medium text-stone-700">{{ e.actor_identifier }}</span>
                   <span v-if="!isBlank(e.ip_address)" class="block text-[11px] text-ink-3 tabular-nums">{{ e.ip_address }}</span>

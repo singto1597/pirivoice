@@ -8,6 +8,7 @@ import {
   downloadImportTemplate,
 } from '@/services/student';
 import type { ImportJob, ImportJobStatus } from '@/types/student';
+import { fmtDateTime } from '@/datetime';
 import {
   IMPORT_STATUS_LABELS,
   isImportJobRunning,
@@ -432,7 +433,7 @@ onBeforeUnmount(stopPolling);
                 <td class="px-4 py-3 font-medium text-stone-800">
                   {{ job.file_name }}
                   <div class="text-xs text-ink-3">
-                    {{ new Date(job.created_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) }}
+                    {{ fmtDateTime(job.created_at) }}
                   </div>
                 </td>
                 <td class="px-4 py-3">

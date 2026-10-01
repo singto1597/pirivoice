@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   dateToInput,
   fmtDateTime,
+  fmtDateTimeSec,
   fmtDateShort,
   fmtDayGroup,
+  fmtDayTime,
   dayGroupKind,
   fmtRelative,
   fmtTime,
@@ -160,6 +162,82 @@ describe('fmtDateTime / fmtTime — ค่าที่แสดงในรา�
 
   it('fmtTime คืนแค่ HH:MM (ไม่มีวันที่) — ใช้ในตรา "เช็คอินแล้ว"', () => {
     expect(fmtTime('2026-10-15T02:00:00Z')).not.toContain('2026')
+  })
+})
+
+describe('fmtDayTime / fmtDateTimeSec — สองรูปแบบที่ R5.5 รวมเข้ามา', () => {
+  it('★ fmtDayTime มีวันและเวลา แต่ **ไม่มีปี** (ปีซ้ำกับบริบทที่โชว์อยู่แล้ว)', () => {
+    // เทียบกับสตริงคงที่ ไม่คำนวณค่าคาดหวังด้วย `Date` ในเทสต์ — ตามกฎหัวไฟล์
+    expect(fmtDayTime('2026-10-15T02:00:00Z')).toBe('15 ต.ค. 09:00')
+    expect(fmtDayTime('2026-10-15T02:00:00Z')).not.toContain('2569')
+  })
+
+  it('★ fmtDateTimeSec มีวินาที — ตัวเดียวในระบบที่ทำ (ใช้กับบันทึกการใช้งาน)', () => {
+    expect(fmtDateTimeSec('2026-10-15T02:00:25Z')).toBe('15 ต.ค. 2569 09:00:25')
+  })
+
+  it('★ fmtDateTimeSec ต่างจาก fmtDateTime *เฉพาะ* วินาที — ไม่ใช่วันที่คนละรูปแบบ', () => {
+    // 🔴 เทสต์นี้กันการแก้ `day:` ในตัวใดตัวหนึ่งโดยไม่แก้อีกตัว — ซึ่งจะทำให้ "บันทึกการใช้งาน"
+    //    กับหน้าอื่นโชว์วันที่คนละหน้าตา (อาการเดียวกับที่ R5.5 กำลังเก็บกวาด)
+    const base = fmtDateTime('2026-10-15T02:00:25Z')
+    const withSec = fmtDateTimeSec('2026-10-15T02:00:25Z')
+    expect(withSec.startsWith(base)).toBe(true)
+    expect(withSec).not.toBe(base)
+  })
+
+  it('★ วันที่หลักเดียว: `fmtDateShort` ไม่มีศูนย์นำ แต่ตัวที่มีเวลา **มี** (กฎเดียวทั้งแอป)', () => {
+    // 🔴 ดูเหมือนไม่สม่ำเสมอ แต่เป็นกฎที่เขียนไว้ในหัว `datetime.ts` โดยเจตนา:
+    //    วันที่ล้วนอ่านเป็นประโยค · วันที่+เวลาอยู่ในคอลัมน์ที่ต้องตรงหลักกัน
+    //    ⇒ เทสต์นี้ล็อกกฎไว้ กันคน "แก้ให้สม่ำเสมอ" แล้วทำตารางทั้งแอปเลื่อน
+    expect(fmtDateShort('2026-10-01T02:00:00Z')).toBe('1 ต.ค. 2569')
+    expect(fmtDayTime('2026-10-01T02:00:00Z')).toBe('01 ต.ค. 09:00')
+    expect(fmtDateTime('2026-10-01T02:00:00Z')).toBe('01 ต.ค. 2569 09:00')
+  })
+
+  it('★ ไม่พึ่งโซนเครื่อง — offset ต่างกันที่หมายถึงเวลาเดียวกันให้ผลเท่ากัน', () => {
+    expect(fmtDayTime('2026-10-15T02:00:00Z')).toBe(fmtDayTime('2026-10-15T09:00:00+07:00'))
+    expect(fmtDateTimeSec('2026-10-15T02:00:00Z')).toBe(fmtDateTimeSec('2026-10-15T09:00:00+07:00'))
+  })
+})
+
+describe('🔴 ค่าที่ใช้ไม่ได้ ⇒ สตริงว่าง — กฎเดียวกันทั้งไฟล์', () => {
+  // ⭐ R5.5: ทุกฟังก์ชันแสดงผลผ่านประตูเดียว (`toDate`) ⇒ สัญญาเดียวกันหมด
+  //
+  // 🔴 **ทำไมต้องมีบล็อกนี้แยก** — ก่อน R5.5 ฟังก์ชันพวกนี้เรียก `new Date(iso)` ตรง ๆ
+  //    ⇒ `new Date(null)` ได้ **1 ม.ค. 1970** ซึ่ง `toLocaleString` พิมพ์ออกมาสวย ๆ ว่า
+  //    "01 ม.ค. 1970 07:00" — ดูเหมือนข้อมูลจริงจนไม่มีใครเอะใจ และ **ไม่มี type error**
+  //    เพราะ `null` ถูกส่งเข้า `iso: string` ได้ก็ต่อเมื่อผู้เรียกประกาศ type หลวม
+  //    ⇒ เทสต์นี้คือสิ่งเดียวที่กันไม่ให้มันกลับมา
+
+  const BAD: Array<string | null | undefined> = ['', null, undefined, 'ไม่ใช่วันที่']
+
+  it('ทุกฟังก์ชันคืนสตริงว่าง — ไม่ใช่ "Invalid Date" และไม่ใช่ปี 1970', () => {
+    for (const bad of BAD) {
+      expect(fmtDateTime(bad)).toBe('')
+      expect(fmtDateTimeSec(bad)).toBe('')
+      expect(fmtDateShort(bad)).toBe('')
+      expect(fmtDayTime(bad)).toBe('')
+      expect(fmtTime(bad)).toBe('')
+    }
+  })
+
+  it('★ `null` ต้อง **ไม่** กลายเป็น 1 ม.ค. 1970 — กับดักที่ type จับไม่ได้', () => {
+    expect(fmtDateTime(null)).not.toContain('1970')
+    expect(fmtDateShort(null)).not.toContain('1970')
+  })
+
+  it('ฟังก์ชันนับแบบสัมพัทธ์ก็คืนสตริงว่าง (ค่าเริ่มต้นเดิมของมัน)', () => {
+    for (const bad of BAD) {
+      expect(fmtRelative(bad)).toBe('')
+      expect(fmtDayGroup(bad)).toBe('')
+      expect(dayGroupKind(bad)).toBe('invalid')
+    }
+  })
+
+  it('★ ค่าที่ *ถูกต้อง* ยังผ่านปกติ — การ์ดนี้ไม่ได้ทำให้ทุกอย่างว่าง', () => {
+    // กันการแก้ที่ "ปิดประตูหนี" — เช่น `toDate` ที่คืน `null` ตลอด
+    expect(fmtDateTime('2026-10-15T02:00:00Z')).not.toBe('')
+    expect(fmtDayTime('2026-10-15T02:00:00Z')).not.toBe('')
   })
 })
 

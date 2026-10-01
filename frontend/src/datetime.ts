@@ -6,6 +6,25 @@
  *    ที่เดียว อีกสามที่เหลือจะไม่ตรงกัน แล้วผู้ใช้จะเห็นวันที่คนละหน้าตาในระบบเดียว
  *    ซึ่งไม่มีเทสต์ไหนจับได้ (ไม่มีเทสต์ไหนเทียบข้ามไฟล์)
  *
+ * 🔴 **R5.5 เก็บของจริงที่นับได้** — ตอนนั้นก๊อปไม่ได้มี 4 ที่ แต่มี **11 ที่ใน 8 ไฟล์**
+ *    และ **เพี้ยนกันจริง 3 แบบ** (`day: 'numeric'` vs `'2-digit'` ปนกัน, ที่ไม่มีปี, ที่มีวินาที)
+ *    ⇒ ตอนนี้เหลือฟังก์ชันชุดเดียวที่นี่ ไฟล์อื่น `import` เท่านั้น
+ *
+ * 📏 **กฎการเลือกฟังก์ชัน (ตัดสินแล้ว อย่าแตกใหม่)**
+ *
+ * | ต้องการ | ใช้ | ได้ |
+ * |---|---|---|
+ * | วันที่ล้วน — อ่านเป็นประโยค | `fmtDateShort` | `1 ต.ค. 2569` |
+ * | วันที่ + เวลา — เป็นรายการ/ตาราง | `fmtDateTime` | `01 ต.ค. 2569 18:03` |
+ * | วันที่ + เวลา แต่**ปีซ้ำกับบริบท** | `fmtDayTime` | `01 ต.ค. 18:03` |
+ * | ต้องรู้ลำดับในนาทีเดียวกัน (บันทึกระบบ) | `fmtDateTimeSec` | `01 ต.ค. 2569 18:03:25` |
+ * | เวลาล้วน | `fmtTime` | `18:03` |
+ *
+ * ⚠️ **ทำไมวันที่ล้วนไม่มีศูนย์นำ แต่ที่มีเวลามี** — ไม่ใช่ความไม่ตั้งใจ: วันที่ล้วนอยู่ใน
+ *    ประโยค ("สร้างเมื่อ 1 ต.ค. 2569") ซึ่งภาษาไทยไม่เขียนศูนย์นำหน้า ส่วนที่มีเวลาอยู่ใน
+ *    **คอลัมน์/รายการที่เรียงลงมา** ซึ่งศูนย์นำทำให้หลักตรงกันแล้วกวาดตาง่าย
+ *    ⇒ เป็นกฎเดียวที่ใช้ทั้งแอป ไม่ใช่ข้อยกเว้นรายหน้า
+ *
  * ⚠️ **ทุกฟังก์ชันในไฟล์นี้ตรึง `Asia/Bangkok`** — ห้ามใช้โซนของเครื่องผู้ใช้ เพราะนาฬิกา
  *    เครื่องผู้ใช้ตั้งผิดได้ และเวลาของ *ระบบ* ไม่ใช่การแสดงผล
  */
@@ -117,9 +136,31 @@ export function formatThaiDateTimeInput(value: string): string {
   }).format(parts)
 }
 
+/**
+ * 🔒 ประตูเดียวของ "สตริง → `Date`" สำหรับฟังก์ชันแสดงผลในไฟล์นี้
+ *
+ * 🔴 **ทำไมไม่เรียก `new Date(iso)` ตรง ๆ** — ค่าที่ผิดรูปไม่ได้ทำให้ throw แต่ให้ผลที่แย่กว่า:
+ *    `new Date('')` ได้ Invalid Date (ซึ่ง `toLocaleString` จะพิมพ์คำว่า "Invalid Date"
+ *    ออกมาบนหน้าจอ) ส่วน **`new Date(null)` ได้ 1 ม.ค. 1970** ⇒ หน้าจอจะโชว์
+ *    "01 ม.ค. 1970 07:00" แทนที่จะเว้นว่าง ซึ่งเป็นค่าที่ *ดูสมเหตุสมผล* จนไม่มีใครเอะใจ
+ *    ว่าเป็นขยะ ⇒ ปิดที่ต้นทาง คืน `null` แล้วให้ทุกฟังก์ชันข้างล่างคืน **สตริงว่าง**
+ *
+ * ⚠️ **สตริงว่าง ไม่ใช่ `-` หรือ `—`** — เป็นแบบเดียวกับ `fmtRelative` / `fmtDayGroup`
+ *    ที่ทำมาก่อนแล้ว · ผู้เรียกที่ต้องการสัญลักษณ์เติมเองได้ (`fmtDateTime(x) || '—'`)
+ *    แต่ **ห้ามให้ฟังก์ชันที่นี่เลือกแทน** เพราะตอนนี้ทั้งเรพมีทั้ง `-` และ `—` ปนกันอยู่
+ *    ซึ่งเป็นความไม่สม่ำเสมออีกชั้นที่ R5.5 กำลังเก็บกวาด
+ */
+function toDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
 /** วันและเวลาจัดกิจกรรม — timestamptz จึงใช้ `new Date(iso)` ได้ตรง ๆ */
-export function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
+export function fmtDateTime(iso: string | null | undefined): string {
+  const d = toDate(iso)
+  if (!d) return ''
+  return d.toLocaleString('th-TH', {
     timeZone: 'Asia/Bangkok',
     day: '2-digit',
     month: 'short',
@@ -130,17 +171,67 @@ export function fmtDateTime(iso: string): string {
 }
 
 /** เวลาสั้น ๆ (`HH:MM`) สำหรับตรา "เช็คอินแล้ว" — เช็คอินเกิดวันงานเสมอ วันที่จึงซ้ำกับหัวข้อ */
-export function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('th-TH', {
+export function fmtTime(iso: string | null | undefined): string {
+  const d = toDate(iso)
+  if (!d) return ''
+  return d.toLocaleTimeString('th-TH', {
     timeZone: 'Asia/Bangkok',
     hour: '2-digit',
     minute: '2-digit',
   })
 }
 
+/**
+ * วันที่ย่อ **ไม่มีปี** + เวลา — `01 ต.ค. 18:03`
+ *
+ * ⭐ **ใช้เมื่อปีซ้ำกับสิ่งที่ผู้ใช้เห็นอยู่แล้ว** เช่น คอมเมนต์ใต้กระทู้ (ปีอยู่ที่หัวกระทู้)
+ *    หรือบันทึกกิจกรรมของฉันที่แบ่งหน้าแล้ว — ใส่ปีลงไปทุกแถวมีแต่ทำให้แถวกว้างขึ้น
+ *
+ * ⚠️ **ไม่มีปี = ห้ามใช้กับข้อมูลที่ข้ามปีได้** (เช่นรายการที่กรองด้วยช่วงวันที่ยาว)
+ *    เพราะ `01 ต.ค.` ของปี 2568 กับ 2569 อ่านเหมือนกันเป๊ะ ⇒ ใช้ `fmtDateTime` แทน
+ *
+ * 🔴 ดึงมาจาก 3 ที่ที่เขียนเหมือนกันเป๊ะ (`CommentThread` · `MyActivity` · `ReportModeration`)
+ *    ซึ่ง**ตั้งชื่อไม่ตรงกันด้วย** — สองที่ชื่อ `fmtTime` อีกที่ชื่อ `fmtDate` แต่คืนค่าเดียวกัน
+ *    ⇒ ชื่อ `fmtDayTime` สื่อว่ามีทั้งวันและเวลา (ชื่อเดิมทำให้ผู้เรียกเข้าใจผิดว่ามีแต่อย่างเดียว)
+ */
+export function fmtDayTime(iso: string | null | undefined): string {
+  const d = toDate(iso)
+  if (!d) return ''
+  return d.toLocaleString('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * เหมือน `fmtDateTime` แต่ **มีวินาที** — `01 ต.ค. 2569 18:03:25`
+ *
+ * ⭐ **ใช้กับบันทึกการใช้งานเท่านั้น** — ที่นั่นผู้ดูแลต้องเรียงลำดับเหตุการณ์ที่เกิดในนาที
+ *    เดียวกันได้ (อนุมัติ 3 รายการรวดเดียวจบ) ซึ่ง `HH:MM` ตอบไม่ได้
+ * ⚠️ ที่อื่น **ห้ามใช้** — วินาทีคือรายละเอียดที่ไม่ช่วยผู้ใช้ทั่วไปและทำให้แถวยาวขึ้น
+ */
+export function fmtDateTimeSec(iso: string | null | undefined): string {
+  const d = toDate(iso)
+  if (!d) return ''
+  return d.toLocaleString('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
 /** วันที่ล้วน (`30 ก.ย. 2569`) — พ.ศ. · ไม่มีเวลา ⇒ ใช้ในบรรทัดที่เวลาที่แน่นอนไม่ช่วยอะไร */
-export function fmtDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString('th-TH', {
+export function fmtDateShort(iso: string | null | undefined): string {
+  const d = toDate(iso)
+  if (!d) return ''
+  return d.toLocaleDateString('th-TH', {
     timeZone: 'Asia/Bangkok',
     day: 'numeric',
     month: 'short',
@@ -186,9 +277,9 @@ function bangkokDayDiff(from: Date, to: Date): number {
  *    ผู้ใช้เกิดได้จริง (นาฬิกาเครื่องเพี้ยน/เขตเวลาผิด) และ `-3 นาทีที่แล้ว` อ่านแล้วเหมือนบั๊ก
  *    ⇒ ตรรกะเดียวกับที่ `closingLabel()` ใน `types/event.ts` ต้องรับมือ
  */
-export function fmtRelative(iso: string, now: Date = new Date()): string {
-  const then = new Date(iso)
-  if (Number.isNaN(then.getTime())) return ''
+export function fmtRelative(iso: string | null | undefined, now: Date = new Date()): string {
+  const then = toDate(iso)
+  if (!then) return ''
 
   const diffMs = now.getTime() - then.getTime()
   if (diffMs < 60_000) return 'เมื่อสักครู่' // รวมอนาคตอันใกล้และนาฬิกาเครื่องเพี้ยน
@@ -227,7 +318,7 @@ export function fmtRelative(iso: string, now: Date = new Date()): string {
  *
  * คืน `''` เมื่อวันที่อ่านไม่ได้ — ให้ผู้เรียก **ข้าม** ไป ไม่ใช่โชว์หัวกลุ่มเปล่า
  */
-export function fmtDayGroup(iso: string, now: Date = new Date()): string {
+export function fmtDayGroup(iso: string | null | undefined, now: Date = new Date()): string {
   switch (dayGroupKind(iso, now)) {
     case 'today':
       return 'วันนี้'
@@ -260,9 +351,9 @@ export function fmtDayGroup(iso: string, now: Date = new Date()): string {
  */
 export type DayGroupKind = 'today' | 'yesterday' | 'date' | 'invalid'
 
-export function dayGroupKind(iso: string, now: Date = new Date()): DayGroupKind {
-  const then = new Date(iso)
-  if (Number.isNaN(then.getTime())) return 'invalid'
+export function dayGroupKind(iso: string | null | undefined, now: Date = new Date()): DayGroupKind {
+  const then = toDate(iso)
+  if (!then) return 'invalid'
 
   const dayDiff = bangkokDayDiff(then, now)
   if (dayDiff === 0) return 'today'

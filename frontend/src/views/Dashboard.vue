@@ -27,6 +27,7 @@ import StatusStackedBar from '@/components/StatusStackedBar.vue';
 import AppCard from '@/components/ui/AppCard.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppEmptyState from '@/components/ui/AppEmptyState.vue';
+import { fmtDateTime, fmtDayTime } from '@/datetime';
 import { LEVEL_ORDER } from '@/types/issue';
 import { STATUS_DOT, STATUS_BADGE, STATUS_URL_ALL, statusShort } from '@/constants/status';
 import { CHART_BRAND, CHART_BRAND_FILL, CHART_INK, CHART_INK_FILL, NEUTRAL_RAMP } from '@/constants/chart';
@@ -228,23 +229,14 @@ function rankCircle(idx: number): string {
 }
 
 // ===== 🕐 เวลาไทย Asia/Bangkok =====
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '-';
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
+// 🔴 R5.5 — `fmtDateTime`/`fmtDate` เดิมของไฟล์นี้ **เพี้ยนจากต้นฉบับ** (`day: 'numeric'`
+//    ขณะที่ที่อื่นใช้ `'2-digit'` และคืน `'-'` แทน `''`) ⇒ ตอนนี้ใช้ของกลางทั้งคู่
+//    การเปลี่ยน `numeric` → `2-digit` **เห็นได้จริงบนจอ** (`1 ต.ค.` → `01 ต.ค.`) ซึ่งเป็น
+//    เจตนาของการรวมให้เป็นแบบเดียว — ไม่ใช่ผลข้างเคียงที่มองข้าม
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return '-';
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-  });
-}
-
+/** แกนวันที่ของกราฟ — **ไม่ใช่ฟังก์ชันแสดงผลทั่วไป** จึงไม่อยู่ใน `datetime.ts`
+ *  รับ `YYYY-MM-DD` (date-only) แล้วอ่านด้วย `T00:00:00Z` + `timeZone: 'UTC'` **โดยเจตนา**
+ *  ⇒ ได้ตัวเลขวันเดียวกับที่ backend ส่งมา ไม่ถูกเลื่อนเพราะโซนของเครื่องที่รัน */
 function fmtDay(iso: string): string {
   const d = new Date(iso + 'T00:00:00Z');
   return d.toLocaleDateString('th-TH', { timeZone: 'UTC', day: 'numeric', month: 'short' });
@@ -625,7 +617,7 @@ const hasTrafficData = computed(
                 <div class="flex-1 min-w-0">
                   <p class="text-sm text-stone-800 truncate group-hover:text-stone-900">{{ r.title }}</p>
                   <p class="text-[11px] text-ink-3 truncate">
-                    {{ r.category_label }} · {{ r.room_name || 'ไม่ระบุห้อง' }} · {{ fmtDate(r.created_at) }}
+                    {{ r.category_label }} · {{ r.room_name || 'ไม่ระบุห้อง' }} · {{ fmtDayTime(r.created_at) }}
                   </p>
                 </div>
                 <span
@@ -757,7 +749,7 @@ const hasTrafficData = computed(
                 class="flex items-center justify-between text-xs"
               >
                 <span class="text-stone-600 truncate">{{ lg.actor }}</span>
-                <span class="text-ink-3 ml-2 shrink-0">{{ fmtDate(lg.at) }}</span>
+                <span class="text-ink-3 ml-2 shrink-0">{{ fmtDayTime(lg.at) }}</span>
               </div>
             </div>
             <p v-else class="text-sm text-ink-3 py-2">ยังไม่มีข้อมูลการเข้าใช้งาน</p>

@@ -12,6 +12,7 @@ import {
 } from '@/types/board'
 import type { ApiError } from '@/services/api'
 import { goUnavailable } from '@/router/unavailable'
+import { fmtDateShort } from '@/datetime'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import CommentThread from '@/components/boards/CommentThread.vue'
@@ -136,14 +137,10 @@ async function handleHideBoard() {
 
 onMounted(load)
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
+// 🕐 `fmtDateShort` มาจาก `@/datetime` (R5.5) — ของเดิมในไฟล์นี้เป็น **วันที่ล้วนก็อปที่สอง**
+//    ต่างจากต้นฉบับแค่ `day: '2-digit'` ⇒ ตอนนี้เป็น `numeric` เหมือนกันทั้งระบบ (`1 ต.ค. 2569`)
+//    ⚠️ คอมเมนต์ใต้กระทู้ (`CommentThread`) ยังใช้ `fmtDayTime` ที่ **มี** ศูนย์นำ — ตั้งใจ
+//       ตามกฎใน `datetime.ts`: วันที่ล้วนอ่านเป็นประโยค · วันที่+เวลาอยู่ในคอลัมน์ที่ต้องตรงหลัก
 
 // คอมเมนต์ root (parent_comment_id = null) — backend ส่ง tree ที่ roots อยู่ระดับบน
 const rootComments = computed(() => board.value?.comments ?? [])
@@ -194,7 +191,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           <i :class="boardTypeIcon(board.board_type)"></i> {{ boardTypeHeading(board.board_type) }}
         </span>
         <div class="flex items-center gap-2">
-          <span class="text-xs text-ink-3">{{ fmtDate(board.created_at) }}</span>
+          <span class="text-xs text-ink-3">{{ fmtDateShort(board.created_at) }}</span>
           <!-- 🔖 บันทึกไว้อ่านทีหลัง (C2) -->
           <BookmarkButton entity-type="board" :entity-id="board.id" size="sm" />
           <button

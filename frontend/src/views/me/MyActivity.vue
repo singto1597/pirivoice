@@ -20,6 +20,7 @@ import {
   type BookmarkEntityType,
 } from '@/types/bookmark'
 import { STATUS_BADGE, statusShort } from '@/constants/status'
+import { fmtDayTime } from '@/datetime'
 import PaginationBar from '@/components/PaginationBar.vue'
 
 /**
@@ -121,15 +122,12 @@ function onBmPage(n: number) {
   loadBookmarks()
 }
 
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+// 🕐 `fmtDayTime` (จาก `@/datetime`) — **ไม่มีปีโดยเจตนา**
+//    คอลัมน์นี้เป็นแถบ `shrink-0` ชิดขวา อยู่ในแถวที่ชื่อเรื่องตัดด้วย `truncate`
+//    ⇒ เพิ่มปีอีก 5 ตัวอักษรคือตัดความกว้างของ *ชื่อเรื่อง* ทุกแถว เพื่อข้อมูลที่
+//      หน้าแรก ๆ (ที่ผู้ใช้อยู่จริง) เป็นปีปัจจุบันเสมอ
+//    ⚠️ **แลกมาด้วย:** หน้าที่กดย้อนไปไกลจนข้ามปีจะอ่านวันที่กำกวม → ถ้าวันหนึ่งมีคนบ่น
+//       เรื่องนี้ ทางแก้คือเปลี่ยน *ที่นี่* เป็น `fmtDateTime` ไม่ใช่แก้ที่ `datetime.ts`
 
 /** ป้ายกำกับของ `meta` — **ความหมายขึ้นกับประเภทกิจกรรม** (ดูคอมเมนต์ใน types/me.ts) */
 function metaText(a: ActivityItem): string | null {
@@ -290,7 +288,7 @@ function metaClass(a: ActivityItem): string {
               {{ a.excerpt }}
             </p>
           </div>
-          <span class="shrink-0 text-xs tabular-nums text-ink-3">{{ fmtTime(a.created_at) }}</span>
+          <span class="shrink-0 text-xs tabular-nums text-ink-3">{{ fmtDayTime(a.created_at) }}</span>
         </component>
       </TransitionGroup>
 
@@ -407,7 +405,7 @@ function metaClass(a: ActivityItem): string {
               {{ b.excerpt }}
             </p>
           </div>
-          <span class="shrink-0 text-xs tabular-nums text-ink-3">{{ fmtTime(b.created_at) }}</span>
+          <span class="shrink-0 text-xs tabular-nums text-ink-3">{{ fmtDayTime(b.created_at) }}</span>
         </component>
       </TransitionGroup>
 

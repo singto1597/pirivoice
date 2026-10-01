@@ -21,6 +21,7 @@ import {
 } from '@/types/event'
 import type { ApiError } from '@/services/api'
 import { goUnavailable } from '@/router/unavailable'
+import { fmtDateTime, fmtTime } from '@/datetime'
 import QrCode from '@/components/QrCode.vue'
 
 /**
@@ -208,32 +209,8 @@ async function handleCancel() {
   }
 }
 
-/**
- * กิจกรรมมี **วันและเวลา** (timestamptz) ต่างจากบอร์ด/ประกาศที่เป็นวันที่ล้วน
- * ⇒ ใช้ `toLocaleString` กับ ISO ที่มี tz ได้ตรง ๆ (ไม่ใช่ date-only ที่ห้ามใช้ `new Date`)
- */
-function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-/**
- * เวลาสั้น ๆ (`HH:MM`) — ใช้กับตรา "เช็คอินแล้ว" ซึ่งเกิด **วันงานเสมอ**
- * ⇒ วันที่ซ้ำกับ `event_date` ที่โชว์อยู่ข้างบนอยู่แล้ว ใส่วันที่ลงไปมีแต่ทำให้อ่านยาก
- */
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+// 🕐 เวลามาจาก `@/datetime` ที่เดียว — R5.5 เก็บกวาดก็อปที่เคยอยู่ตรงนี้ทิ้ง
+//    (`fmtDateTime` · `fmtTime` ที่เคยประกาศในไฟล์นี้ **เหมือนต้นฉบับทุกตัวอักษร**)
 </script>
 
 <template>

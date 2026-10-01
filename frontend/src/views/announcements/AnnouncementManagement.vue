@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import Swal from 'sweetalert2'
 import { BRAND, WARN } from '@/constants/brand'
+import { fmtDateTime } from '@/datetime'
 import PaginationBar from '@/components/PaginationBar.vue'
 import {
   listAnnouncements,
@@ -328,17 +329,8 @@ async function doUnretire(a: Announcement) {
 }
 
 // ===== การแสดงผล =====
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+// 🕐 `fmtDateTime` มาจาก `@/datetime` (R5.5) — ของเดิมในไฟล์นี้คืน `'—'` เมื่อไม่มีค่า
+//    ⚠️ ทุกจุดเรียกอยู่ใน `v-if` ที่การันตีว่าไม่ null อยู่แล้ว ⇒ ไม่ต้องเติม `|| '—'` ที่นี่
 
 const hasAnyItems = computed(() => items.value.length > 0)
 </script>

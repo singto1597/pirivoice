@@ -4,6 +4,7 @@ import Swal from 'sweetalert2'
 import { BRAND } from '@/constants/brand'
 import { addComment, reportComment, hideComment } from '@/services/board'
 import { REPORT_REASON_LABELS, type BoardComment, type ReportReason } from '@/types/board'
+import { fmtDayTime } from '@/datetime'
 import { useAuthStore } from '@/stores/auth'
 
 /**
@@ -26,15 +27,8 @@ const acting = ref(false) // กันกดซ้ำระหว่าง repor
 
 const isOwn = computed(() => props.comment.user_id != null && props.comment.user_id === authStore.user?.id)
 
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+// 🕐 `fmtDayTime` (จาก `@/datetime`) — ปีซ้ำกับหัวกระทู้ที่อยู่เหนือขึ้นไป จึงไม่ต้องโชว์ซ้ำ
+//    ⚠️ ฟังก์ชันที่เคยอยู่ในไฟล์นี้ชื่อ `fmtTime` ซึ่ง **สื่อผิด** — มันมีทั้งวันและเวลา
 
 async function submitReply() {
   const body = replyBody.value.trim()
@@ -138,7 +132,7 @@ async function handleHide() {
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-sm font-semibold text-stone-800">{{ comment.commenter_name || 'ไม่ระบุชื่อ' }}</span>
-          <span class="text-xs text-ink-3">{{ fmtTime(comment.created_at) }}</span>
+          <span class="text-xs text-ink-3">{{ fmtDayTime(comment.created_at) }}</span>
           <span v-if="comment.is_edited" class="text-[11px] text-ink-3">· แก้ไขแล้ว</span>
         </div>
         <p class="text-sm text-stone-700 mt-0.5 whitespace-pre-wrap break-words">{{ comment.body }}</p>

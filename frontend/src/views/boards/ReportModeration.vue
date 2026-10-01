@@ -12,6 +12,7 @@ import {
   type ReportReason,
   type ReportStatus,
 } from '@/types/board'
+import { fmtDayTime } from '@/datetime'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -101,15 +102,8 @@ async function load() {
   }
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+// 🕐 `fmtDayTime` (จาก `@/datetime`) — เดิมชื่อ `fmtDate` ซึ่ง **อ่านแล้วเหมือนวันที่ล้วน**
+//    ทั้งที่คืนวัน *และ* เวลา ⇒ ชื่อเดิมคือสาเหตุที่ไม่มีใครสังเกตว่ามันซ้ำกับอีก 2 ไฟล์
 
 // ✅ จัดการรายงาน: action='hide' (ซ่อนคอมเมนต์) / 'dismiss' (ไม่ดำเนินการกับคอมเมนต์)
 async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
@@ -260,7 +254,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
 
           <div class="flex flex-wrap items-center justify-between gap-2 mt-2.5">
             <p class="text-xs text-ink-3">
-              แจ้งโดย {{ r.reporter_name || 'ไม่ระบุชื่อ' }} · {{ fmtDate(r.created_at) }}
+              แจ้งโดย {{ r.reporter_name || 'ไม่ระบุชื่อ' }} · {{ fmtDayTime(r.created_at) }}
               <span v-if="r.detail" class="block text-stone-500 mt-0.5"><i class="bi bi-info-circle mr-1"></i>{{ r.detail }}</span>
             </p>
 
