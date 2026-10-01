@@ -15,7 +15,8 @@
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/",
-    "lint:colors": "node scripts/check-brand-colors.mjs"
+    "lint:colors": "node scripts/check-brand-colors.mjs",
+    "lint:palette": "node scripts/check-status-palette.mjs"
   },
   "dependencies": {
     "@vuepic/vue-datepicker": "^14.0.0",

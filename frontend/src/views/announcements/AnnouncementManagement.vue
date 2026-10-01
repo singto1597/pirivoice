@@ -521,7 +521,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="doRestore(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-ok-solid px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-ok-strong disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'restore')"

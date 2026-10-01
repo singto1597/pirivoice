@@ -407,7 +407,7 @@ function coversToday(t: AcademicTerm): boolean {
               </span>
               <span
                 v-else-if="!t.is_current && coversToday(t)"
-                class="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200"
+                class="rounded-full bg-ok-tint px-2.5 py-1 text-[11px] font-bold text-ok-strong ring-1 ring-ok-line"
               >
                 <i class="bi bi-calendar-check mr-1"></i>วันนี้อยู่ในช่วงนี้
               </span>
@@ -435,7 +435,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="actingId === t.id"
                 @click="doRestore(t)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-ok-solid px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-ok-strong disabled:opacity-50"
               >
                 <i :class="busy(t, 'restore') ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-arrow-counterclockwise'"></i>
                 กู้คืน

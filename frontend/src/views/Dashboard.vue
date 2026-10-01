@@ -181,7 +181,7 @@ const statCards = computed(() => {
     { label: 'รอรับเรื่อง', value: d?.pending ?? 0, dot: 'bg-stone-400', to: to('pending') },
     { label: 'กำลังดำเนินการ', value: d?.in_progress ?? 0, dot: 'bg-brand', to: to('in_progress') },
     { label: 'ส่งต่อ', value: d?.escalated ?? 0, dot: 'bg-brand-strong', to: to('escalated') },
-    { label: 'แก้ไขเสร็จ', value: d?.resolved ?? 0, dot: 'bg-emerald-500', to: to('resolved') },
+    { label: 'แก้ไขเสร็จ', value: d?.resolved ?? 0, dot: 'bg-ok-bright', to: to('resolved') },
     // ⚠️ "งานเกินเวลา" **ไม่ใช่ลิงก์** — backend ไม่มีตัวกรอง "เกินเวลา" เลย
     //    (`overdue` คำนวณจาก countdown ที่หมดอายุใน `dashboard_service` เท่านั้น)
     //    ⇒ การ์ดนี้เป็นการแจ้งเตือน ไม่ใช่ทางเข้า — ห้ามใส่ `to` ให้ดูเหมือนกดได้

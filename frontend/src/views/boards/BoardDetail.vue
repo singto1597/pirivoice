@@ -226,7 +226,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
       </div>
 
       <!-- แบนเนอร์: โหวตแล้ว → เปลี่ยนตัวเลือกไม่ได้ -->
-      <div v-if="myVoted" data-testid="my-vote-banner" class="mb-4 px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-xl">
+      <div v-if="myVoted" data-testid="my-vote-banner" class="mb-4 px-3 py-2 bg-ok-faint border border-ok-line text-ok-strong text-sm rounded-xl">
         <i class="bi bi-check-circle-fill mr-1"></i> คุณส่งเสียงโหวตแล้ว — แต่ละคนโหวตได้ 1 ครั้ง
       </div>
 
@@ -243,13 +243,13 @@ const rootComments = computed(() => board.value?.comments ?? [])
             !myVoted && selectedChoice === c.id
               ? 'border-brand bg-brand/5'
               : 'border-stone-200 hover:border-stone-300',
-            board.my_vote_choice_id === c.id ? 'ring-2 ring-emerald-400 border-emerald-400' : '',
+            board.my_vote_choice_id === c.id ? 'ring-2 ring-ok-focus border-ok-focus' : '',
             myVoted ? 'cursor-default' : 'cursor-pointer',
           ]"
         >
           <div class="flex items-center justify-between gap-3 mb-2">
             <span class="font-semibold text-stone-900 text-sm sm:text-base flex items-center gap-2">
-              <span v-if="board.my_vote_choice_id === c.id" class="text-emerald-600"><i class="bi bi-check-circle-fill"></i></span>
+              <span v-if="board.my_vote_choice_id === c.id" class="text-ok-solid"><i class="bi bi-check-circle-fill"></i></span>
               {{ c.choice_text }}
             </span>
             <span class="text-sm text-stone-500 font-display tabular-nums whitespace-nowrap">
@@ -260,7 +260,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           <div class="h-2.5 bg-stone-100 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-500"
-              :class="board.my_vote_choice_id === c.id ? 'bg-emerald-500' : 'bg-brand'"
+              :class="board.my_vote_choice_id === c.id ? 'bg-ok-bright' : 'bg-brand'"
               :style="{ width: choicePercent(c) + '%' }"
             ></div>
           </div>

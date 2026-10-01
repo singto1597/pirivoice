@@ -1,6 +1,6 @@
 // สีสถานะ (semantic) — ใช้ร่วมกันทั้งหน้า อย่าให้สีหมวดหลักมาทับ
 // แผนภาพสีแบบจำกัด (Editorial & Civic):
-//   resolved    → emerald (ปิดเรื่อง/สำเร็จ)
+//   resolved    → ok-bright (ปิดเรื่อง/สำเร็จ)
 //   in_progress → cardinal tint (กำลังดำเนินการ)
 //   escalated   → cardinal ทึบ (ถูกส่งต่อ/เด่นสุด)
 //   pending     → stone (รอรับ — muted)
@@ -11,7 +11,7 @@ export const STATUS_DOT: Record<string, string> = {
   pending: 'bg-stone-400',
   in_progress: 'bg-brand',
   escalated: 'bg-brand-strong',
-  resolved: 'bg-emerald-500',
+  resolved: 'bg-ok-bright',
   cancelled: 'bg-stone-300',
   rejected: 'bg-stone-500',
 };
@@ -20,7 +20,7 @@ export const STATUS_BAR: Record<string, string> = {
   pending: 'bg-stone-300',
   in_progress: 'bg-brand',
   escalated: 'bg-brand-strong',
-  resolved: 'bg-emerald-500',
+  resolved: 'bg-ok-bright',
   cancelled: 'bg-stone-200',
   rejected: 'bg-stone-300',
 };
@@ -29,7 +29,7 @@ export const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-stone-100 text-stone-600',
   in_progress: 'bg-brand/10 text-brand',
   escalated: 'bg-brand text-white',
-  resolved: 'bg-emerald-100 text-emerald-700',
+  resolved: 'bg-ok-tint text-ok-strong',
   cancelled: 'bg-stone-200 text-stone-500',
   rejected: 'bg-stone-100 text-stone-500',
 };

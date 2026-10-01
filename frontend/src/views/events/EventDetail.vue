@@ -273,7 +273,7 @@ async function handleCancel() {
         >
           <i class="bi bi-x-octagon"></i> ยกเลิกแล้ว
         </span>
-        <span v-else-if="event.is_registration_open" class="text-[11px] font-semibold text-emerald-600">
+        <span v-else-if="event.is_registration_open" class="text-[11px] font-semibold text-ok-solid">
           <i class="bi bi-door-open mr-1"></i>เปิดรับสมัคร
         </span>
         <span v-else class="text-[11px] text-ink-3">
@@ -439,7 +439,7 @@ async function handleCancel() {
       <!-- สถานะปัจจุบัน -->
       <div
         v-if="mine?.status === 'registered' || mine?.status === 'checked_in'"
-        class="mb-4 px-3.5 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-xl"
+        class="mb-4 px-3.5 py-3 bg-ok-faint border border-ok-line text-ok-strong text-sm rounded-xl"
       >
         <i class="bi bi-check-circle-fill mr-1"></i>
         {{ mine.status === 'checked_in' ? 'คุณเข้าร่วมกิจกรรมนี้แล้ว (เช็คอินแล้ว)' : 'คุณได้ที่นั่งของกิจกรรมนี้แล้ว' }}
@@ -469,7 +469,7 @@ async function handleCancel() {
       >
         <template v-if="cardState === 'checked_in'">
           <p class="text-4xl leading-none">✅</p>
-          <p class="mt-2 text-base font-bold text-emerald-700" data-testid="checked-in-stamp">
+          <p class="mt-2 text-base font-bold text-ok-strong" data-testid="checked-in-stamp">
             เช็คอินแล้ว
           </p>
           <p v-if="mine?.checked_in_at" class="mt-0.5 text-sm text-stone-500">

@@ -31,12 +31,12 @@ const loadError = ref(false);
 // poll ติดกันเกินลิมิต — โชว์แบนเนอร์บอก user ว่าเชื่อมต่อไม่แน่นอน (ไม่ปิด poll — พอ network กลับมา update เอง)
 const isPollError = ref(false);
 
-// ป้ายสถานะ / หลอดความคืบหน้า (daisyUI badge-* เดิม → stone/cardinal/emerald แบบ Civic)
+// ป้ายสถานะ / หลอดความคืบหน้า (daisyUI badge-* เดิม → stone/cardinal/ok แบบ Civic)
 const jobBadgeCls: Record<ImportJobStatus, string> = {
   PENDING: 'bg-stone-100 text-stone-600',
   QUEUED: 'bg-brand/10 text-brand',
   PROCESSING: 'bg-brand/10 text-brand',
-  COMPLETED: 'bg-emerald-100 text-emerald-700',
+  COMPLETED: 'bg-ok-tint text-ok-strong',
   FAILED: 'bg-brand/10 text-brand',
 };
 
@@ -44,7 +44,7 @@ const barFillCls: Record<ImportJobStatus, string> = {
   PENDING: 'bg-stone-300',
   QUEUED: 'bg-brand',
   PROCESSING: 'bg-brand',
-  COMPLETED: 'bg-emerald-600',
+  COMPLETED: 'bg-ok-solid',
   FAILED: 'bg-stone-400',
 };
 
@@ -52,7 +52,7 @@ const barTextCls: Record<ImportJobStatus, string> = {
   PENDING: 'text-stone-500',
   QUEUED: 'text-brand',
   PROCESSING: 'text-brand',
-  COMPLETED: 'text-emerald-700',
+  COMPLETED: 'text-ok-strong',
   FAILED: 'text-stone-600',
 };
 
@@ -470,7 +470,7 @@ onBeforeUnmount(stopPolling);
                   </div>
                 </td>
                 <td class="whitespace-nowrap px-4 py-3 text-sm text-stone-600">
-                  <span class="font-semibold text-emerald-700">{{ job.imported_count }}</span>
+                  <span class="font-semibold text-ok-strong">{{ job.imported_count }}</span>
                   /
                   <span class="font-semibold text-stone-500">{{ job.skipped_count }}</span>
                 </td>

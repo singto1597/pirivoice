@@ -45,10 +45,10 @@ const STATUS_TABS: Array<{ value: '' | ReportStatus; label: string; icon: string
   { value: 'dismissed', label: 'ไม่ดำเนินการ', icon: 'bi bi-check2-circle' },
 ]
 
-// ป้ายสถานะ (สีจำกัด: open → cardinal, resolved → emerald, dismissed → stone)
+// ป้ายสถานะ (สีจำกัด: open → cardinal, resolved → ok-tint/ok-strong, dismissed → stone)
 function reportStatusBadge(s: ReportStatus): string {
   if (s === 'open') return 'bg-brand/10 text-brand'
-  if (s === 'resolved') return 'bg-emerald-100 text-emerald-700'
+  if (s === 'resolved') return 'bg-ok-tint text-ok-strong'
   return 'bg-stone-200 text-stone-500'
 }
 
@@ -231,7 +231,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
           :key="r.id"
           :data-testid="'report-card-' + r.id"
           class="page-card p-4 border-l-4"
-          :class="r.status === 'open' ? 'border-l-brand' : r.status === 'resolved' ? 'border-l-emerald-500' : 'border-l-stone-200'"
+          :class="r.status === 'open' ? 'border-l-brand' : r.status === 'resolved' ? 'border-l-ok-bright' : 'border-l-stone-200'"
         >
           <div class="flex flex-wrap items-center gap-2 mb-2">
             <RouterLink

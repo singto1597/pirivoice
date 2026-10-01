@@ -80,7 +80,7 @@ function actionLabel(action: string): string {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  success: 'bg-emerald-100 text-emerald-700',
+  success: 'bg-ok-tint text-ok-strong',
   error: 'bg-brand/10 text-brand',
   partial: 'bg-stone-100 text-stone-600',
 };
