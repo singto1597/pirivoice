@@ -220,15 +220,10 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
 
 <template>
   <div>
-    <!-- Header -->
-    <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
-      <div>
-        <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Audit Trail</p>
-        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
-          <i class="bi bi-clock-history mr-1 text-brand"></i> บันทึกการใช้งาน
-        </h1>
-        <p class="mt-1 text-xs text-stone-500">ประวัติทุกการกระทำในระบบ (เข้าสู่ระบบ / เพิ่ม / ดึงข้อมูล / แก้ไข / ลบ)</p>
-      </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
+    <!-- คำอธิบาย + ปุ่มส่งออก -->
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <p class="text-xs text-stone-500">ประวัติทุกการกระทำในระบบ (เข้าสู่ระบบ / เพิ่ม / ดึงข้อมูล / แก้ไข / ลบ)</p>
       <button
         type="button"
         @click="load"

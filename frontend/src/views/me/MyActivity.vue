@@ -146,14 +146,7 @@ function metaClass(a: ActivityItem): string {
 
 <template>
   <div>
-    <!-- Editorial page header -->
-    <div class="mb-6">
-      <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
-        <i class="bi bi-clock-history text-[13px]"></i> My Activity
-      </p>
-      <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">กิจกรรมของฉัน</h1>
-      <p class="mt-2 text-sm text-stone-500">ทุกอย่างที่คุณเคยแจ้ง โหวต และแสดงความคิดเห็น</p>
-    </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
 
     <!-- แท็บหลัก -->
     <div class="mb-5 flex flex-wrap gap-2">

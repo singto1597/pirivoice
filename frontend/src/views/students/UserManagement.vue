@@ -264,21 +264,8 @@ const editMeta = computed(() => {
 
 <template>
   <div>
-    <!-- Editorial page header -->
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <p
-          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand"
-        >
-          <i class="bi bi-person-gear text-[13px]"></i> User Management
-        </p>
-        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
-          จัดการสมาชิก
-        </h1>
-        <p class="mt-2 text-sm text-stone-500">
-          จัดการกลุ่ม สภานักเรียน · หัวหน้าระดับ · คณะกรรมการห้อง — ตามลำดับชั้น (มองลงได้เท่านั้น)
-        </p>
-      </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
+    <div class="mb-6 flex flex-wrap items-center justify-end gap-3">
       <button
         type="button"
         @click="openAdd"

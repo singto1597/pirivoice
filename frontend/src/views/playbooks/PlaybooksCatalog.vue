@@ -13,14 +13,10 @@ const isCoverBroken = (id: string) => failedCovers.value.has(id)
 
 <template>
   <div>
-    <!-- Editorial header -->
-    <div class="mb-6">
-      <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
-        <i class="bi bi-journal-bookmark-fill mr-1"></i> Student Handbook
-      </p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">คู่มือการทำงาน</h1>
-      <p class="text-sm text-stone-500 mt-1.5">คู่มือการทำงาน — คู่มือนักเรียนฉบับ E-book อ่านเลื่อนลงได้ ครอบคลุม 6 หมวดหมู่</p>
-    </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
+    <p class="mb-5 text-sm text-stone-500">
+      คู่มือนักเรียนฉบับ E-book อ่านเลื่อนลงได้ ครอบคลุม 6 หมวดหมู่
+    </p>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <RouterLink

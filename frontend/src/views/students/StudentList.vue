@@ -57,12 +57,7 @@ async function changeRole(student: Student) {
 
 <template>
   <div>
-    <!-- Header -->
-    <div class="mb-5">
-      <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Student Directory</p>
-      <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-mortarboard mr-1 text-brand"></i> รายชื่อนักเรียน</h1>
-      <p class="mt-1 text-sm text-stone-500">ค้นหาและจัดการตำแหน่งในห้องเรียน</p>
-    </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
 
     <!-- Filters (mobile = แนวตั้งเต็มแถว, sm+ = แนวนอน) -->
     <div class="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:gap-3 mb-5">

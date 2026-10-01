@@ -185,10 +185,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
   </div>
 
   <div v-else-if="board" class="max-w-3xl mx-auto space-y-5">
-    <!-- ปุ่มกลับ -->
-    <button @click="router.push({ name: 'boards' })" class="flex items-center gap-1 text-sm text-stone-500 hover:text-brand font-medium">
-      <i class="bi bi-arrow-left"></i> PIRI Boards
-    </button>
+    <!-- 🔴 ไม่มีปุ่มย้อนที่นี่ — `AppHeader` วาดปุ่ม ← (จาก `meta.headerBack` = `boards`) ให้แล้ว (R0.3) -->
 
     <!-- Header -->
     <div class="page-card p-5">
@@ -213,7 +210,8 @@ const rootComments = computed(() => board.value?.comments ?? [])
           </button>
         </div>
       </div>
-      <h1 class="text-lg sm:text-xl font-bold text-stone-900 leading-snug break-words">{{ board.title }}</h1>
+      <!-- ⚠️ `<h2>` ไม่ใช่ `<h1>` — `<h1>` ของหน้าอยู่ที่ `AppHeader` แล้ว (R0.3.1) -->
+      <h2 class="text-lg sm:text-xl font-bold text-stone-900 leading-snug break-words">{{ board.title }}</h2>
       <p class="text-stone-500 text-sm mt-1">
         โดย {{ board.is_anonymous ? 'ไม่ระบุชื่อ' : board.author_name || boardAuthorFallback(board.board_type) }}
       </p>

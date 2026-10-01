@@ -73,18 +73,14 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
     <!-- ⏳ แถบความคืบหน้าการอ่าน (ติดกับ header — ไม่งงกับ mobile header ของ layout) -->
     <header class="sticky top-0 z-40 bg-white border-b border-stone-200">
       <div class="max-w-3xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-3">
-        <RouterLink
-          to="/playbooks"
-          class="btn-ghost-ui !py-2 !px-2.5 shrink-0"
-          title="กลับไปหน้าคู่มือ"
-        >
-          <i class="bi bi-arrow-left text-base"></i>
-        </RouterLink>
+        <!-- 🔴 ไม่มีปุ่มย้อนในแถบนี้ — `AppHeader` วาดปุ่ม ← (จาก `meta.headerBack` = `playbooks`)
+             ให้แล้ว (R0.3) · แถบนี้เป็น *เครื่องมืออ่าน* (ชื่อเล่ม + ความคืบหน้า + ดาวน์โหลด) เท่านั้น
+             ⚠️ ชื่อเล่มเป็น `<h2>` ไม่ใช่ `<h1>` — `<h1>` ของหน้าอยู่ที่ `AppHeader` แล้ว -->
         <div class="min-w-0 flex-1">
           <p class="text-[10px] sm:text-[11px] text-stone-500 font-bold leading-none mb-1">
             {{ volumeLabel }} · คู่มือการทำงาน
           </p>
-          <h1 class="text-sm sm:text-base font-bold text-stone-900 truncate leading-tight">{{ playbook.title }}</h1>
+          <h2 class="text-sm sm:text-base font-bold text-stone-900 truncate leading-tight">{{ playbook.title }}</h2>
         </div>
         <a :href="playbook.pdfUrl" download class="btn-gradient !py-2 !px-3 sm:!px-4 text-xs sm:text-sm shrink-0">
           <i class="bi bi-file-earmark-pdf text-sm sm:text-base"></i>
@@ -177,7 +173,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
   <!-- 404 เล่มไม่พบ -->
   <div v-else class="text-center py-20">
     <div class="text-5xl mb-4"><i class="bi bi-journal-x text-stone-300"></i></div>
-    <h1 class="text-lg font-bold text-stone-700 mb-2">ไม่พบเล่มที่ระบุ</h1>
+    <h2 class="text-lg font-bold text-stone-700 mb-2">ไม่พบเล่มที่ระบุ</h2>
     <p class="text-sm text-stone-400 mb-6">ลิงก์นี้อาจไม่ถูกต้อง หรือเล่มถูกนำออกจากคู่มือแล้ว</p>
     <RouterLink to="/playbooks" class="btn-gradient">กลับไปหน้าคู่มือ</RouterLink>
   </div>

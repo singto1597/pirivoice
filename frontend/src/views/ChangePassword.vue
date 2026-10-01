@@ -69,25 +69,14 @@ async function submit() {
   }
 }
 
-const goBack = () => router.push({ name: 'profile' });
-
 const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm mt-1 bg-white transition focus:ring-2 focus:ring-brand/25 focus:border-brand';
 </script>
 
 <template>
   <div class="max-w-2xl mx-auto">
     <form @submit.prevent="submit" class="space-y-4">
-      <!-- Header -->
-      <div class="flex items-start gap-3">
-        <button type="button" @click="goBack" aria-label="กลับไปหน้าโปรไฟล์" class="w-9 h-9 rounded-xl bg-white border border-stone-200 text-stone-500 hover:text-brand hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center transition shrink-0 mt-1">
-          <i class="bi bi-arrow-left text-lg"></i>
-        </button>
-        <div>
-          <p class="text-[11px] font-bold text-stone-400 mb-1">การจัดการบัญชี</p>
-          <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight"><i class="bi bi-shield-lock mr-1 text-brand"></i> เปลี่ยนรหัสผ่าน</h1>
-          <p class="text-sm text-stone-500 mt-1">ตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>
-        </div>
-      </div>
+      <!-- 🔴 ไม่มี <h1>/eyebrow/ปุ่มย้อนที่นี่ — `AppHeader` วาดชื่อหน้า (routeTitles) เป็น <h1>
+           และปุ่ม ← (จาก `meta.headerBack` = `settings`) ให้แล้ว (R0.3) -->
 
       <!-- บังคับเปลี่ยนครั้งแรก -->
       <div v-if="isForced" class="flex gap-3 rounded-2xl border border-brand/20 bg-brand/10 p-4 text-sm text-brand">

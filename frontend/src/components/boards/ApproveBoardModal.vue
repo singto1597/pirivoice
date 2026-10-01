@@ -95,10 +95,12 @@ async function handleConfirm() {
         <div class="relative w-full max-w-lg bg-white rounded-2xl border border-stone-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
           <div class="flex items-start justify-between gap-3 mb-4">
             <div>
-              <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1">
-                <i class="bi bi-people-fill mr-1"></i> Public Board
-              </p>
-              <h2 class="text-xl font-bold text-stone-900 leading-tight">อนุมัติเผยแพร่สาธารณะ</h2>
+              <!-- 🔴 ไม่มี eyebrow ภาษาอังกฤษ ("Public Board") — `uppercase tracking-widest`
+                   ใช้กับข้อความไทยไม่ได้ (สระ/วรรณยุกต์ลอย) และคำว่า "บอร์ด" เป็นคำที่ glossary
+                   กำหนดไว้แล้ว ⇒ ชื่อเรื่องบรรทัดเดียวพอ (R5.2) -->
+              <h2 class="text-xl font-bold text-stone-900 leading-tight">
+                <i class="bi bi-people-fill mr-1 text-brand"></i> อนุมัติเผยแพร่สาธารณะ
+              </h2>
               <p class="text-sm text-stone-500 mt-1">สภานักเรียน/แอดมิน พิจารณาเรื่องนี้เป็น PIRI Board</p>
             </div>
             <button type="button" class="w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-600" @click="open = false">

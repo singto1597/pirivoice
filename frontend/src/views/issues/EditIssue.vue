@@ -135,6 +135,9 @@ async function handleSubmit() {
 
 <template>
   <div class="max-w-2xl mx-auto">
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` วาดชื่อหน้า (routeTitles) เป็น <h1> ให้แล้ว (R0.3)
+         ปุ่ม ← ก็มาจาก `AppHeader` เช่นกัน (route นี้ไม่ประกาศ `headerBack` ⇒ ตกไปที่รากแท็บ "เรื่อง") -->
+
     <!-- โหลดข้อมูล: skeleton เนื้อหา -->
     <div v-if="isLoading" class="animate-pulse">
       <div class="rounded-2xl border border-stone-200 bg-white p-6 space-y-5">
@@ -164,15 +167,6 @@ async function handleSubmit() {
     </div>
 
     <template v-else>
-      <!-- Editorial page header -->
-      <div class="mb-8">
-        <p class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
-          <i class="bi bi-pencil-square text-[13px]"></i> Edit Issue
-        </p>
-        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">แก้ไขเรื่อง</h1>
-        <p class="mt-2 text-sm text-stone-500">แก้ไขข้อมูลเรื่องที่แจ้งไปแล้ว (เฉพาะผู้แจ้ง)</p>
-      </div>
-
       <!-- Step 1: หมวดหลัก -->
       <div class="mb-6">
         <label class="block text-sm font-medium text-stone-700 mb-2">1. เลือกหมวดหลัก</label>

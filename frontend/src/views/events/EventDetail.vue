@@ -276,14 +276,7 @@ function fmtTime(iso: string): string {
   </div>
 
   <div v-else-if="event" class="max-w-3xl mx-auto space-y-5">
-    <!-- ปุ่มกลับ -->
-    <button
-      type="button"
-      @click="router.push({ name: 'events' })"
-      class="flex items-center gap-1 text-sm text-stone-500 hover:text-brand font-medium"
-    >
-      <i class="bi bi-arrow-left"></i> กิจกรรมทั้งหมด
-    </button>
+    <!-- 🔴 ไม่มีปุ่มย้อนที่นี่ — `AppHeader` วาดปุ่ม ← (จาก `meta.headerBack` = `events`) ให้แล้ว (R0.3) -->
 
     <!-- ปก -->
     <img
@@ -321,9 +314,10 @@ function fmtTime(iso: string): string {
         </span>
       </div>
 
-      <h1 class="text-xl sm:text-2xl font-bold text-stone-900 leading-snug break-words">
+      <!-- ⚠️ `<h2>` ไม่ใช่ `<h1>` — `<h1>` ของหน้าอยู่ที่ `AppHeader` แล้ว (R0.3.1) -->
+      <h2 class="text-xl sm:text-2xl font-bold text-stone-900 leading-snug break-words">
         {{ event.title }}
-      </h1>
+      </h2>
 
       <div class="mt-3 space-y-1.5 text-sm text-stone-600">
         <div>

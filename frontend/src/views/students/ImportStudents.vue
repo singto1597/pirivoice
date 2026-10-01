@@ -217,15 +217,9 @@ onBeforeUnmount(stopPolling);
 
 <template>
   <div class="max-w-5xl mx-auto">
-    <!-- หัวข้อ + ปุ่มดาวน์โหลด Template -->
-    <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
-      <div>
-        <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-stone-400">Excel Import</p>
-        <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">
-          <i class="bi bi-file-earmark-excel mr-1 text-brand"></i> นำเข้านักเรียนจาก Excel
-        </h1>
-        <p class="mt-1 text-sm text-stone-500">อัปโหลดรายชื่อ + ตำแหน่งในห้องเรียนเป็นชุด</p>
-      </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
+    <!-- ปุ่มดาวน์โหลด Template -->
+    <div class="flex flex-wrap items-center justify-end gap-3 mb-5">
       <button
         @click="handleDownloadTemplate"
         :disabled="isDownloadingTemplate"

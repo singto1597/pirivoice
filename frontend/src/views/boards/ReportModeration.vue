@@ -152,16 +152,10 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
 
 <template>
   <div>
-    <!-- Editorial header -->
-    <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
-      <div>
-        <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
-          <i class="bi bi-flag-fill mr-1"></i> Moderation Queue
-        </p>
-        <h1 class="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight">จัดการรายงาน</h1>
-        <p class="text-sm text-stone-500 mt-1.5">คอมเมนต์ที่นักเรียนแจ้งความไม่เหมาะสม — สภานักเรียน/แอดมินตรวจสอบ</p>
-      </div>
-    </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
+    <p class="mb-5 text-sm text-stone-500">
+      คอมเมนต์ที่นักเรียนแจ้งความไม่เหมาะสม — สภานักเรียนตรวจสอบ
+    </p>
 
     <!-- ไม่มีสิทธิ์ (กันผ่าน URL ตรง) -->
     <div v-if="!authStore.isCouncilAuthority" class="border border-stone-200 rounded-2xl bg-white p-12 text-center text-stone-400">

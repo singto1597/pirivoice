@@ -458,28 +458,11 @@ const inputCls =
     </div>
 
     <form v-else @submit.prevent="save" class="space-y-4">
-      <!-- หัวเรื่อง + ปุ่มย้อนกลับ -->
-      <div class="flex items-start gap-3">
-        <button
-          type="button"
-          @click="goBack"
-          aria-label="กลับหน้าจัดการกิจกรรม"
-          class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand"
-        >
-          <i class="bi bi-arrow-left text-lg"></i>
-        </button>
-        <div class="min-w-0">
-          <p class="mb-1 text-[11px] font-bold uppercase tracking-widest text-brand">
-            <i class="bi bi-calendar-event mr-1"></i> Events
-          </p>
-          <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">
-            {{ isEdit ? 'แก้ไขกิจกรรม' : 'สร้างกิจกรรม' }}
-          </h1>
-          <p v-if="isEdit && event" class="mt-1 truncate text-sm text-stone-500">
-            {{ event.title }}
-          </p>
-        </div>
-      </div>
+      <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` วาดชื่อหน้า (routeTitles) เป็น <h1> ให้แล้ว (R0.3)
+           ที่เหลือคือ *ชื่อกิจกรรมที่กำลังแก้* ซึ่งเป็นเนื้อหา ไม่ใช่ชื่อหน้า -->
+      <p v-if="isEdit && event" class="truncate text-sm text-stone-500">
+        <i class="bi bi-calendar-event mr-1 text-stone-400"></i>{{ event.title }}
+      </p>
 
       <!-- ถูกลบแล้ว (soft delete) — GET คืนแถวตามจริง แต่ PATCH จะ 404 ⇒ ปิดปุ่มบันทึกไว้ก่อน -->
       <div

@@ -100,17 +100,8 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
     </div>
 
     <form v-else @submit.prevent="saveProfile" class="space-y-4">
-      <!-- Header -->
-      <div class="flex items-start gap-3">
-        <button type="button" @click="goBack" aria-label="กลับไปหน้าโปรไฟล์" class="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand">
-          <i class="bi bi-arrow-left text-lg"></i>
-        </button>
-        <div>
-          <p class="mb-1 text-[11px] font-bold text-stone-400">ข้อมูลส่วนตัว</p>
-          <h1 class="text-2xl font-bold text-stone-900 leading-tight sm:text-3xl"><i class="bi bi-pencil-square mr-1 text-brand"></i> แก้ไขโปรไฟล์</h1>
-          <p class="mt-1 text-sm text-stone-500">แก้ข้อมูลส่วนตัวของคุณ</p>
-        </div>
-      </div>
+      <!-- 🔴 ไม่มี <h1>/eyebrow/ปุ่มย้อนที่นี่ — `AppHeader` วาดชื่อหน้า (routeTitles) เป็น <h1>
+           และปุ่ม ← (จาก `meta.headerBack`) ให้แล้ว (R0.3) ⇒ ของเดิมคือของซ้ำทั้งสามอย่าง -->
 
       <div class="space-y-5 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
         <!-- ชื่อ: คำนำหน้า / ชื่อ / นามสกุล (mobile = 1 คอลัมน์) -->

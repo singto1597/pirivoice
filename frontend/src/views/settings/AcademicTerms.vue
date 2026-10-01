@@ -303,22 +303,8 @@ function coversToday(t: AcademicTerm): boolean {
 
 <template>
   <div>
-    <!-- Editorial page header -->
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <p
-          class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand"
-        >
-          <i class="bi bi-calendar3-range text-[13px]"></i> Academic Terms
-        </p>
-        <h1 class="text-2xl font-bold leading-tight text-stone-900 sm:text-3xl">
-          จัดการภาคเรียน
-        </h1>
-        <p class="mt-2 text-sm text-stone-500">
-          กำหนดช่วงวันที่ของแต่ละภาค — ใช้กรองสถิติส่วนตัวและหน้าแรก ·
-          มีภาคปัจจุบันได้ครั้งละหนึ่งเท่านั้น
-        </p>
-      </div>
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
+    <div class="mb-6 flex flex-wrap items-center justify-end gap-3">
       <button
         type="button"
         @click="openAdd"
