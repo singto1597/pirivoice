@@ -41,7 +41,10 @@ export const STATUS_SHORT: Record<string, string> = {
   escalated: 'ส่งต่อ',
   resolved: 'เสร็จแล้ว',
   cancelled: 'ยกเลิก',
-  rejected: 'ปัดตก',
+  // 🏷️ "ปฏิเสธ" = สภาตรวจแล้วไม่รับเรื่อง (คนละความหมายกับ `dismissed` ของ *รายงาน*
+  //    ซึ่งแปลว่า "ตรวจแล้วไม่ดำเนินการกับคอมเมนต์" — ดู `types/board.ts`)
+  //    เดิมใช้คำเดียวกันว่า "ปัดตก" ทั้งสองความหมาย ซึ่งเป็นศัพท์ภายในที่ผู้ใช้อ่านไม่ออก
+  rejected: 'ปฏิเสธ',
 };
 
 export function statusShort(status: string): string {

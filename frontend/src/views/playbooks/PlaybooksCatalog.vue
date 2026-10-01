@@ -18,8 +18,8 @@ const isCoverBroken = (id: string) => failedCovers.value.has(id)
       <p class="text-[11px] font-bold uppercase tracking-widest text-brand mb-1.5">
         <i class="bi bi-journal-bookmark-fill mr-1"></i> Student Handbook
       </p>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">P.R. Playbooks</h1>
-      <p class="text-sm text-stone-500 mt-1.5">P.R. Playbooks — คู่มือนักเรียนฉบับ E-book อ่านเลื่อนลงได้ ครอบคลุม 6 หมวดหมู่</p>
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 leading-tight">คู่มือการทำงาน</h1>
+      <p class="text-sm text-stone-500 mt-1.5">คู่มือการทำงาน — คู่มือนักเรียนฉบับ E-book อ่านเลื่อนลงได้ ครอบคลุม 6 หมวดหมู่</p>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

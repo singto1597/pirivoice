@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import Swal from 'sweetalert2';
-import { listStudents, listRooms, updateStudent } from '@/services/student';
+import { listStudents, listRooms, updateStudent } from '@/services/student'
+import { roleLabel, STUDENT_ROLE_OPTIONS } from '@/constants/roles';
 import type { Student, Room } from '@/types/student';
 
 const students = ref<Student[]>([]);
@@ -11,17 +12,7 @@ const hasError = ref(false);
 const roomFilter = ref<number | ''>('');
 const search = ref('');
 
-const ROLE_LABELS: Record<string, string> = {
-  student: 'นักเรียน',
-  class_president: 'หัวหน้าห้อง',
-  vice_academic: 'รองวิชาการ',
-  vice_discipline: 'รองวินัย',
-  vice_activity: 'รองกิจกรรม',
-  vice_reception: 'รองปฏิคม',
-  level_president: 'ประธานระดับ',
-  council_member: 'สภานักเรียน',
-  council_president: 'ประธานสภา',
-};
+;
 
 async function load() {
   isLoading.value = true;
@@ -46,7 +37,7 @@ async function changeRole(student: Student) {
     icon: 'question',
     title: 'เปลี่ยนตำแหน่ง: ' + (student.first_name || '') + ' ' + (student.last_name || ''),
     input: 'select',
-    inputOptions: ROLE_LABELS,
+    inputOptions: STUDENT_ROLE_OPTIONS,
     inputValue: student.class_role,
     showCancelButton: true,
     confirmButtonText: 'บันทึก',
@@ -137,7 +128,7 @@ async function changeRole(student: Student) {
           </div>
           <button @click="changeRole(s)" class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium"
             :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
-            {{ ROLE_LABELS[s.class_role] || s.class_role }} <i class="bi bi-pencil-square text-[10px]"></i>
+            {{ roleLabel(s.class_role) }} <i class="bi bi-pencil-square text-[10px]"></i>
           </button>
         </div>
         <div v-if="!students.length" class="rounded-2xl border border-dashed border-stone-200 p-8 text-center text-stone-500">
@@ -169,7 +160,7 @@ async function changeRole(student: Student) {
               <td class="px-4 py-2.5">
                 <button @click="changeRole(s)" class="rounded-full px-2.5 py-1 text-xs font-medium"
                   :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
-                  {{ ROLE_LABELS[s.class_role] || s.class_role }} <i class="bi bi-pencil-square text-[10px]"></i>
+                  {{ roleLabel(s.class_role) }} <i class="bi bi-pencil-square text-[10px]"></i>
                 </button>
               </td>
             </tr>

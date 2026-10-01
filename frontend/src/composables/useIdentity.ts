@@ -6,22 +6,7 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { avatarCharOf } from '@/utils/avatar'
-
-/** รหัสบทบาท → ชื่อไทยที่ผู้ใช้อ่านออก */
-const ROLE_LABELS: Record<string, string> = {
-  student: 'นักเรียน',
-  class_president: 'หัวหน้าห้อง',
-  vice_academic: 'รองวิชาการ',
-  vice_discipline: 'รองวินัย',
-  vice_activity: 'รองกิจกรรม',
-  vice_reception: 'รองปฏิคม',
-  level_president: 'ประธานระดับ',
-  level_vice_president: 'ผู้ช่วยหัวหน้าระดับ',
-  council_member: 'สภานักเรียน',
-  council_president: 'ประธานสภา',
-  teacher_council: 'ครูสภานักเรียน',
-  teacher: 'ครู',
-}
+import { ROLE_LABELS } from '@/constants/roles'
 
 export function useIdentity() {
   const authStore = useAuthStore()

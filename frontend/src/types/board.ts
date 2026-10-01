@@ -149,8 +149,13 @@ export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   other: 'อื่นๆ',
 }
 
+/**
+ * 🏷️ สถานะของ *รายงาน* (คนละชุดกับสถานะของ *เรื่อง*) — `dismissed` แปลว่า
+ *    "ตรวจแล้วไม่ดำเนินการกับคอมเมนต์" **ไม่ใช่** "ปฏิเสธเรื่อง"
+ *    ⇒ เดิมทั้งสองความหมายใช้คำว่า "ปัดตก" ร่วมกัน ซึ่งเป็นศัพท์ภายในที่ผู้ใช้อ่านไม่ออก
+ */
 export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
   open: 'รอจัดการ',
   resolved: 'ซ่อนแล้ว',
-  dismissed: 'ปัดตก',
+  dismissed: 'ไม่ดำเนินการ',
 }

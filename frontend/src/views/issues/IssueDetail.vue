@@ -95,7 +95,7 @@ const canChangeDestination = computed(() => {
 async function handleChangeDestination() {
   if (!issue.value) return
   const { value: dest } = await Swal.fire({
-    title: 'แก้ไขปลายทางของเรื่อง',
+    title: 'เปลี่ยนผู้รับของเรื่อง',
     html:
       'เรื่องจะถูกส่งไป<span class="font-semibold">' +
       (issue.value.current_level === 'council' ? 'สภานักเรียน' : 'หัวหน้าห้อง') +
@@ -204,19 +204,19 @@ const isReporter = computed(
 
 const canCancel = computed(() => {
   if (!issue.value || !authStore.user) return false
-  // เฉพาะผู้แจ้งเท่านั้นที่กดยกเลิก (กันส่งผิด) — ผู้ดูแลใช้ปัดตกแทน
+  // เฉพาะผู้แจ้งเท่านั้นที่กดยกเลิก (กันส่งผิด) — ผู้ดูแลใช้ปฏิเสธเรื่องแทน
   if (!isReporter.value) return false
   // เรื่องที่ปิดแล้ว ยกเลิกไม่ได้
   if (issue.value.status === 'resolved') return false
   return true
 })
 
-// ผู้ดูแล (ผู้รับ/admin) ปัดตกเรื่อง — ต่างจากผู้แจ้งยกเลิก (backend แยกเป็น status 'rejected')
+// ผู้ดูแล (ผู้รับ/admin) ปฏิเสธเรื่อง — ต่างจากผู้แจ้งยกเลิก (backend แยกเป็น status 'rejected')
 const canReject = computed(() => {
   if (!issue.value || !authStore.user) return false
   if (isReporter.value) return false
   if (!canManage.value) return false
-  // เรื่องที่ปิดแล้ว ปัดตกไม่ได้
+  // เรื่องที่ปิดแล้ว ปฏิเสธไม่ได้
   if (issue.value.status === 'resolved') return false
   return true
 })
@@ -421,14 +421,14 @@ async function handleCancel() {
   const reporterCancel = isReporter.value
   const { value } = await Swal.fire({
     icon: 'warning',
-    title: reporterCancel ? 'ยกเลิกเรื่องนี้?' : 'ปัดตกเรื่องนี้?',
+    title: reporterCancel ? 'ยกเลิกเรื่องนี้?' : 'ปฏิเสธเรื่องนี้?',
     text: reporterCancel
       ? 'กันส่งผิดหรือไม่ต้องการแล้ว — เมื่อยกเลิกแล้วจะกู้คืนไม่ได้'
-      : 'ผู้ดูแลกำลังปัดตกเรื่องนี้ — หลังปัดตกแล้วจะกู้คืนไม่ได้',
+      : 'ผู้ดูแลกำลังปฏิเสธเรื่องนี้ — หลังปฏิเสธแล้วจะกู้คืนไม่ได้',
     input: 'text',
     inputPlaceholder: 'เหตุผล (ไม่บังคับ)',
     showCancelButton: true,
-    confirmButtonText: reporterCancel ? 'ยกเลิกเรื่อง' : 'ปัดตก',
+    confirmButtonText: reporterCancel ? 'ยกเลิกเรื่อง' : 'ปฏิเสธเรื่อง',
     confirmButtonColor: BRAND,
     cancelButtonText: 'กลับไป',
   })
@@ -438,7 +438,7 @@ async function handleCancel() {
     await cancelIssue(issue.value.id, value || undefined)
     Swal.fire({
       icon: 'success',
-      title: reporterCancel ? 'ยกเลิกเรื่องแล้ว' : 'ปัดตกเรื่องแล้ว',
+      title: reporterCancel ? 'ยกเลิกเรื่องแล้ว' : 'ปฏิเสธเรื่องแล้ว',
       timer: 1500,
       showConfirmButton: false,
     })
@@ -560,7 +560,7 @@ const secondaryActions = computed<ActionItem[]>(() => {
   if (canChangeDestination.value) {
     list.push({
       key: 'destination',
-      label: 'แก้ไขปลายทาง',
+      label: 'เปลี่ยนผู้รับ',
       icon: 'bi-arrow-repeat',
       testid: 'change-dest-btn',
       run: handleChangeDestination,
@@ -605,7 +605,7 @@ const secondaryActions = computed<ActionItem[]>(() => {
   if (canCancel.value || canReject.value) {
     list.push({
       key: 'cancel',
-      label: isReporter.value ? 'ยกเลิกเรื่อง' : 'ปัดตก',
+      label: isReporter.value ? 'ยกเลิกเรื่อง' : 'ปฏิเสธเรื่อง',
       icon: 'bi-x-circle',
       danger: true,
       run: handleCancel,

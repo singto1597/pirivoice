@@ -82,7 +82,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
         </RouterLink>
         <div class="min-w-0 flex-1">
           <p class="text-[10px] sm:text-[11px] text-stone-500 font-bold leading-none mb-1">
-            {{ volumeLabel }} · P.R. Playbooks
+            {{ volumeLabel }} · คู่มือการทำงาน
           </p>
           <h1 class="text-sm sm:text-base font-bold text-stone-900 truncate leading-tight">{{ playbook.title }}</h1>
         </div>

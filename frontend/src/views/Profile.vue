@@ -27,6 +27,7 @@ import { getMyProfile, type MyProfile } from '@/services/profile'
 import { getMyStats } from '@/services/me'
 import type { PersonalStats } from '@/types/me'
 import { avatarCharOf } from '@/utils/avatar'
+import { roleLabel as roleLabelOf } from '@/constants/roles'
 import PersonalStatsCard from '@/components/PersonalStatsCard.vue'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -36,20 +37,8 @@ const profile = ref<MyProfile | null>(null)
 const isLoading = ref(true)
 const hasError = ref(false)
 
-const ROLE_LABELS: Record<string, string> = {
-  student: 'นักเรียน',
-  class_president: 'หัวหน้าห้อง',
-  vice_academic: 'รองวิชาการ',
-  vice_discipline: 'รองวินัย',
-  vice_activity: 'รองกิจกรรม',
-  vice_reception: 'รองปฏิคม',
-  level_president: 'ประธานระดับ',
-  council_member: 'สภานักเรียน',
-  council_president: 'ประธานสภา',
-  teacher: 'ครู',
-  teacher_council: 'ครูสภา',
-  admin: 'แอดมิน',
-}
+// 🪪 ป้ายตำแหน่งมาจาก `@/constants/roles` ที่เดียว (เดิมคัดลอกไว้ 4 ที่แล้วเลื่อนออกจากกัน)
+
 
 /**
  * ตัวอักษรใน avatar — ใช้ `avatarCharOf()` จาก `@/utils/avatar` **ไม่ใช่ `charAt(0)`**
@@ -86,7 +75,7 @@ const fullName = computed(() => {
 
 const roleLabel = computed(() => {
   const r = profile.value?.class_role || ''
-  return ROLE_LABELS[r] || r || 'สมาชิก'
+  return roleLabelOf(r) || 'สมาชิก'
 })
 
 async function load() {

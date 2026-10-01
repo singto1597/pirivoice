@@ -213,8 +213,8 @@ const SUMMARY_TILES = [
 const otherStatusChips = computed(() =>
   (
     [
-      { status: 'escalated', label: 'ส่งต่อระดับบน', icon: 'bi-arrow-up-circle', attention: true },
-      { status: 'rejected', label: 'ปัดตก', icon: 'bi-x-circle', attention: false },
+      { status: 'escalated', label: 'ส่งต่อ', icon: 'bi-arrow-up-circle', attention: true },
+      { status: 'rejected', label: 'ปฏิเสธ', icon: 'bi-x-circle', attention: false },
       { status: 'cancelled', label: 'ยกเลิก', icon: 'bi-x-octagon', attention: false },
     ] as const
   )

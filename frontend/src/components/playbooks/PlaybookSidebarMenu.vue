@@ -40,7 +40,7 @@ function onChildClick() {
     >
       <RouterLink to="/app/playbooks" class="flex-1 flex items-center px-3.5 py-3 text-sm font-semibold min-w-0">
         <i class="bi bi-journal-bookmark-fill text-lg mr-3"></i>
-        <span class="truncate">P.R. Playbooks</span>
+        <span class="truncate">คู่มือการทำงาน</span>
       </RouterLink>
       <button
         type="button"

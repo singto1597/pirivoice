@@ -179,7 +179,7 @@ const statCards = computed(() => {
     { label: 'เรื่องทั้งหมด', value: d?.total_issues ?? 0, dot: 'bg-stone-500', to: to(STATUS_URL_ALL) },
     { label: 'รอรับเรื่อง', value: d?.pending ?? 0, dot: 'bg-stone-400', to: to('pending') },
     { label: 'กำลังดำเนินการ', value: d?.in_progress ?? 0, dot: 'bg-brand', to: to('in_progress') },
-    { label: 'ส่งต่อระดับบน', value: d?.escalated ?? 0, dot: 'bg-brand-strong', to: to('escalated') },
+    { label: 'ส่งต่อ', value: d?.escalated ?? 0, dot: 'bg-brand-strong', to: to('escalated') },
     { label: 'แก้ไขเสร็จ', value: d?.resolved ?? 0, dot: 'bg-emerald-500', to: to('resolved') },
     // ⚠️ "งานเกินเวลา" **ไม่ใช่ลิงก์** — backend ไม่มีตัวกรอง "เกินเวลา" เลย
     //    (`overdue` คำนวณจาก countdown ที่หมดอายุใน `dashboard_service` เท่านั้น)

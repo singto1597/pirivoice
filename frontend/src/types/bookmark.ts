@@ -13,7 +13,7 @@ export const ENTITY_TYPES = ['issue', 'board'] as const satisfies readonly Bookm
 
 export const ENTITY_LABELS: Record<BookmarkEntityType, string> = {
   issue: 'เรื่อง',
-  board: 'PIRI Boards',
+  board: 'บอร์ด',
 }
 
 export const ENTITY_ICONS: Record<BookmarkEntityType, string> = {

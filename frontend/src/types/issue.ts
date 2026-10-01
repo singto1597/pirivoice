@@ -208,9 +208,9 @@ export const STATUS_LABELS: Record<string, string> = {
   pending: 'รอรับเรื่อง',
   in_progress: 'กำลังดำเนินการ',
   resolved: 'แก้ไขเสร็จ',
-  escalated: 'ส่งต่อระดับบน',
+  escalated: 'ส่งต่อให้ระดับสูงขึ้น',
   cancelled: 'ถูกยกเลิก',
-  rejected: 'ถูกปัดตก',
+  rejected: 'ถูกปฏิเสธ',
 }
 
 export const LEVEL_LABELS: Record<IssueLevel, string> = {

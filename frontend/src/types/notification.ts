@@ -1,5 +1,5 @@
 // 🔔 ระบบแจ้งเตือน (Notifications) — badge ตามเมนู + หน้าแจ้งเตือนกลาง
-// group_type ตรงกับ backend: badge "เรื่องของฉัน" / "เรื่องที่รับ" / PIRI Boards / จัดการรายงาน
+// group_type ตรงกับ backend: badge "เรื่องของฉัน" / "เรื่องที่รับผิดชอบ" / บอร์ด / จัดการรายงาน
 // + "ประกาศฉุกเฉิน" (E2) ซึ่ง **ปิดไม่ได้** — ดูเหตุผลที่ PREFERENCE_GROUPS ข้างล่าง
 // + "กิจกรรม" (D1) ซึ่ง **ปิดได้** — กิจกรรมไม่ใช่เรื่องฉุกเฉิน ผู้ใช้ต้องปิดได้
 
@@ -53,8 +53,8 @@ export interface MarkReadPayload {
 export const GROUP_TABS: Array<{ value: '' | NotificationGroup; label: string; icon: string }> = [
   { value: '', label: 'ทั้งหมด', icon: 'bi bi-list-ul' },
   { value: 'issue_mine', label: 'เรื่องของฉัน', icon: 'bi bi-file-earmark-text' },
-  { value: 'issue_received', label: 'เรื่องที่รับ', icon: 'bi bi-inbox' },
-  { value: 'board', label: 'PIRI Boards', icon: 'bi bi-columns-gap' },
+  { value: 'issue_received', label: 'เรื่องที่รับผิดชอบ', icon: 'bi bi-inbox' },
+  { value: 'board', label: 'บอร์ด', icon: 'bi bi-columns-gap' },
   { value: 'report', label: 'จัดการรายงาน', icon: 'bi bi-flag-fill' },
   { value: 'announcement', label: 'ประกาศฉุกเฉิน', icon: 'bi bi-megaphone-fill' },
   { value: 'event', label: 'กิจกรรม', icon: 'bi bi-calendar-event' },
@@ -101,7 +101,7 @@ export const PREFERENCE_GROUPS = GROUP_TABS.filter(
 export const GROUP_DESCRIPTIONS: Record<NotificationGroup, string> = {
   issue_mine: 'เมื่อเรื่องที่คุณแจ้งไว้ถูกตอบกลับ หรือสถานะเปลี่ยน',
   issue_received: 'เมื่อมีเรื่องส่งมาถึงคุณในฐานะผู้รับผิดชอบ',
-  board: 'เมื่อมีกระทู้ใหม่ ความคิดเห็นใหม่ หรือผลโหว้ใน PIRI Boards',
+  board: 'เมื่อมีกระทู้ใหม่ ความคิดเห็นใหม่ หรือผลโหวตในบอร์ด',
   report: 'เมื่อมีคนรายงานเนื้อหา และเมื่อผลการตรวจสอบออก',
   announcement:
     'ประกาศฉุกเฉินจากโรงเรียน — ปิดไม่ได้ เพื่อให้แน่ใจว่าข่าวสำคัญถึงทุกคนทันเวลา',

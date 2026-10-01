@@ -5,6 +5,7 @@ import { listStudents, listRooms, addStudent, updateStudent } from '@/services/s
 import { RESPONSIBLE_ROLES, CATEGORY_OPTIONS } from '@/types/issue'
 import type { Student, Room } from '@/types/student'
 import { useAuthStore } from '@/stores/auth'
+import { roleLabel } from '@/constants/roles'
 
 // 🧑‍💼 หน้า User Management — จัดการกลุ่ม สภานักเรียน / ผู้ช่วยหัวหน้าระดับ / คณะกรรมการห้อง
 // หลักการ: Backend บังคับขอบเขตไว้แล้ว (grade scope + hierarchy rank) — หน้านี้กรอง/แสดงผลให้ใช้ง่าย
@@ -13,18 +14,8 @@ import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
 
-const ROLE_LABELS: Record<string, string> = {
-  student: 'นักเรียน',
-  class_president: 'หัวหน้าห้อง',
-  vice_academic: 'รองวิชาการ',
-  vice_discipline: 'รองวินัย',
-  vice_activity: 'รองกิจกรรม',
-  vice_reception: 'รองปฏิคม',
-  level_president: 'ประธานระดับ',
-  level_vice_president: 'ผู้ช่วยหัวหน้าระดับ',
-  council_member: 'สภานักเรียน',
-  council_president: 'ประธานสภา',
-}
+// 🪪 ป้ายตำแหน่งมาจาก `@/constants/roles` ที่เดียว (เดิมคัดลอกไว้ 4 ที่แล้วเลื่อนออกจากกัน)
+
 
 // กลุ่มตำแหน่งสำหรับ chip กรอง (อิงพีระมิด hierarchy)
 const ROLE_GROUPS: { key: string; label: string; roles: string[] }[] = [
@@ -146,10 +137,6 @@ const visibleStudents = computed(() => {
   }
   return out
 })
-
-function roleLabel(code: string): string {
-  return ROLE_LABELS[code] || code
-}
 
 // ห้องที่เลือกเพิ่มผู้ใช้ได้: ผู้จัดการระดับชั้นเห็นเฉพาะห้องในระดับตัวเอง
 const addableRooms = computed(() => {

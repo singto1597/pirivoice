@@ -166,7 +166,9 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'bi-shield-check',
     items: [
       { key: 'dashboard', label: 'แดชบอร์ด', icon: 'bi-grid-1x2', to: { name: 'dashboard' }, permission: 'VIEW_DASHBOARD' },
-      { key: 'board-reports', label: 'ตรวจรายงาน', icon: 'bi-flag', to: { name: 'board-reports' }, badgeGroup: 'report', councilOnly: true },
+      // 🏷️ ป้ายแถวเมนู = ชื่อหน้า = `routeTitles['board-reports']` = "จัดการรายงาน"
+      //    (เดิมแถวนี้เขียน "ตรวจรายงาน" ขณะที่หัวหน้าเขียน "จัดการรายงาน" ⇒ ปลายทางเดียวมีสองชื่อ)
+      { key: 'board-reports', label: 'จัดการรายงาน', icon: 'bi-flag', to: { name: 'board-reports' }, badgeGroup: 'report', councilOnly: true },
       // 📅 **ซ่อนจากเมนูตั้งแต่รอบ 4** — ปลายทางนี้กลายเป็น *segment "จัดการ"* ของแท็บ "กิจกรรม"
       //    ⇒ ถ้าปล่อยแถวไว้ จะมีสองทางเข้าไปที่เดียวกัน ซึ่งขัดหลัก "ทางเข้าเดียวต่อปลายทาง"
       //    ⚠️ ซ่อนแถว ไม่ใช่ลบ `permission` — `isVisible()` ยังต้องกรองอยู่ เพราะ
@@ -242,7 +244,7 @@ export const routeTitles: Record<string, string> = {
   'profile-password': 'เปลี่ยนรหัสผ่าน',
   'new-issue': 'แจ้งเรื่อง',
   'my-issues': 'เรื่องของฉัน',
-  'received-issues': 'เรื่องที่รับ / ระดับฉัน',
+  'received-issues': 'เรื่องที่รับผิดชอบ',
   'issue-detail': 'รายละเอียดเรื่อง',
   'issue-edit': 'แก้ไขเรื่อง',
   boards: 'บอร์ด',
@@ -266,7 +268,7 @@ export const routeTitles: Record<string, string> = {
   notifications: 'การแจ้งเตือน',
   // ⚠️ **ชื่อหัวแถบ = ชื่อ "สิ่งที่กำลังดูอยู่" ไม่ใช่ชื่อกลุ่มเมนู** — ทั้งคู่ของ segment
   //    ตั้งชื่อตาม *ลิสต์* ของตัวเอง (`นักเรียน` / `เจ้าหน้าที่`) ตรงกับคู่ `issues`
-  //    ที่ใช้ `เรื่องของฉัน` / `เรื่องที่รับ / ระดับฉัน` มาตั้งแต่ต้น
+  //    ที่ใช้ `ของฉัน` / `ที่รับผิดชอบ` มาตั้งแต่ต้น
   //    ⇒ แถวเมนูที่พามาที่นี่ชื่อ "สมาชิก" (ชื่อ *กลุ่ม*) ซึ่งไม่ขัดกันเพราะ
   //      ผู้ใช้ไม่เห็นเมนูกับหัวแถบพร้อมกัน (คนละจอ)
   //    · และจำเป็นเมื่อแถบ segment **หดเหลือตัวเดียว** (ไม่มีสิทธิ์รับเรื่อง/จัดการสมาชิก)

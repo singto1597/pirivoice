@@ -20,7 +20,7 @@ import PaginationBar from '@/components/PaginationBar.vue'
  * 🚩 คิวรายงานความไม่เหมาะสม (สภานักเรียน/แอดมิน)
  * - นักเรียนแจ้งคอมเมนต์ไม่เหมาะสม → สภารอจัดการ ไม่ต้องอ่านทุกคอมเมนต์
  * - รายการ open → [ซ่อนคอมเมนต์] (hide — ซ่อน subtree + ลด counter + ปิดรายงานทั้งหมดที่จุดนั้น)
- *                    [ปัดตก] (dismiss — ไม่ซ่อน ปิดรายงานนี้รายการเดียว)
+ *                    [ไม่ดำเนินการ] (dismiss — ไม่ซ่อน ปิดรายงานนี้รายการเดียว)
  * - กรอง: status (open/resolved/dismissed), reason (หมวด), q (ค้นหา) + แบ่งหน้า
  */
 const authStore = useAuthStore()
@@ -41,7 +41,7 @@ const STATUS_TABS: Array<{ value: '' | ReportStatus; label: string; icon: string
   { value: '', label: 'ทั้งหมด', icon: 'bi bi-list-ul' },
   { value: 'open', label: 'รอจัดการ', icon: 'bi bi-hourglass-split' },
   { value: 'resolved', label: 'ซ่อนแล้ว', icon: 'bi bi-eye-slash' },
-  { value: 'dismissed', label: 'ปัดตก', icon: 'bi bi-check2-circle' },
+  { value: 'dismissed', label: 'ไม่ดำเนินการ', icon: 'bi bi-check2-circle' },
 ]
 
 // ป้ายสถานะ (สีจำกัด: open → cardinal, resolved → emerald, dismissed → stone)
@@ -111,12 +111,12 @@ function fmtDate(iso: string): string {
   })
 }
 
-// ✅ จัดการรายงาน: action='hide' (ซ่อนคอมเมนต์) / 'dismiss' (ปัดตก)
+// ✅ จัดการรายงาน: action='hide' (ซ่อนคอมเมนต์) / 'dismiss' (ไม่ดำเนินการกับคอมเมนต์)
 async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
   if (actingId.value) return
   const isHide = action === 'hide'
   const { value: note, isConfirmed } = await Swal.fire({
-    title: isHide ? 'ซ่อนคอมเมนต์นี้?' : 'ปัดตก (ไม่ซ่อน)?',
+    title: isHide ? 'ซ่อนคอมเมนต์นี้?' : 'ไม่ดำเนินการกับรายงานนี้?',
     html: isHide
       ? 'คอมเมนต์ + รีพลายจะถูก<b>ซ่อนทันที</b> และรายงานอื่นๆ ที่จุดเดียวกันจะถูกปิด'
       : 'ปิดรายงานนี้รายการเดียว — <b>ไม่ซ่อนคอมเมนต์</b>',
@@ -125,7 +125,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
     inputPlaceholder: 'หมายเหตุ (ไม่บังคับ)',
     inputAttributes: { maxlength: '500' },
     showCancelButton: true,
-    confirmButtonText: isHide ? 'ซ่อนคอมเมนต์' : 'ปัดตก',
+    confirmButtonText: isHide ? 'ซ่อนคอมเมนต์' : 'ไม่ดำเนินการ',
     confirmButtonColor: isHide ? BRAND : NEUTRAL,
     cancelButtonText: 'ยกเลิก',
   })
@@ -136,7 +136,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
     await resolveReport(r.id, action, note ? String(note).trim() : undefined)
     Swal.fire({
       icon: 'success',
-      title: isHide ? 'ซ่อนคอมเมนต์แล้ว' : 'ปัดตกแล้ว',
+      title: isHide ? 'ซ่อนคอมเมนต์แล้ว' : 'ไม่ดำเนินการแล้ว',
       text: isHide ? 'ลดจำนวนคอมเมนต์ + ปิดรายงานที่เกี่ยวข้องแล้ว' : 'คอมเมนต์ยังคงแสดงอยู่',
       timer: 1400,
       showConfirmButton: false,
@@ -279,7 +279,7 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
                 @click="handleResolve(r, 'dismiss')"
                 class="px-3 py-1.5 text-xs font-medium rounded-lg bg-stone-100 text-stone-600 hover:bg-stone-200 disabled:opacity-40"
               >
-                <i class="bi bi-check2-circle mr-1"></i> ปัดตก
+                <i class="bi bi-check2-circle mr-1"></i> ไม่ดำเนินการ
               </button>
               <button
                 type="button"
