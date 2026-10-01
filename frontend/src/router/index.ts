@@ -286,6 +286,11 @@ const router = createRouter({
             requiresPermission: 'MANAGE_EVENTS',
             navTab: 'events',
             navHidden: true,
+            // 🔴 **ต้องประกาศ** — ถ้าไม่ประกาศ `useAppChrome` จะถอยไปใช้ `NAV_TABS[navTab].to`
+            //    ซึ่งคือ `{ name: 'events' }` = **หน้ารวมกิจกรรมสาธารณะ** ⇒ สภากด `←` จากหน้า
+            //    รายชื่อผู้สมัครแล้วหลุดออกจากโหมดจัดการ ต้องกด "จัดการ" กลับมาอีกที
+            //    ทั้งที่ทางที่ถูกคือกลับไปหน้ากิจกรรมที่เพิ่งมาจาก (`event-management`)
+            headerBack: { name: 'event-management' },
           },
         },
         {
