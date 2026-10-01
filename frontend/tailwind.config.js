@@ -1,6 +1,4 @@
 /** @type {import('tailwindcss').Config} */
-import daisyui from 'daisyui';
-
 export default {
   content: [
     "./index.html",
@@ -105,10 +103,20 @@ export default {
       },
     },
   },
-  plugins: [
-    daisyui,
-  ],
-  daisyui: {
-    themes: false, // false = ใช้ default theme ไปก่อน (ปรับทีหลังได้)
-  },
+  /**
+   * 🔴 **ไม่มี plugin ใด ๆ โดยเจตนา** — daisyUI ถูกถอดออกที่ R5.4
+   *
+   * `daisyui@4` ติดตั้งไว้ตั้งแต่ต้นโปรเจกต์แบบ `themes: false` และ **ไม่มีใครใช้คลาสของมันเลย
+   * แม้แต่คลาสเดียว** (ตรวจแล้วด้วยการสแกน `class="..."` ทั้ง `src/` — ที่เจอคำอย่าง `badge`
+   * หรือ `tab` เป็นชื่อตัวแปร/คีย์ข้อมูลของเราเอง ไม่ใช่คลาสของ daisyUI)
+   *
+   * ⚠️ ที่มันยังมีผลจริงคือ **`main.css` ต้องใช้ selector ตรง ๆ ทับ `input/textarea/select`**
+   *    เพราะ base ของ daisyUI ดันธีมของตัวเองสู้กับพาเลตต์ stone/cardinal ของเรา
+   *    ⇒ ถอดออกแล้วจึงเหลือ Tailwind preflight ชั้นเดียว ซึ่งคาดเดาได้กว่า
+   *
+   * 🔴 **ห้ามเพิ่ม plugin ที่ inject คลาสcomponent ทั้งชุดกลับเข้ามา** — เหตุผลเดียวกับ R5.1:
+   *    พาเลตต์ต้องมาจาก token ในไฟล์นี้เท่านั้น ไม่ใช่จากธีมของไลบรารี
+   *    (ดู `docs/rules/frontend.md` §6 ที่แก้ให้ตรงกับความจริงใน R5.6)
+   */
+  plugins: [],
 }

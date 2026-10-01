@@ -14,7 +14,8 @@
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "lint:colors": "node scripts/check-brand-colors.mjs"
   },
   "dependencies": {
     "@vuepic/vue-datepicker": "^14.0.0",
@@ -22,7 +23,6 @@
     "axios": "^1.16.1",
     "bootstrap-icons": "^1.13.1",
     "chart.js": "^4.5.1",
-    "daisyui": "^4.12.24",
     "jsqr": "^1.4.0",
     "pinia": "^3.0.4",
     "postcss": "^8.5.15",
