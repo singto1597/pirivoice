@@ -143,7 +143,7 @@ async function handleHide() {
         </div>
         <p class="text-sm text-stone-700 mt-0.5 whitespace-pre-wrap break-words">{{ comment.body }}</p>
         <!-- action: ตอบกลับ / แจ้ง (ทุกคน ยกเว้นตัวเอง) / ซ่อน (สภา/แอดมิน) -->
-        <div class="mt-1 flex items-center gap-3 text-xs">
+        <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <button
             type="button"
             data-testid="reply-btn"

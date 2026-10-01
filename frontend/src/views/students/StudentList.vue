@@ -102,7 +102,7 @@ async function changeRole(student: Student) {
 
     <div v-else>
       <!-- ===== มือถือ: การ์ดรายการ (อ่านง่าย ไม่เบียดตาราง) ===== -->
-      <div class="grid gap-3 md:hidden">
+      <div class="grid grid-cols-1 gap-3 md:hidden">
         <div
           v-for="s in students"
           :key="s.id"

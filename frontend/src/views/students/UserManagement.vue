@@ -367,7 +367,7 @@ const editMeta = computed(() => {
       <!-- มีข้อมูล → แสดงทั้งการ์ดมือถือ + ตารางเดสก์ท็อป -->
       <template v-else>
         <!-- Mobile: การ์ด -->
-        <div class="grid gap-3 md:hidden">
+        <div class="grid grid-cols-1 gap-3 md:hidden">
           <div
             v-for="s in visibleStudents"
             :key="s.id"
