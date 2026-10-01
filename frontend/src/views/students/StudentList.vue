@@ -121,7 +121,7 @@ async function changeRole(student: Student) {
               <span class="ml-1.5">· {{ s.room_code }}</span>
             </p>
           </div>
-          <button @click="changeRole(s)" class="inline-flex items-center shrink-0 rounded-full px-2.5 min-h-11 py-1 text-xs font-medium"
+          <button @click="changeRole(s)" class="inline-flex min-w-11 shrink-0 items-center justify-center rounded-full px-2.5 min-h-11 py-1 text-xs font-medium"
             :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
             {{ roleLabel(s.class_role) }} <i class="bi bi-pencil-square text-[10px]"></i>
           </button>
@@ -153,7 +153,7 @@ async function changeRole(student: Student) {
               </td>
               <td class="px-4 py-2.5 text-stone-600">{{ s.room_code }}</td>
               <td class="px-4 py-2.5">
-                <button @click="changeRole(s)" class="inline-flex items-center rounded-full px-2.5 min-h-11 py-1 text-xs font-medium"
+                <button @click="changeRole(s)" class="inline-flex min-w-11 items-center justify-center rounded-full px-2.5 min-h-11 py-1 text-xs font-medium"
                   :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
                   {{ roleLabel(s.class_role) }} <i class="bi bi-pencil-square text-[10px]"></i>
                 </button>

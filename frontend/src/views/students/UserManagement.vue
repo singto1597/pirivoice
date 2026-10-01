@@ -409,7 +409,7 @@ const editMeta = computed(() => {
             <button
               type="button"
               @click="openEdit(s)"
-              class="shrink-0 rounded-xl p-2.5 text-ink-3 transition-colors hover:bg-stone-100 hover:text-brand"
+              class="inline-flex min-w-11 shrink-0 items-center justify-center rounded-xl p-2.5 text-ink-3 transition-colors hover:bg-stone-100 hover:text-brand"
               :title="'แก้ไข: ' + (s.first_name || '')"
             >
               <i class="bi bi-pencil-square text-lg"></i>
