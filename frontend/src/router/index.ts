@@ -160,13 +160,32 @@ const router = createRouter({
           path: 'boards',
           name: 'boards',
           component: () => import('@/views/boards/PiriBoards.vue'),
-          meta: { navTab: 'boards', headerBack: false },
+          // ➕ FAB "เสนอไอเดีย" — ไม่ต้องมี permission (ใครก็เสนอได้) ต่างจาก FAB กิจกรรม
+          meta: { navTab: 'boards', headerBack: false, fab: 'board' },
         },
         {
           path: 'boards/reports',
           name: 'board-reports',
           component: () => import('@/views/boards/ReportModeration.vue'),
           meta: { requiresAuth: true, requiresCouncil: true, navTab: 'more' },
+        },
+        {
+          // ⚠️ **ต้องมาก่อน `boards/:id`** — ไม่งั้น `new` ถูกจับเป็น `:id`
+          //    แล้วหน้า detail จะยิง API ด้วย boardId = NaN (กับดักเดียวกับ `events/new`)
+          //    · ตอนนี้มีคำ literal สองคำที่ต้องอยู่ก่อน: `reports` กับ `new`
+          //
+          // ✍️ ฟอร์มเสนอไอเดีย — **หน้าเต็ม ไม่ใช่ modal** (skills #16) · เป็นปลายทางของ FAB
+          path: 'boards/new',
+          name: 'board-new',
+          component: () => import('@/views/boards/NewSuggestion.vue'),
+          meta: {
+            // ⚠️ ไม่ประกาศ `requiresAuth` — สืบทอดจาก route แม่ `/app` เหมือน `boards`
+            //    และ `board-detail` · ไม่มี gate เพิ่มเพราะข้อเสนอเปิดให้ทุกคนส่งได้
+            navTab: 'boards',
+            // ฟอร์ม ⇒ ซ่อนแถบล่าง (ตารางตัดสิน R0.3.2: ร่าง/ฟอร์ม/สแกน/นำเข้า)
+            navHidden: true,
+            headerBack: { name: 'boards' },
+          },
         },
         {
           path: 'boards/:id',

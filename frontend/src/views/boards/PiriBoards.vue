@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { listBoards } from '@/services/board'
 import { BOARD_TYPE_LABELS, boardTypeIcon, type BoardSummary, type BoardType } from '@/types/board'
 import PaginationBar from '@/components/PaginationBar.vue'
-import QuickSuggestionModal from '@/components/boards/QuickSuggestionModal.vue'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppChip from '@/components/ui/AppChip.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -22,13 +20,16 @@ import { fmtRelative } from '@/datetime'
  *    ⚠️ และ **ห้ามใส่ `uppercase tracking-*` กับข้อความไทย** — ภาษาไทยไม่มีตัวพิมพ์ใหญ่
  *    และ letter-spacing ทำให้สระ/วรรณยุกต์ลอยห่างจากพยัญชนะ
  *
- * 🚧 **ยังไม่มี FAB สร้างข้อเสนอในรอบนี้โดยเจตนา** — `AppFab` เรนเดอร์เป็น `RouterLink`
- *    และถูกวางที่ `MainLayout` ⇒ การเปิด modal จาก shell ต้องมีช่องทางส่ง action ข้าม
- *    คอมโพเนนต์ ซึ่งยังไม่มีในสถาปัตยกรรมนี้ · ทางที่ถูกคือทำ `QuickSuggestionModal`
- *    เป็น **หน้าเต็ม** (`/app/boards/new` ตามแบบ `event-create`) แล้วให้ FAB ชี้ไปที่นั่น
- *    (skills #16: ฟอร์มต้องเป็นหน้าเต็ม) ⇒ เป็นงานคอมมิตถัดไป ไม่ใช่ยัดมาปนกับอันนี้
+ * ➕ **ปุ่มเสนอไอเดียมีสองที่ ตามขนาดจอ — ไม่ใช่ของซ้ำกัน:**
+ *    · มือถือ → **FAB** หลอดไฟมุมขวาล่าง (`fab: 'board'` ใน `route.meta` ⇒ `MainLayout` วาดให้)
+ *      เพราะโซนนิ้วโป้งอยู่ล่าง และแถวเครื่องมือบนสุดเลื่อนหายไปแล้วตอนเลื่อนดูการ์ด
+ *    · เดสก์ท็อป → ปุ่มในหัวหน้า (ด้านล่าง) เพราะ `AppFab` เป็น `lg:hidden` โดยตัวมันเอง
+ *    ⇒ ทั้งคู่ชี้ `board-new` เหมือนกัน และผู้ใช้เห็นเพียงอันเดียวในแต่ละขนาดจอ
+ *
+ * 🗂️ ของเดิมเป็น modal (`QuickSuggestionModal`) — เปลี่ยนเป็นหน้าเต็มในรอบ 4 เพราะ
+ *    ฟอร์มที่ต้องพิมพ์ต้องไม่ใช่ modal ที่กดฉากหลังแล้วทิ้งข้อความ (skills #16)
+ *    และเพราะเหตุผลเชิงสถาปัตยกรรม: `AppFab` เป็น `RouterLink` เปิด modal จาก shell ไม่ได้
  */
-const router = useRouter()
 const boards = ref<BoardSummary[]>([])
 const total = ref(0)
 const isLoading = ref(true)
@@ -37,7 +38,6 @@ const typeFilter = ref<'' | BoardType>('') // '' = ทั้งหมด
 const q = ref('')
 const page = ref(1)
 const pageSize = 12
-const showSuggestionModal = ref(false)
 
 /** ตัวกรองประเภท — **ไม่มีไอคอน** (ชิปมีที่จำกัด และป้ายไทยอ่านออกอยู่แล้ว) */
 const TYPE_FILTERS: Array<{ value: '' | BoardType; label: string }> = [
@@ -51,11 +51,6 @@ const TYPE_FILTERS: Array<{ value: '' | BoardType; label: string }> = [
 const isFiltered = ref(false)
 
 onMounted(load)
-
-// สร้างข้อเสนอสำเร็จ → พาไปหน้า detail ของบอร์ดที่เพิ่งสร้าง (ตรงกับที่ ApproveBoardModal ทำ)
-function onSuggestionCreated(boardId: number) {
-  router.push({ name: 'board-detail', params: { id: boardId } })
-}
 
 // ค้นหา (debounce 300ms) → กลับหน้า 1
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -108,22 +103,22 @@ async function load() {
 
 <template>
   <div class="mx-auto max-w-5xl space-y-4 pb-4">
-    <!-- คำอธิบายหน้าอยู่ที่ `AppHeader` แล้ว ⇒ เหลือบรรทัดเดียวที่บอกว่า "ที่นี่มีอะไร" -->
-    <p class="text-sm text-ink-2">
-      โหวต + พูดคุยสาธารณะที่สภานักเรียนอนุมัติแล้ว · ข้อเสนอแนะจากทุกคน
-    </p>
-
-    <!-- 💡 เสนอไอเดีย — งานหลักของหน้านี้ ⇒ อยู่บนสุดและเต็มความกว้างบนมือถือ
-         ⚠️ `data-testid` คงไว้ — เป็น hook ที่อ้างอิงได้ และการย้ายปุ่มไม่ควรทำ hook หาย -->
-    <AppButton
-      data-testid="open-suggestion"
-      block
-      class="sm:w-auto"
-      @click="showSuggestionModal = true"
-    >
-      <template #icon><i class="bi bi-lightbulb" aria-hidden="true" /></template>
-      เสนอไอเดีย
-    </AppButton>
+    <div class="flex items-start justify-between gap-4">
+      <!-- คำอธิบายหน้าอยู่ที่ `AppHeader` แล้ว ⇒ เหลือบรรทัดเดียวที่บอกว่า "ที่นี่มีอะไร" -->
+      <p class="text-sm text-ink-2">
+        โหวต + พูดคุยสาธารณะที่สภานักเรียนอนุมัติแล้ว · ข้อเสนอแนะจากทุกคน
+      </p>
+      <!-- 💡 เดสก์ท็อปเท่านั้น — มือถือได้ FAB แทน (ปุ่มเดียวกันสองที่ = ของซ้ำ)
+           ⚠️ `data-testid` คงไว้ — เป็น hook ที่อ้างอิงได้ และการย้ายปุ่มไม่ควรทำ hook หาย -->
+      <AppButton
+        data-testid="open-suggestion"
+        class="hidden lg:inline-flex"
+        :to="{ name: 'board-new' }"
+      >
+        <template #icon><i class="bi bi-lightbulb" aria-hidden="true" /></template>
+        เสนอไอเดีย
+      </AppButton>
+    </div>
 
     <!-- 🏷️ ชิปกรองประเภท — เลื่อนแนวนอน ไม่ตัดบรรทัด (`.chip-row` มีอยู่ใน main.css) -->
     <div class="chip-row">
@@ -260,7 +255,5 @@ async function load() {
       :loading="isLoading"
       @page-change="onPageChange"
     />
-
-    <QuickSuggestionModal v-model:open="showSuggestionModal" @created="onSuggestionCreated" />
   </div>
 </template>

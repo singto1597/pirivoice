@@ -16,8 +16,15 @@ export type NavKey = 'home' | 'issues' | 'boards' | 'events' | 'more'
 /** กลุ่ม segment — route ที่อยู่กลุ่มเดียวกันจะได้แถบ segment ร่วมกันจาก shell */
 export type SegmentGroupId = 'issues' | 'members'
 
-/** FAB ที่ shell วาดให้ (ไม่ประกาศ = หน้าไหนก็ได้ FAB ของตัวเอง) */
-export type FabKey = 'issue' | 'event' | 'member'
+/**
+ * FAB ที่ shell วาดให้ (ไม่ประกาศ = หน้าไหนก็ได้ FAB ของตัวเอง)
+ *
+ * ⚠️ ทุกตัวต้องชี้ไป **หน้าเต็ม** ได้ — `AppFab` เรนเดอร์เป็น `RouterLink` เท่านั้น
+ *    ไม่มีช่องทางส่ง action กลับขึ้นไปสั่งเปิด modal ที่อื่นในแอป
+ *    (นี่คือเหตุผลที่ `QuickSuggestionModal` ต้องกลายเป็นหน้า `board-new` ก่อน
+ *     จึงจะเพิ่ม `board` เข้ามาที่นี่ได้ — skills #16 บังคับทางเดียวกันอยู่แล้ว)
+ */
+export type FabKey = 'issue' | 'event' | 'member' | 'board'
 
 export interface AppRouteMeta {
   // ── เดิม (ห้ามเปลี่ยนความหมาย) ──────────────────────────────────────

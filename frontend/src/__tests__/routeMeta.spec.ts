@@ -69,6 +69,10 @@ const GATES: Record<string, [boolean | undefined, string | undefined, boolean | 
   boards: [undefined, undefined, undefined],
   'board-reports': [true, undefined, true],
   'board-detail': [undefined, undefined, undefined],
+  // 💡 รอบ 4 — หน้าที่ 3 ที่เพิ่มใหม่ทั้ง refactor (ฟอร์มเสนอไอเดีย แทน modal เดิม)
+  //    🔴 **ไม่ใส่ gate โดยเจตนา** — ข้อเสนอแนะเปิดให้ทุกคนส่ง ไม่ต้องรอสภาอนุมัติ
+  //       ⇒ การใส่ gate ที่นี่ = ดีดผู้ใช้ทั่วไปกลับหน้าแรก *เงียบ ๆ* จากปุ่มที่ควรกดได้
+  'board-new': [undefined, undefined, undefined],
   events: [true, undefined, undefined],
   'event-management': [true, 'MANAGE_EVENTS', undefined],
   'event-create': [true, 'MANAGE_EVENTS', undefined],
@@ -98,15 +102,17 @@ const NAV_HIDDEN = [
   'profile-edit',
   'profile-password',
   'import-students',
+  // ✍️ รอบ 4 — ฟอร์มเสนอไอเดีย (แทน `QuickSuggestionModal` ที่กดฉากหลังแล้วทิ้งข้อความ)
+  'board-new',
 ]
 
 /** แท็บราก — ต้องมี `headerBack: false` ไม่งั้นได้ลูกศร ← ที่กดแล้วกลับหน้าเดิม */
 const TAB_ROOTS = ['home', 'more', 'my-issues', 'boards', 'events']
 
 describe('ประตูสิทธิ์ (snapshot)', () => {
-  it('ครบทั้ง 32 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
+  it('ครบทั้ง 33 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
     const children = appChildren()
-    expect(children).toHaveLength(32)
+    expect(children).toHaveLength(33)
 
     const actual: Record<string, [boolean | undefined, string | undefined, boolean | undefined]> =
       {}
@@ -249,6 +255,8 @@ describe('chrome — shell อ่านจาก meta ที่เดียว',
       issue: ['home', 'my-issues'],
       event: ['event-management', 'events'],
       member: ['students', 'users'],
+      // ➕ รอบ 4 — "เสนอไอเดีย" บนแท็บบอร์ด (ไม่มี permission ⇒ ทุกคนเห็น)
+      board: ['boards'],
     })
   })
 })

@@ -64,6 +64,11 @@ const FAB_TARGETS: Record<FabKey, { to: RouteLocationRaw; label: string; icon: s
     icon: 'bi-plus-lg',
     permission: 'MANAGE_STUDENTS',
   },
+  // ⚠️ **ไม่มี `permission` โดยเจตนา** — ข้อเสนอแนะเปิดให้ทุกคนส่ง (คนอื่นไม่ต้องรอสภา)
+  //    ⇒ ต่างจาก `event`/`member` ที่ต้องกรองสิทธิ์ ไม่ใช่ลืมใส่
+  //    · ไอคอนหลอดไฟ (ไม่ใช่ `+`) เพราะ "เสนอไอเดีย" ไม่ใช่ "เพิ่มรายการ" — และตรงกับ
+  //      `boardTypeIcon('suggestion')` ที่ใช้หลอดไฟอยู่แล้ว ⇒ ผู้ใช้เห็นสัญลักษณ์เดียวกันทั้งแอป
+  board: { to: { name: 'board-new' }, label: 'เสนอไอเดีย', icon: 'bi-lightbulb' },
 }
 
 const fab = computed(() => {
