@@ -128,7 +128,7 @@ async function handleHideBoard() {
   hidingBoard.value = true
   try {
     await hideBoard(board.value.id, String(value).trim())
-    Swal.fire({ icon: 'success', title: 'ซ่อนบอร์ดแล้ว', text: 'ย้ายกลับไปยังฟีด PIRI Boards', timer: 1500, showConfirmButton: false }).then(() => {
+    Swal.fire({ icon: 'success', title: 'ซ่อนบอร์ดแล้ว', text: 'ย้ายกลับไปยังหน้ารวมบอร์ด', timer: 1500, showConfirmButton: false }).then(() => {
       router.push({ name: 'boards' })
     })
   } catch (e) {
@@ -178,7 +178,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
           ลองอีกครั้ง
         </AppButton>
-        <AppButton :to="{ name: 'boards' }" variant="text">กลับไป PIRI Boards</AppButton>
+        <AppButton :to="{ name: 'boards' }" variant="text">กลับไปหน้ารวมบอร์ด</AppButton>
       </div>
     </AppEmptyState>
   </AppCard>

@@ -37,11 +37,16 @@
   - ใช้ Pydantic Models สำหรับ Request และ Response
   - **Date Params:** ตัวแปรรับค่าวันที่ต้องใช้ Type `date` หรือ `datetime` เท่านั้น ห้ามใช้ `str` ป้องกันบั๊ก `toordinal()`
   - ใน Router ต้องบังคับใส่ `response_model=...` ทุกครั้ง เพื่อกรองฟิลด์ลับออกก่อนส่งหา Client
-    (ทั้ง repo ใส่ครบ 92/94 endpoint) — **ข้อยกเว้นมีแค่ 2 แบบ** ที่ไม่ใช่ JSON ก้อนเดียว:
+    (ทั้ง repo ใส่ครบ **92 จาก 95 endpoint** — วัด 1 ต.ค. 2026) — **ข้อยกเว้นมี 3 แบบ**
+    ที่ไม่มี body เป็น JSON ก้อนเดียว:
     - **ดาวน์โหลดไฟล์** — `GET /api/import-student-template` คืน `Response` ที่มี attachment
     - **SSE stream** — `GET /api/notifications/stream` คืน `StreamingResponse`
+    - **204 No Content** — `DELETE /api/bookmarks/{id}` ไม่มี body ให้กรองตั้งแต่แรก
     ⇒ เพิ่ม endpoint ที่ไม่ใช่ JSON ให้ **เขียนคอมเมนต์กำกับว่าทำไมไม่มี `response_model`**
     ไม่งั้นจะดูเหมือนลืม (และคนต่อไปจะ "แก้" ให้โดยไม่รู้ว่าพัง)
+    > ⚠️ เดิมข้อนี้เขียนว่า "92/94 · ข้อยกเว้น 2 แบบ" ⇒ **ตัวหารผิดและตกข้อยกเว้นไปหนึ่งข้อ**
+    > (นับ endpoint จาก decorator ตรง ๆ ได้ 95 ไม่ใช่ 94 — และตัวที่ 3 คือ 204 ที่ถูกมองข้าม
+    > เพราะไม่มี `response_model` ก็ถูกต้องอยู่แล้ว)
 
 ## 3. Database & SQL Standard (asyncpg Best Practices)
 - **Raw SQL Only:** ใช้ Parameterized Query (`$1, $2, ...`) ป้องกัน SQL Injection เสมอ
@@ -49,8 +54,11 @@
 - **Dynamic Updates (PATCH):** ใช้ `req.model_dump(exclude_unset=True)` เอาเฉพาะฟิลด์ที่ส่งมาไปอัปเดต ป้องกันค่า None ทับของเดิม
 - **Row Locking (ป้องกัน Race Condition):** เมื่อมี **อ่าน-แล้ว-เขียน** ที่แข่งกันได้ (นับที่นั่ง,
   ตรวจโควตา, เลื่อนคิว) ต้อง `SELECT ... FOR UPDATE` ภายใน transaction เดียวกันเสมอ
-  - ใช้จริงใน `services/issue_service.py` · `event_service.py` · `announcement_service.py` ·
-    `import_service.py` · `push_outbox` — **ไม่มี** การเงิน/สต๊อกในระบบนี้
+  - ใช้จริงใน **7 ไฟล์** (`grep -rl "FOR UPDATE" backend/services/*.py`): `issue_service.py` ·
+    `event_service.py` · `announcement_service.py` · `import_service.py` · `app_settings_service.py` ·
+    `term_service.py` · `push_service.py` — **ไม่มี** การเงิน/สต๊อกในระบบนี้
+    > ⚠️ รายการนี้เคยเขียนไว้แค่ 4 ไฟล์ + `push_outbox` ⇒ **ไม่ครบ** (ตก `app_settings` · `term` · `push`)
+    > ⇒ อย่าเชื่อรายการชนิดนี้ข้ามรอบ — **รัน `grep` ใหม่ทุกครั้งที่อ้าง**
   - ⚠️ รูปแบบที่ถูกคือ `FOR UPDATE` **บวกกับเงื่อนไขสถานะใน `WHERE`** (ดู §4) — ล็อกอย่างเดียว
     ไม่กันสถานะเปลี่ยนไปมาระหว่างสองคำขอ
 - **Data Limits:** การดึงข้อมูล List ยาวๆ ต้องทำ Pagination หรือใส่ `LIMIT` ห้ามดึงทั้งตาราง

@@ -34,11 +34,18 @@ npm install
 npm run dev          # Vite dev server (default http://localhost:5173)
 npm run type-check   # vue-tsc --build (required — TypeScript is strict, no `any`)
 npm run build        # type-check + build
-npm run lint         # oxlint --fix + eslint --fix (both auto-fix)
-npm run format       # prettier --write src/
+npm run lint         # run-s lint:* → oxlint --fix · eslint --fix · lint:colors · lint:palette
+                     #   (เพิ่มด่านใหม่ได้ด้วยการเพิ่มสคริปต์ lint:xxx — run-s เก็บอัตโนมัติ)
+npm run format       # prettier --write src/  ⚠️ ห้ามรันทั้ง repo — reformat ไฟล์ที่ไม่ได้แตะ
+                     #   และลอก `;` จาก inline handler ทำให้ build แตก ⇒ format เฉพาะไฟล์ที่แก้
 npm run test:unit    # vitest (jsdom environment)
 npm run test:e2e     # playwright (browsers must be installed first: npx playwright install)
 ```
+- 🔴 **`test:unit` เขียว ≠ build ผ่าน** — ต้องรัน `type-check` + `lint` + `test:unit` + `build` **ครบทั้งสี่** ก่อนคอมมิต
+- ด่านกันถอยหลัง 2 ตัวที่รันอยู่ใน `lint`:
+  - `lint:colors` — ห้ามฮาร์ดโค้ดสีแบรนด์ (`[#B91C1C]` / `[#991B1B]`) ให้ใช้ `brand` / `brand-strong`
+  - `lint:palette` — ห้าม `emerald|green|teal|lime-<ตัวเลข>` ในแอป ให้ใช้สเกล `ok-*`
+    (⚠️ ยัง **ไม่** ครอบ `amber` 34 จุด กับ `red` 33 จุด — หนี้ที่รู้ตัว ดู `docs/skills.md`)
 
 ### Infra / deploy (repo root)
 ```bash
@@ -82,15 +89,22 @@ Layering rules (from `docs/rules/backend.md`) that must be followed:
 - `require_permission(conn, room_id, user_id, permission)` (`core/rbac.py`): `SUPER_ADMIN_ID` and `is_admin` bypass; otherwise checks the `permissions` JSONB array on the member row.
 - **Escalation pyramid:** issues flow up through roles. Permission/visibility is defined per level (ดูลงมาเป็นรูปสามเหลี่ยมพีระมิด).
 
-### Frontend (Vue 3 SPA) — 4-layer structure
+### Frontend (Vue 3 SPA) — layered structure
 ```
 frontend/src/
   types/       # Interfaces for all data models
   services/    # axios API calls only — views never call api.get/post directly
   views/       # pages: UI logic, lifecycle, rendering
   components/  # reusable UI pieces
-  stores/      # Pinia (auth store)
-  layouts/     # MainLayout (authed app), GlobalLayout (lobby)
+    ui/        # ★ design system: AppCard · AppButton · AppChip · AppTabs · AppSheet
+               #   AppEmptyState · IconButton · PageHeader · StatusBadge
+    layout/    # AppHeader · AppSidebar · AppBottomNav · AppTabBar · AppFab
+               #   AppNavRow · AppGroupHeader (shell — MainLayout ประกอบเข้าด้วยกัน)
+  layouts/     # MainLayout เท่านั้น (222 บรรทัด — ไม่มี GlobalLayout)
+  composables/ # useNavItems · useAppChrome · useIdentity · useMediaQuery
+  constants/   # nav (NAV_TABS + NAV_GROUPS + routeTitles) · roles · status · brand · chart
+  utils/       # avatar (avatarChar — กันบั๊กสระนำ)
+  stores/      # Pinia (auth, notifications)
   router/      # vue-router with auth + onboarding guards
 ```
 - `services/api.ts` is the single axios instance: attaches `Bearer` token from `localStorage`, unwraps `response.data`, redirects to `/login` on 401, and re-formats Pydantic 422 `detail` arrays into readable Thai messages.

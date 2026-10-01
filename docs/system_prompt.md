@@ -21,16 +21,25 @@
 - **Audit Logging:** ทุก Action ที่มีการ เพิ่ม/แก้ไข/ลบ ข้อมูล ต้องเรียกฟังก์ชันเพื่อบันทึกลงตาราง `audit_logs` เสมอใน Transaction เดียวกัน
 
 ## 3. 🎨 Frontend Rules (`frontend/`)
-- **Stack:** Vue 3 (Composition API `<script setup lang="ts">`), TypeScript (ห้าม `any`), Vite, Pinia, Tailwind CSS, DaisyUI
-- **Structure (4-Layer):**
+- **Stack:** Vue 3 (Composition API `<script setup lang="ts">`), TypeScript (ห้าม `any`), Vite, Pinia, Tailwind CSS (ไม่มี DaisyUI แล้ว — ดู `docs/rules/frontend.md` §6)
+- **Structure:**
   - `src/types/`: นิยาม Interface/Type
   - `src/services/`: ศูนย์รวม Axios API Logic (ห้ามเรียก API ใน View ตรงๆ)
   - `src/views/`: หน้าเว็บ UI และ Logic
+  - `src/components/ui/`: ★ design system (`AppCard` · `AppButton` · `AppChip` · `AppTabs` ·
+    `AppSheet` · `AppEmptyState` · `IconButton` · `PageHeader` · `StatusBadge`) — ใช้ตัวเหล่านี้
+    แทนการเขียนปุ่ม/การ์ดเองด้วย utility class
+  - `src/components/layout/`: shell (`AppHeader` · `AppSidebar` · `AppBottomNav` · `AppTabBar` · `AppFab`)
+  - `src/composables/`: `useNavItems` · `useAppChrome` · `useIdentity` · `useMediaQuery`
+  - `src/constants/`: `nav` (`NAV_TABS` + `NAV_GROUPS` + `routeTitles`) · `roles` · `status` · `brand` · `chart`
   - `src/router/`: กำหนดเส้นทาง
 - **UI & UX:**
   - สร้าง Loading State (`const isLoading = ref(true)`) และโชว์ Spinner เสมอเมื่อโหลดข้อมูล
   - แจ้งเตือน Error/Success ด้วย `SweetAlert2` (`Swal.fire`) เท่านั้น
-  - จัดการเวลาให้เป็น `Asia/Bangkok` (UTC+7) และแสดงผลเป็นภาษาไทย
+  - จัดการเวลาให้เป็น `Asia/Bangkok` (UTC+7) และแสดงผลเป็นภาษาไทย · ใช้ `src/datetime.ts` เท่านั้น
+    (**ห้าม `toISOString()` เพื่อแสดงผล** — คืน UTC + ค.ศ. ⇒ ดู `docs/glossary.md` §6)
+  - **สีต้องมาจาก token ใน `tailwind.config.js`** — ห้ามฮาร์ดโค้ด hex (มีด่าน `lint:colors` +
+    `lint:palette` คุมอยู่)
 
 ## 4. 🧠 ระบบความจำ KNOWLEDGE RETENTION (The `skill.md` System) [MANDATORY]
 เพื่อให้ระบบเรียนรู้อย่างต่อเนื่องและป้องกันการทำผิดซ้ำ บังคับให้จัดการไฟล์ `docs/skills.md` ดังนี้:
