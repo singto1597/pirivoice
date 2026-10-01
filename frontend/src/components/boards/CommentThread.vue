@@ -148,7 +148,7 @@ async function handleHide() {
             type="button"
             data-testid="reply-btn"
             @click="replying = !replying"
-            class="inline-flex min-h-11 items-center gap-1 font-medium text-ink-3 hover:text-brand"
+            class="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 font-medium text-ink-3 hover:text-brand"
           >
             <i class="bi bi-reply"></i> ตอบกลับ
           </button>
@@ -158,7 +158,7 @@ async function handleHide() {
             data-testid="report-btn"
             @click="handleReport"
             :disabled="acting"
-            class="inline-flex min-h-11 items-center gap-1 font-medium text-ink-3 hover:text-brand disabled:opacity-40"
+            class="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 font-medium text-ink-3 hover:text-brand disabled:opacity-40"
           >
             <i class="bi bi-flag"></i> แจ้ง
           </button>
@@ -168,7 +168,7 @@ async function handleHide() {
             data-testid="hide-btn"
             @click="handleHide"
             :disabled="acting"
-            class="inline-flex min-h-11 items-center gap-1 font-medium text-ink-3 hover:text-brand disabled:opacity-40"
+            class="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 font-medium text-ink-3 hover:text-brand disabled:opacity-40"
           >
             <i class="bi bi-eye-slash"></i> ซ่อน
           </button>
