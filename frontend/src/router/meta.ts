@@ -14,7 +14,7 @@ import type { RouteLocationRaw } from 'vue-router'
 export type NavKey = 'home' | 'issues' | 'boards' | 'events' | 'more'
 
 /** กลุ่ม segment — route ที่อยู่กลุ่มเดียวกันจะได้แถบ segment ร่วมกันจาก shell */
-export type SegmentGroupId = 'issues' | 'members'
+export type SegmentGroupId = 'issues' | 'members' | 'events'
 
 /**
  * FAB ที่ shell วาดให้ (ไม่ประกาศ = หน้าไหนก็ได้ FAB ของตัวเอง)

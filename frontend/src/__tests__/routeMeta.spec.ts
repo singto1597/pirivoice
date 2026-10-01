@@ -240,6 +240,11 @@ describe('chrome — shell อ่านจาก meta ที่เดียว',
     expect(byGroup).toEqual({
       issues: ['my-issues', 'received-issues'],
       members: ['students', 'users'],
+      // 📅 รอบ 4 — "ทั้งหมด / จัดการ" รวมเป็นหน้าเดียว (path เดิมทั้งคู่ ไม่มี route แม่ + redirect)
+      //    ⚠️ แผน R4.2 เขียนไว้สามตัวรวม "ของฉัน" — **ถอดออกโดยเจตนา** เพราะไม่มีแหล่งข้อมูล
+      //       (เหตุผลเต็มอยู่ใน `constants/nav.ts` หัว `EVENT_SEGMENTS`) ⇒ ถ้ามีใครเพิ่ม
+      //       segment ที่สองกลับเข้ามาโดยไม่มี endpoint รองรับ เทสต์นี้จะเตือนที่บรรทัดนี้
+      events: ['event-management', 'events'],
     })
   })
 

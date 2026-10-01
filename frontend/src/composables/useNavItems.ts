@@ -12,7 +12,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
-import { NAV_GROUPS, NAV_TABS, ISSUE_SEGMENTS, MEMBER_SEGMENTS } from '@/constants/nav'
+import { NAV_GROUPS, NAV_TABS, ISSUE_SEGMENTS, MEMBER_SEGMENTS, EVENT_SEGMENTS } from '@/constants/nav'
 import type { NavGroup, NavItem, NavTab, SegmentOption } from '@/constants/nav'
 import type { NavKey, SegmentGroupId } from '@/router/meta'
 import type { NotificationGroup } from '@/types/notification'
@@ -101,6 +101,11 @@ export function useNavItems() {
     if (group === 'issues') {
       // ⚠️ กรองด้วยสิทธิ์ *ที่เมนู* ไม่ใช่ที่ route (ดูคอมเมนต์หัวไฟล์)
       return authStore.hasPermission('RECEIVE_ISSUES') ? ISSUE_SEGMENTS : ISSUE_SEGMENTS.slice(0, 1)
+    }
+    if (group === 'events') {
+      // 📅 "ทั้งหมด" เปิดให้ทุกคน ("จัดการ" เฉพาะสภา) ⇒ ตัดหางเสมอ ไม่ใช่ `.filter()` ทั้งชุด
+      //    (`slice(0,1)` แบบเดียวกับกลุ่ม `issues` — first element คือตัวที่ทุกคนเห็น)
+      return authStore.hasPermission('MANAGE_EVENTS') ? EVENT_SEGMENTS : EVENT_SEGMENTS.slice(0, 1)
     }
     return MEMBER_SEGMENTS.filter(() => authStore.hasPermission('MANAGE_STUDENTS'))
   }

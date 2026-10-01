@@ -113,6 +113,35 @@ export const MEMBER_SEGMENTS: SegmentOption[] = [
   { key: 'staff', label: 'เจ้าหน้าที่', to: { name: 'users' } },
 ]
 
+/**
+ * segment ของแท็บ "กิจกรรม" (รอบ 4)
+ *
+ * 🔴 **มีสองตัว ไม่ใช่สาม — "ของฉัน" ถูกถอดออกโดยเจตนา เพราะสร้างไม่ได้จริง**
+ *    แผน R4.2 เขียนไว้สามตัว (ทั้งหมด / ของฉัน / จัดการ) แต่ตรวจแล้วพบว่า
+ *    **ไม่มีแหล่งข้อมูลรองรับ "ของฉัน" เลย**:
+ *      · `GET /api/events/public` รับแค่ `scope` (upcoming/past/all) · `category` · `limit` · `offset`
+ *      · `event_service._PUBLIC_SCOPES` มีสามค่าเดียวกันนี้ และ service เขียนเตือนไว้เองว่า
+ *        **"ไม่กรองด้วยสิทธิ์ — นักเรียนทุกคนเห็นกิจกรรมเหมือนกันหมด"** (`user_id` ถูกส่งเข้าไป
+ *        เพื่อติด `my_registration_status` ให้ *แต่ละแถว* เท่านั้น ไม่ใช่เพื่อกรอง)
+ *      · ไม่มี endpoint "กิจกรรมที่ฉันสมัคร" ทั้งแบบรายการและแบบนับ
+ *    ⇒ ทางเลือกที่มีคือ (ก) กรองฝั่ง client เฉพาะหน้าที่โหลดมา — **ห้าม** เพราะพอมี pagination
+ *       มันจะขึ้น "ยังไม่สมัครกิจกรรมไหนเลย" ทั้งที่ของจริงอยู่หน้า 2 = UI ที่โกหกผู้ใช้
+ *       (ข) เพิ่ม scope ใหม่ที่ backend — เกินขอบเขต R4.2 และชนกับดักที่ service เขียนเตือนไว้
+ *       เรื่องจำนวน placeholder ระหว่าง `count_sql` กับ `rows_sql`
+ *    ⇒ **เลือกถอดออกแล้วบอกเหตุ** · สิ่งที่ผู้ใช้ยังได้อยู่คือ `my_registration_status`
+ *      บนการ์ดทุกใบ ("ได้ที่นั่ง" / "คิวสำรอง") ซึ่งตอบคำถามนั้นได้โดยไม่ต้องมีตัวกรอง
+ *      · ถ้าจะทำจริงต้องเพิ่ม scope `mine` ที่ backend พร้อมเทสต์ — แยกเป็นงานต่างหาก
+ *
+ * ⚠️ "จัดการ" ต้อง **กรองด้วยสิทธิ์ที่ `useNavItems`** (ไม่ใช่ที่ route) — เหตุผลเดียวกับ
+ *    `received-issues` (R0.3.3): `students.permissions` เป็น snapshot ที่ไม่มีอะไร re-sync
+ *    ⇒ gate ที่ route จะดีดผู้ใช้ที่มีสิทธิ์จริงกลับแบบเงียบ ๆ
+ *    ✅ และ `AppTabBar` ซ่อนตัวเองเมื่อเหลือตัวเลือกเดียว ⇒ นักเรียนทั่วไปไม่เห็นแถบนี้เลย
+ */
+export const EVENT_SEGMENTS: SegmentOption[] = [
+  { key: 'public', label: 'ทั้งหมด', to: { name: 'events' } },
+  { key: 'manage', label: 'จัดการ', to: { name: 'event-management' } },
+]
+
 /** แถวคู่มือการทำงาน — สร้างจากข้อมูลจริง ไม่ hardcode จำนวน (มี 6 เล่ม) */
 const playbookItems: NavItem[] = [
   { key: 'playbooks-all', label: 'คู่มือการทำงาน', icon: 'bi-journal-bookmark', to: { name: 'playbooks' } },
@@ -138,7 +167,11 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'dashboard', label: 'แดชบอร์ด', icon: 'bi-grid-1x2', to: { name: 'dashboard' }, permission: 'VIEW_DASHBOARD' },
       { key: 'board-reports', label: 'ตรวจรายงาน', icon: 'bi-flag', to: { name: 'board-reports' }, badgeGroup: 'report', councilOnly: true },
-      { key: 'event-management', label: 'จัดการกิจกรรม', icon: 'bi-calendar-plus', to: { name: 'event-management' }, permission: 'MANAGE_EVENTS' },
+      // 📅 **ซ่อนจากเมนูตั้งแต่รอบ 4** — ปลายทางนี้กลายเป็น *segment "จัดการ"* ของแท็บ "กิจกรรม"
+      //    ⇒ ถ้าปล่อยแถวไว้ จะมีสองทางเข้าไปที่เดียวกัน ซึ่งขัดหลัก "ทางเข้าเดียวต่อปลายทาง"
+      //    ⚠️ ซ่อนแถว ไม่ใช่ลบ `permission` — `isVisible()` ยังต้องกรองอยู่ เพราะ
+      //       `useNavItems.segmentsOf('events')` อ่านสิทธิ์ตัวเดียวกันนี้เพื่อตัดสินว่าโชว์ segment ไหม
+      { key: 'event-management', label: 'จัดการกิจกรรม', icon: 'bi-calendar-plus', to: { name: 'event-management' }, permission: 'MANAGE_EVENTS', hiddenFromMenu: true },
       {
         // 👥 **แถวเดียวของ "สมาชิก"** — ปลายทาง `students` ซึ่งมี `segmentGroup: 'members'`
         //    ⇒ สลับ นักเรียน / เจ้าหน้าที่ ได้ในหน้าเดียว โดยไม่ต้องมีเมนู 2 แถว

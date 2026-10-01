@@ -161,10 +161,13 @@ const MENU_TODAY: Fixture[] = [
   { name: 'boards', reach: 'tab', gate: 'none', from: 'MainLayout:176 PIRI Boards' },
   { name: 'events', reach: 'tab', gate: 'none', from: 'MainLayout:184 กิจกรรม' },
   {
+    // 📅 R4.2 — "จัดการกิจกรรม" ยุบเข้าแท็บกิจกรรมเป็น **segment "จัดการ"** แล้ว
+    //    ⇒ ไม่ใช่แถวเมนูอีก (การเป็นทั้งสองอย่าง = สองทางเข้าไปที่เดียวกัน)
+    //    ✅ เทสต์นี้คือสิ่งที่จับได้ตอนย้าย — แถวนี้แหละที่แดงก่อนใคร
     name: 'event-management',
-    reach: 'menu',
+    reach: 'segment',
     gate: { permission: 'MANAGE_EVENTS' },
-    from: 'MainLayout:190 จัดการกิจกรรม',
+    from: 'R4.2 · segment "จัดการ" ของแท็บกิจกรรม (เดิม MainLayout:190)',
   },
   {
     name: 'received-issues',
@@ -241,7 +244,14 @@ function reachableFrom(nav: ReturnType<typeof useNavItems>, reach: Reach): Set<s
     }
   }
   if (reach === 'segment') {
-    for (const s of [...nav.segmentsOf('issues'), ...nav.segmentsOf('members')]) names.add(s.to.name)
+    // ⚠️ ต้องรวม **ทุกกลุ่ม** ที่มีอยู่จริง — ลืมกลุ่มไหน = เทสต์เขียวทั้งที่ segment นั้น
+    //    ไม่มีใครเห็น (และการเพิ่มกลุ่มใหม่ในอนาคตต้องมาเติมที่นี่ ไม่งั้นเงียบ)
+    const all = [
+      ...nav.segmentsOf('issues'),
+      ...nav.segmentsOf('members'),
+      ...nav.segmentsOf('events'),
+    ]
+    for (const s of all) names.add(s.to.name)
   }
   if (reach === 'tab') {
     for (const t of nav.tabs.value) names.add(t.key)

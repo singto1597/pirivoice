@@ -203,7 +203,17 @@ const router = createRouter({
           path: 'events',
           name: 'events',
           component: () => import('@/views/events/EventList.vue'),
-          meta: { requiresAuth: true, navTab: 'events', headerBack: false, fab: 'event' },
+          meta: {
+            requiresAuth: true,
+            navTab: 'events',
+            headerBack: false,
+            fab: 'event',
+            // 🔀 รอบ 4 — "ทั้งหมด" กับ "จัดการ" เป็น **สอง segment ของหน้าเดียว**
+            //    ⚠️ ยังเป็น *สอง route* โดยเจตนา (path เดิมทั้งคู่) — ห้ามสร้าง route แม่ + redirect
+            //       เพราะ `router.resolve()` ไม่ตาม redirect record ⇒ deep link ที่ฝังใน
+            //       push notification และ bookmark จะ resolve เป็นชื่อไม่ได้อีก
+            segmentGroup: 'events',
+          },
         },
         {
           // หน้าจัดการของสภา — ★ permission ตรวจที่ **route meta** ด้วย ไม่ใช่พึ่ง backend อย่างเดียว
@@ -211,9 +221,18 @@ const router = createRouter({
           path: 'events/manage',
           name: 'event-management',
           component: () => import('@/views/events/EventManagement.vue'),
-          // 🔁 R4 จะยุบหน้านี้เข้าแท็บ "กิจกรรม" เป็น segment "จัดการ" — ตอนนี้ยังเป็นหน้าของตัวเอง
-          //    แต่ประกาศ `navTab: 'events'` ไว้แล้ว เพื่อให้ย้ายแล้วไม่ต้องแก้ meta อีก
-          meta: { requiresAuth: true, requiresPermission: 'MANAGE_EVENTS', navTab: 'events', fab: 'event' },
+          // 🔁 รอบ 4 — ยุบเข้าแท็บ "กิจกรรม" แล้ว เป็น segment "จัดการ"
+          //    ⚠️ **ไม่ใส่ `navHidden`** — ถึงจะไม่ใช่แท็บราก แต่ก็เป็น *ลิสต์* ไม่ใช่ฟอร์ม
+          //       (ตารางตัดสิน R0.3.2 สงวน `navHidden` ให้ฟอร์ม/สแกน/นำเข้า)
+          //       · และการซ่อนแถบล่างจะขัดกับ "หน้าย่อยต้องไฮไลต์แท็บแม่" — แถบที่ซ่อนไฮไลต์อะไรไม่ได้
+          //       · `segmentGroup` เป็นแถบของ shell (คนละส่วนกับ bottom nav) ⇒ ทั้งคู่อยู่ด้วยกันได้
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_EVENTS',
+            navTab: 'events',
+            fab: 'event',
+            segmentGroup: 'events',
+          },
         },
         {
           // ✍️ สร้างกิจกรรม — **หน้าเต็มหน้า ไม่ใช่ modal** (รอบ 4)
