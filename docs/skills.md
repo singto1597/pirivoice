@@ -2610,3 +2610,72 @@
   - 📌 **สแกนทั้งไฟล์ที่แก้ ไม่ใช่แค่บรรทัดที่เพิ่งเขียน** — ตัวที่หลุดอาจอยู่บรรทัดอื่นที่เขียนไปแล้วในรอบเดียวกัน
   - ⚠️ **ความผิดชนิดนี้รอดทุกด่านอัตโนมัติ** (`type-check` / `lint` / `test:unit` / `build` ไม่มีตัวไหนอ่านความหมายของคอมเมนต์) ⇒ **ถ้าไม่ grep จะรอดไปถึง `main`** และไปโผล่ในเอกสารที่คนอื่นอ่าน
 - **Date Added:** 2026-10-01
+
+### 🔴 `ref()` ห่อออบเจกต์ด้วย Proxy ⇒ `result.value === obj` **เป็น false เสมอ** — ตัวจับเวลาที่เทียบตัวตนจึงไม่เคยทำงาน
+- **Context/Problem:** R4.4 หน้าสแกนเช็คอินตั้งใจให้ "ผลสำเร็จ" ค้างบนจอ 8 วินาทีแล้วล้างตัวเอง โค้ดอ่านแล้วถูกทุกบรรทัดและ **ผ่าน `type-check` / `lint` / `test:unit` / `build` ครบทั้งสี่ด่าน** แต่บน staging ชื่อคนที่เพิ่งเช็คอิน **ค้างอยู่ตลอดไป**
+  · โค้ดที่เป็นปัญหา:
+    ```ts
+    const result = ref<CheckInResult | null>(null)
+    function showResult(next: CheckInResult) {
+      clearTimeout(resultTimer)
+      result.value = next
+      if (next.kind !== 'ok') return
+      resultTimer = window.setTimeout(() => {
+        if (result.value === next) result.value = null   // ← ไม่มีทางเป็นจริง
+      }, SUCCESS_HOLD_MS)
+    }
+    ```
+- **Root Cause:** `ref(obj)` เก็บค่าเป็น **reactive proxy** (`toReactive` → `reactive()`) ไม่ใช่ตัวออบเจกต์ดิบ ⇒ getter `result.value` คืน Proxy ซึ่ง **`!== obj` ตัวที่ส่งเข้าไป** · พิสูจน์ด้วยคำสั่งเดียว:
+  ```bash
+  node --input-type=module -e "
+  import { ref, toRaw } from 'vue'
+  const r = ref(null); const o = { a: 1 }; r.value = o
+  console.log(r.value === o, toRaw(r.value) === o)   // false true
+  "
+  ```
+  · **ทำไมไม่มีด่านไหนจับได้:** ไม่มีเทสต์ใดในเรพนี้ render view ⇒ พฤติกรรม "ล้างตัวเองตามเวลา" ไม่มีใครทดสอบ · และ `tsc` ไม่เตือนเพราะการเทียบ `A === B` ที่ type ตรงกันเป็นเรื่องถูกต้องทางชนิด — **ผิดทางความหมาย ไม่ผิดทางชนิด**
+- **Correct Pattern/Solution:**
+  - ✅ **ใช้ "เลขรอบ" แทนการเทียบตัวตน** — รูปแบบเดียวกับ `cameraAttempt` ที่ใช้ตัดสินรอบของ `getUserMedia` ในไฟล์เดียวกัน:
+    ```ts
+    let resultSeq = 0
+    function showResult(next: CheckInResult) {
+      clearTimeout(resultTimer)
+      const seq = ++resultSeq          // ทำให้ callback เก่าเป็นโมฆะทันที
+      result.value = next
+      if (next.kind !== 'ok') return
+      resultTimer = window.setTimeout(() => {
+        if (resultSeq === seq) result.value = null
+      }, SUCCESS_HOLD_MS)
+    }
+    ```
+  - 🔁 **ทางเลือกที่ใช้ได้แต่ผูกกับภายในของ Vue กว่า:** `toRaw(result.value) === next` — ถูกต้อง แต่ต้องรู้ว่ามี `toRaw` และต้องจำใส่ทุกจุด ⇒ **เลขรอบอ่านออกกว่าและไม่ต้องพึ่ง internals**
+  - 🔍 **`grep -rn '\.value ===' src/` แล้วถามทีละจุดว่า "ฝั่งขวาเป็นออบเจกต์ที่เพิ่งใส่เข้า ref หรือเปล่า"** — เคสที่เทียบกับ **primitive** (`'live'`, `null`, ตัวเลข) ปลอดภัยทั้งหมด ⇒ **ความผิดนี้เกิดเฉพาะเมื่อเทียบกับออบเจกต์** (ในเรพนี้พบจุดเดียว)
+  - 📌 **อาการที่ทำให้มันอันตรายกว่า "ปุ่มไม่ทำงาน":** แถบที่ค้างอยู่แสดง **ชื่อคนที่เช็คอินไปแล้ว** ⇒ สภาเห็นชื่อค้างแล้วเชื่อว่าคนที่ยืนอยู่ตรงหน้าเช็คอินแล้วทั้งที่ยังไม่ได้ยื่นบัตร — **ข้อมูลผิดที่ดูเหมือนข้อมูลถูก** ซึ่งแย่กว่าจอว่าง
+  - ⚠️ **บทเรียนร่วมกับ R4.4:** 23 ข้อตรวจอัตโนมัติผ่านหมดทั้งที่บั๊กนี้ยังอยู่บนจอ (ข้อที่ครอบพฤติกรรมนี้ถูกเขียนไว้ **ผิดวิธี** — วัดความสูงกล้องในโหมดที่ไม่มีกล้อง) ⇒ **ข้อตรวจที่ผ่านคือข้อตรวจที่อาจไม่ได้ตรวจอะไรเลย** ดูหัวข้อถัดไป
+- **Date Added:** 2026-10-01
+
+### 🌐 หน้าเว็บกับ API อยู่ **คนละโดเมน** — ยิง `/api/...` แบบ relative ได้ **200 + `text/html`** ที่อ่านเหมือน "เซิร์ฟเวอร์พัง"
+- **Context/Problem:** สคริปต์ตรวจบน staging ยิง `fetch('/api/events/1/my-registration')` จากในหน้าที่ล็อกอินแล้ว ได้ **`200` + `<!DOCTYPE html>`** ⇒ `r.ok` เป็น `true` แล้ว `r.json()` ระเบิดด้วย `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`
+  · อาการนี้ **ชี้ผิดทางโดยสิ้นเชิง** — อ่านเหมือน backend ตอบ HTML / Cloudflare บล็อก / proxy ตั้งค่าผิด ⇒ เสียเวลาไล่ผิดที่
+- **Root Cause:** **`VITE_API_BASE_URL` ถูกอบใส่บันเดิลตอน build** (ค่าจริงบน staging คือ `https://prsc-api-test.pirivoice.com` — คนละโฮสต์กับเว็บ) ไม่ได้ใช้ `/api` แบบ same-origin · โดเมนเว็บมี **SPA fallback** ⇒ ตอบ `index.html` สถานะ `200` ให้ **ทุก path ที่ไม่รู้จัก** ⇒ คำขอที่ "ยิงผิดโดเมน" ได้คำตอบที่ดูเหมือนสำเร็จ
+  · **สาเหตุที่โทษ Cloudflare ตอนแรกก็มีมูล:** ยิงด้วย `fetch` ของ Node ตรง ๆ ได้ **405 + `text/html` (`server: cloudflare`)** จริง ⇒ แก้ถูกครึ่งเดียว (ย้ายไปยิงในเบราว์เซอร์) แล้วยังเจอ HTML อยู่ เพราะ **สาเหตุที่สองซ้อนอยู่ข้างหลัง**
+- **Correct Pattern/Solution:**
+  - 🔴 **ดักโดเมนจริงจากทราฟฟิกของแอปเอง อย่าฮาร์ดโค้ด** — ก่อนยิงคำขอแรก ให้ฟัง response แล้วจำ origin:
+    ```js
+    let origin = ''
+    page.on('response', (r) => {
+      const u = r.url()
+      if (!origin && u.includes('/api/')) origin = new URL(u).origin
+    })
+    ```
+    ⇒ ใช้ได้ทั้ง staging/production โดยไม่ต้องอ่าน `.env` ของเซิร์ฟเวอร์
+  - 🔴 **ตรวจ `content-type` ก่อน `r.json()` เสมอ แล้วโยน error ที่บอกสถานะ + เนื้อหาจริง** — อย่าปล่อยให้ `SyntaxError` ของ JSON.parse เป็นข้อความเดียวที่เหลือ:
+    ```js
+    const ct = r.headers.get('content-type') || ''
+    if (!ct.includes('json')) {
+      throw new Error(`${p} → HTTP ${r.status} ${ct} · ${(await r.text()).slice(0,120)}`)
+    }
+    ```
+  - 📌 **`200` ไม่ได้แปลว่า "ได้ของที่ต้องการ"** — เมื่อปลายทางเป็น SPA ที่มี fallback · **`r.ok` เชื่อไม่ได้ถ้าไม่ได้ตรวจชนิดของเนื้อหา**
+  - ⚠️ **บทเรียนทั่วไป:** เมื่อเครื่องมือ probe รายงานสิ่งที่ "เป็นไปไม่ได้" ให้สงสัย **สมมติฐานของ probe เอง** ก่อนสรุปว่าเซิร์ฟเวอร์พัง (บทเรียนเดียวกับ "probe ของตัวเองก็โกหกได้" ข้างบน)
+- **Date Added:** 2026-10-01
