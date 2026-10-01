@@ -143,12 +143,12 @@ async function handleHide() {
         </div>
         <p class="text-sm text-stone-700 mt-0.5 whitespace-pre-wrap break-words">{{ comment.body }}</p>
         <!-- action: ตอบกลับ / แจ้ง (ทุกคน ยกเว้นตัวเอง) / ซ่อน (สภา/แอดมิน) -->
-        <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0 text-xs">
           <button
             type="button"
             data-testid="reply-btn"
             @click="replying = !replying"
-            class="text-ink-3 hover:text-brand font-medium flex items-center gap-1"
+            class="inline-flex min-h-11 items-center gap-1 font-medium text-ink-3 hover:text-brand"
           >
             <i class="bi bi-reply"></i> ตอบกลับ
           </button>
@@ -158,7 +158,7 @@ async function handleHide() {
             data-testid="report-btn"
             @click="handleReport"
             :disabled="acting"
-            class="text-ink-3 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
+            class="inline-flex min-h-11 items-center gap-1 font-medium text-ink-3 hover:text-brand disabled:opacity-40"
           >
             <i class="bi bi-flag"></i> แจ้ง
           </button>
@@ -168,7 +168,7 @@ async function handleHide() {
             data-testid="hide-btn"
             @click="handleHide"
             :disabled="acting"
-            class="text-ink-3 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
+            class="inline-flex min-h-11 items-center gap-1 font-medium text-ink-3 hover:text-brand disabled:opacity-40"
           >
             <i class="bi bi-eye-slash"></i> ซ่อน
           </button>
