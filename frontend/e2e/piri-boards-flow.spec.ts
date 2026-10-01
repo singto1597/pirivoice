@@ -103,7 +103,9 @@ test.describe('PIRI Boards full flow (frontend ↔ backend)', () => {
     // 4) ยืนยันผล: แบนเนอร์ "โหวตแล้ว" + progress bar + ยอด 1 เสียง
     await expect(page.getByTestId('my-vote-banner')).toBeVisible()
     await expect(page.getByText('1 เสียง').first()).toBeVisible()
-    await expect(page.locator('.bg-emerald-500')).toBeVisible() // ring/bar ของ choice ที่โหวต
+    // ⚠️ อัปเดต รอบ 5 (R5.5) — พาเลตต์ `emerald-*` ถูกถอดออกจากแอปแล้ว
+    //    ⇒ แถบของตัวเลือกที่โหวตใช้ token `ok` (`.bg-ok-bright`) ไม่ใช่ `.bg-emerald-500`
+    await expect(page.locator('.bg-ok-bright')).toBeVisible() // แถบของ choice ที่โหวต
   })
 
   test('Talk: คอมเมนต์ → รีพอร์ต → สภาจัดการ (ปัดตก + ซ่อน)', async ({ page }) => {
@@ -164,7 +166,9 @@ test.describe('PIRI Boards full flow (frontend ↔ backend)', () => {
     // 8) ปัดตกรายงานคอมเมนต์ A (ไม่ซ่อน — ยังแสดงอยู่)
     await cards.filter({ hasText: 'E2E คอมเมนต์จากนักเรียน' }).getByTestId('dismiss-btn').click()
     await page.locator('.swal2-confirm').click()
-    await expect(page.getByText('ปัดตกแล้ว').first()).toBeVisible()
+    // ⚠️ อัปเดต รอบ 5 (R5.1) — คำว่า "ปัดตก" ถูกห้ามใช้ใน UI (ดู `docs/glossary.md` §2)
+    //    ⇒ การไม่รับรายงานใช้คำว่า **"ไม่ดำเนินการ"** (คอมเมนต์ยังแสดงอยู่)
+    await expect(page.getByText('ไม่ดำเนินการแล้ว').first()).toBeVisible()
 
     // 9) ซ่อนรายงานคอมเมนต์ B (ซ่อน subtree — หายจาก board)
     await page

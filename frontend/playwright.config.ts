@@ -34,7 +34,8 @@ export default defineConfig({
     /* Maximum time each action such as `click()` can take. Defaults to 0 (no limit). */
     actionTimeout: 0,
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173',
+    /* E2E_BASE_URL = ชี้ไปที่ dev server ที่รันอยู่จริง (จำเป็นเมื่อพอร์ต 5173 ถูกโปรเจคอื่นใช้) */
+    baseURL: process.env.E2E_BASE_URL ?? (process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173'),
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
