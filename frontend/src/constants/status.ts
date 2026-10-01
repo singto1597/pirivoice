@@ -47,3 +47,17 @@ export const STATUS_SHORT: Record<string, string> = {
 export function statusShort(status: string): string {
   return STATUS_SHORT[status] ?? status;
 }
+
+/**
+ * 🔗 โทเคนใน URL ที่ใช้แทนความหมาย "ทุกสถานะ"
+ *
+ * ⚠️ **ทำไมไม่ใช้สตริงว่าง** — ในหน้า `ReceivedIssues` ค่า `''` คือ "ทุกสถานะ"
+ *    (ดู `STATUS_FILTERS`) แต่ **สตริงว่างใส่ใน query string ไม่ได้** — `?status=`
+ *    กลายเป็น "มีคีย์แต่ค่าว่าง" ซึ่งอ่านกลับมาแล้วแยกไม่ออกว่า "ตั้งใจขอทุกสถานะ"
+ *    หรือ "ไม่มีคีย์" (ค่าเริ่มต้น = `not_resolved`) ⇒ ลิงก์ที่ตั้งใจขอ *ทุกสถานะ*
+ *    จะกลับกลายเป็น *ยังไม่เสร็จ* เงียบ ๆ — ตัวเลขบนการ์ดกับในลิสต์จะไม่ตรงกัน
+ *
+ * 📌 ตัวนี้เป็น **สัญญาระหว่าง `Dashboard.vue` กับ `ReceivedIssues.vue`** —
+ *    แก้ค่าเมื่อไหร่ต้องแก้ทั้งผู้เขียนและผู้อ่านพร้อมกัน
+ */
+export const STATUS_URL_ALL = 'all';

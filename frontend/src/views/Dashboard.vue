@@ -24,7 +24,12 @@ import {
   type DashboardTraffic,
 } from '@/services/dashboard';
 import StatusStackedBar from '@/components/StatusStackedBar.vue';
-import { STATUS_DOT, STATUS_BADGE, statusShort } from '@/constants/status';
+import AppCard from '@/components/ui/AppCard.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppEmptyState from '@/components/ui/AppEmptyState.vue';
+import { LEVEL_ORDER } from '@/types/issue';
+import { STATUS_DOT, STATUS_BADGE, STATUS_URL_ALL, statusShort } from '@/constants/status';
+import { CHART_BRAND, CHART_BRAND_FILL, CHART_INK, CHART_INK_FILL, NEUTRAL_RAMP } from '@/constants/chart';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -136,15 +141,52 @@ function themeFor(code: string): CategoryTheme {
   return CATEGORY_THEMES[code] ?? DEFAULT_THEME;
 }
 
+/**
+ * 🧭 ระดับที่ต้องแนบไปกับลิงก์การ์ด — **เฉพาะเมื่อ scope เป็น 'all'**
+ *
+ * 🔴 **การ์ดที่แตะได้ ต้องพาไปยังลิสต์ที่ "ตัวเลขตรงกัน" เท่านั้น ไม่งั้นแอปโกหกผู้ใช้**
+ *
+ * ปัญหาที่วัดเจอจริง (staging · 1 ต.ค. 2026 · บัญชีประธานสภา):
+ *   การ์ด "เรื่องทั้งหมด" = **34** แต่ `received-issues` ที่เปิดมาตามปกติ = **5**
+ *   เพราะสองหน้าใช้ "ขอบเขต" คนละอัน —
+ *     · Dashboard ใช้ `get_access_scope` → scope `'all'` = ทั้งโรงเรียน
+ *     · `received-issues` ใช้ EXACT LEVEL MATCH → เริ่มที่ระดับตัวเอง (council) เท่านั้น
+ *   ⇒ ลิงก์ตรง ๆ = การ์ดเขียน 34 ปลายทางโชว์ 5 ซึ่งแย่กว่าไม่มีลิงก์เลย
+ *
+ * ทางแก้ที่ **พิสูจน์แล้วว่าตรงเป๊ะ** (34 = 34 · pending 14 = 14 · resolved 13 = 13):
+ *   แนบ `?levels=` ไปด้วยเมื่อ scope เป็น `'all'` เพื่อขยายให้ครอบทุกระดับตามพีระมิด
+ *   · ฝั่ง `ReceivedIssues` จะ **ตัดระดับที่ผู้ใช้มองไม่เห็นทิ้งเอง** (fail-closed)
+ *     ⇒ ส่งเกินมาไม่เป็นอันตราย ส่งขาดต่างหากที่ทำให้ตัวเลขเพี้ยน
+ *
+ * ⚠️ **ห้ามแนบ `levels` ตอน scope เป็น `'level'`** (ครูที่มี `staff_level`) — ครูไม่ต้อง
+ *    ขยายระดับอยู่แล้ว เพราะทั้งสองหน้าเดินเข้าเส้นทาง "ครู" (`teacher_scope`) เหมือนกัน
+ *    ⇒ ตรงกันโดยธรรมชาติ และการส่ง `levels` ไปจะไปชนกับ `selectableLevels` ที่ว่างของครู
+ */
+const scopeLevelsParam = computed(() =>
+  data.value?.scope === 'all' ? LEVEL_ORDER.join(',') : undefined,
+);
+
 // ===== 🎛️ KPI (6 ตัว เน้น "อะไรเยอะที่สุด/อะไรค้าง") =====
-const statCards = computed(() => [
-  { label: 'เรื่องทั้งหมด', value: data.value?.total_issues ?? 0, dot: 'bg-stone-500' },
-  { label: 'รอรับเรื่อง', value: data.value?.pending ?? 0, dot: 'bg-stone-400' },
-  { label: 'กำลังดำเนินการ', value: data.value?.in_progress ?? 0, dot: 'bg-brand' },
-  { label: 'ส่งต่อระดับบน', value: data.value?.escalated ?? 0, dot: 'bg-brand-strong' },
-  { label: 'แก้ไขเสร็จ', value: data.value?.resolved ?? 0, dot: 'bg-emerald-500' },
-  { label: 'งานเกินเวลา', value: data.value?.overdue ?? 0, dot: 'bg-brand', alert: true },
-]);
+const statCards = computed(() => {
+  const d = data.value;
+  const levels = scopeLevelsParam.value;
+  /** ปลายทางของ "การ์ดที่แตะได้" — แนบ `levels` เฉพาะเมื่อจำเป็น (ดูเหตุผลข้างบน) */
+  const to = (status: string) => ({
+    name: 'received-issues',
+    query: levels ? { status, levels } : { status },
+  });
+  return [
+    { label: 'เรื่องทั้งหมด', value: d?.total_issues ?? 0, dot: 'bg-stone-500', to: to(STATUS_URL_ALL) },
+    { label: 'รอรับเรื่อง', value: d?.pending ?? 0, dot: 'bg-stone-400', to: to('pending') },
+    { label: 'กำลังดำเนินการ', value: d?.in_progress ?? 0, dot: 'bg-brand', to: to('in_progress') },
+    { label: 'ส่งต่อระดับบน', value: d?.escalated ?? 0, dot: 'bg-brand-strong', to: to('escalated') },
+    { label: 'แก้ไขเสร็จ', value: d?.resolved ?? 0, dot: 'bg-emerald-500', to: to('resolved') },
+    // ⚠️ "งานเกินเวลา" **ไม่ใช่ลิงก์** — backend ไม่มีตัวกรอง "เกินเวลา" เลย
+    //    (`overdue` คำนวณจาก countdown ที่หมดอายุใน `dashboard_service` เท่านั้น)
+    //    ⇒ การ์ดนี้เป็นการแจ้งเตือน ไม่ใช่ทางเข้า — ห้ามใส่ `to` ให้ดูเหมือนกดได้
+    { label: 'งานเกินเวลา', value: d?.overdue ?? 0, dot: 'bg-brand', alert: true, to: null },
+  ];
+});
 
 // ===== 🧮 ตัวช่วยตัวเลข/เปอร์เซ็นต์ =====
 function fmtNum(n: number): string {
@@ -215,11 +257,11 @@ const trendChart = computed(() => ({
     {
       label: 'จำนวนเรื่อง/วัน',
       data: (data.value?.trend || []).map((t) => t.count),
-      borderColor: '#B91C1C',
-      backgroundColor: 'rgba(185,28,28,0.10)',
+      borderColor: CHART_BRAND,
+      backgroundColor: CHART_BRAND_FILL,
       fill: true,
       tension: 0.3,
-      pointBackgroundColor: '#B91C1C',
+      pointBackgroundColor: CHART_BRAND,
     },
   ],
 }));
@@ -233,11 +275,11 @@ const trafficLoginsChart = computed(() => ({
     {
       label: 'ผู้เข้าใช้/วัน',
       data: (traffic.value?.daily_logins || []).map((t) => t.count),
-      borderColor: '#57534E',
-      backgroundColor: 'rgba(87,83,78,0.10)',
+      borderColor: CHART_INK,
+      backgroundColor: CHART_INK_FILL,
       fill: true,
       tension: 0.3,
-      pointBackgroundColor: '#57534E',
+      pointBackgroundColor: CHART_INK,
     },
   ],
 }));
@@ -248,7 +290,10 @@ const trafficActionsChart = computed(() => ({
     {
       label: 'กิจกรรม/วัน',
       data: (traffic.value?.daily_actions || []).map((t) => t.count),
-      backgroundColor: 'rgba(185,28,28,0.75)',
+      // ⚠️ **ไม่ใช้แดง** — "กิจกรรมทั้งระบบต่อวัน" คือ *ปริมาณการใช้* ไม่ใช่ *ปัญหา*
+      //    แดงถูกจองไว้ให้ "เรื่องร้องเรียน" (ดู `constants/chart.ts`) · แท่งแดง 30 แท่ง
+      //    เคยเป็นองค์ประกอบที่เด่นที่สุดของหน้า ทั้งที่มันเป็นข้อมูลรอง
+      backgroundColor: CHART_INK,
       borderRadius: 4,
     },
   ],
@@ -260,10 +305,9 @@ const trafficBreakdownChart = computed(() => ({
     {
       label: 'การใช้งาน',
       data: (traffic.value?.action_breakdown || []).map((a) => a.count),
-      backgroundColor: [
-        '#1C1917', '#57534E', '#D6D3D1', '#B91C1C', '#991B1B',
-        '#44403C', '#A8A29E',
-      ],
+      // 🔴 ของเดิมมี **แดง 2 เฉดอยู่ในพาเลตต์จัดกลุ่ม** ⇒ หมวดที่ 4/5 ดูเหมือน "หมวดแย่"
+      //    ทั้งที่เป็นแค่หมวดหนึ่ง ⇒ ใช้รางกลางล้วน (ดู `NEUTRAL_RAMP`)
+      backgroundColor: [...NEUTRAL_RAMP],
       borderWidth: 1,
     },
   ],
@@ -283,11 +327,17 @@ const hasTrafficData = computed(
   <div>
     <!-- ===== Header ===== -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <!-- 🔴 **ไม่มี `<h1>` และไม่มี eyebrow ที่นี่** — `AppHeader` แสดง "แดชบอร์ด"
+           เป็น `<h1>` ให้แล้ว (จาก `routeTitles` ใน `constants/nav.ts`)
+           เดิมซ้ำ 3 ชั้น: eyebrow "ระบบสถิติ" + `<h1>แดชบอร์ด</h1>` + หัวจาก header
+           ⇒ เหลือบรรทัดเดียวที่ **เพิ่มข้อมูลจริง** (ว่าหน้านี้ทำอะไรได้) — ตามแบบเดียวกับ
+           `MyIssues.vue` / `ReceivedIssues.vue` / `EventManagement.vue` -->
       <div>
-        <p class="text-[11px] font-bold text-brand"><i class="bi bi-bar-chart mr-1"></i> ระบบสถิติ</p>
-        <h1 class="mt-0.5 text-2xl font-bold text-stone-900 leading-tight sm:text-3xl">แดชบอร์ด</h1>
-        <p v-if="lastUpdated" class="text-xs text-stone-400 mt-1.5">
-          อัปเดตล่าสุด <span class="font-medium text-stone-500">{{ fmtDateTime(lastUpdated) }}</span>
+        <p class="text-sm leading-relaxed text-ink-2">
+          ภาพรวมเรื่องร้องเรียน · แตะการ์ดเพื่อดูรายการที่กรองแล้ว
+        </p>
+        <p v-if="lastUpdated" class="mt-1 text-xs text-ink-3">
+          อัปเดตล่าสุด <span class="font-medium text-ink-2">{{ fmtDateTime(lastUpdated) }}</span>
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -351,18 +401,18 @@ const hasTrafficData = computed(
     </div>
 
     <!-- ===== Error ครั้งแรก (ไม่มีข้อมูล) ===== -->
-    <div v-else-if="error && !data" class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-6 py-16 text-center">
-      <div class="mb-3 text-4xl text-stone-300"><i class="bi bi-exclamation-triangle"></i></div>
-      <h2 class="mb-1 text-lg font-bold text-stone-700">ไม่สามารถโหลดข้อมูล Dashboard</h2>
-      <p class="mb-5 max-w-md text-sm text-stone-500 mx-auto">{{ error }}</p>
-      <button
-        type="button"
-        @click="loadDashboard"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-stone-800"
+    <AppCard v-else-if="error && !data">
+      <AppEmptyState
+        icon="bi-exclamation-triangle"
+        title="โหลดข้อมูลแดชบอร์ดไม่สำเร็จ"
+        :description="error"
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
-    </div>
+        <AppButton variant="secondary" size="sm" @click="loadDashboard">
+          <template #icon><i class="bi bi-arrow-clockwise" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
     <!-- ===== scope 'none': ครูยังไม่ตั้งระดับชั้น → แนะนำแทนเลข 0 ===== -->
     <div v-else-if="data && data.scope === 'none'" class="rounded-2xl border border-stone-200 bg-white p-12 text-center">
@@ -377,21 +427,32 @@ const hasTrafficData = computed(
     <div v-else-if="data" class="space-y-6">
       <!-- ===== KPI band: 6 ตัว + แถบสัดส่วนสถานะรวมทั้งระบบ ===== -->
       <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+        <!-- 🎛️ "แตะแล้วกรองได้" — การ์ดที่มี `to` เป็น `<RouterLink>` ที่พาไปหน้ารวมเรื่อง
+             พร้อมตัวกรองที่ตรงกับตัวเลขบนการ์ด (ดูสัญญา `scopeLevelsParam` ในสคริปต์)
+             ⚠️ การ์ดที่ไม่มีที่หมาย ("งานเกินเวลา") ต้อง **ไม่ใช่ลิงก์และไม่ทำท่าเหมือนกดได้**
+                — ปุ่มที่กดแล้วไม่มีอะไรเกิดขึ้น แย่กว่าไม่มีปุ่ม -->
         <div class="grid grid-cols-2 gap-px bg-stone-200 sm:grid-cols-3 xl:grid-cols-6">
-          <div
+          <component
+            :is="s.to ? RouterLink : 'div'"
             v-for="s in statCards"
             :key="s.label"
-            class="bg-white p-4 sm:p-5"
-            :class="s.alert ? 'bg-brand/5' : ''"
+            :to="s.to ?? undefined"
+            class="block p-4 transition-colors sm:p-5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand focus-visible:outline-none"
+            :class="s.alert ? 'bg-brand/5' : 'bg-white hover:bg-canvas'"
           >
             <div class="mb-1 flex items-center gap-1.5">
               <span class="h-2 w-2 shrink-0 rounded-full" :class="s.dot"></span>
               <span class="truncate text-xs text-stone-500">{{ s.label }}</span>
+              <i
+                v-if="s.to"
+                class="bi bi-chevron-right ml-auto text-[10px] text-stone-300"
+                aria-hidden="true"
+              ></i>
             </div>
             <p class="font-display text-2xl font-bold text-stone-900 tabular-nums" :class="s.alert ? 'text-brand-strong' : ''">
               {{ fmtNum(s.value) }}
             </p>
-          </div>
+          </component>
         </div>
         <div class="px-4 py-4 sm:px-5">
           <StatusStackedBar :stats="data.by_status" :total="data.total_issues" heightClass="h-2" />
@@ -584,7 +645,7 @@ const hasTrafficData = computed(
       <section v-if="data.scope === 'all'" class="rounded-2xl border border-stone-200 bg-white overflow-hidden">
         <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-stone-100">
           <h3 class="font-semibold text-stone-800">
-            <i class="bi bi-activity mr-1 text-brand"></i> การเข้าใช้งาน (30 วัน)
+            <i class="bi bi-activity mr-1 text-stone-600"></i> การเข้าใช้งาน (30 วัน)
           </h3>
           <button
             type="button"
@@ -608,18 +669,20 @@ const hasTrafficData = computed(
         </div>
 
         <!-- Traffic error -->
+        <!-- ⚠️ ในการ์ดที่ล้ม ใช้ `compact` — เป็นกล่องย่อยในหน้าอยู่แล้ว
+             ไม่ใช่ความว่างระดับหน้า จึงไม่ควรกินพื้นที่เท่า empty state เต็มรูปแบบ -->
         <div v-else-if="trafficError" class="p-5">
-          <div class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-6 py-12 text-center">
-            <p class="text-sm font-semibold text-stone-700"><i class="bi bi-exclamation-triangle mr-1"></i> โหลดสถิติการใช้งานไม่สำเร็จ</p>
-            <p class="mt-1 max-w-sm text-xs text-stone-500">{{ trafficError }}</p>
-            <button
-              type="button"
-              @click="loadTraffic"
-              class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-800"
-            >
-              <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-            </button>
-          </div>
+          <AppEmptyState
+            compact
+            icon="bi-exclamation-triangle"
+            title="โหลดสถิติการใช้งานไม่สำเร็จ"
+            :description="trafficError"
+          >
+            <AppButton variant="secondary" size="sm" @click="loadTraffic">
+              <template #icon><i class="bi bi-arrow-clockwise" /></template>
+              ลองใหม่
+            </AppButton>
+          </AppEmptyState>
         </div>
 
         <!-- Traffic ไม่มีข้อมูล -->
@@ -651,7 +714,7 @@ const hasTrafficData = computed(
               <div class="h-56"><Line :data="trafficLoginsChart" :options="chartOptions" /></div>
             </div>
             <div>
-              <h4 class="text-sm font-semibold text-stone-700 mb-2"><i class="bi bi-lightning-charge mr-1 text-brand"></i> กิจกรรมทั้งระบบต่อวัน</h4>
+              <h4 class="text-sm font-semibold text-stone-700 mb-2"><i class="bi bi-lightning-charge mr-1 text-stone-600"></i> กิจกรรมทั้งระบบต่อวัน</h4>
               <div class="h-56"><Bar :data="trafficActionsChart" :options="chartOptions" /></div>
             </div>
             <div>

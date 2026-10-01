@@ -15,7 +15,7 @@ import {
   type IssueLevel,
   type MainCategory,
 } from '@/types/issue'
-import { statusShort } from '@/constants/status'
+import { STATUS_URL_ALL, statusShort } from '@/constants/status'
 import { useAuthStore } from '@/stores/auth'
 import IssueListToolbar from '@/components/IssueListToolbar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -95,8 +95,28 @@ function toggleLevel(lv: IssueLevel) {
   levelSelections.value = levelSelections.value.includes(lv)
     ? levelSelections.value.filter((x) => x !== lv)
     : [...levelSelections.value, lv]
+  writeLevelsToUrl()
   page.value = 1
   load()
+}
+
+/**
+ * เขียนระดับกลับไปที่ URL — **ลบคีย์ทิ้งเมื่อกลับเป็นค่าเริ่มต้นของหน้า**
+ * (ระดับตัวเองอันเดียว) เพื่อไม่ให้ URL ของหน้าปกติมีขยะติดค้าง
+ *
+ * ⚠️ **ไม่เขียนตอน `levelSelections` ว่าง** — "ไม่เลือกระดับเลย" ไม่มีตัวแทนใน URL
+ *    และ `?levels=` ว่างจะอ่านกลับมาเป็น "ไม่มีคีย์" = ค่าเริ่มต้น ⇒ คนละความหมายกัน
+ */
+function writeLevelsToUrl() {
+  const query = { ...route.query }
+  const isDefault =
+    levelSelections.value.length === 1 && levelSelections.value[0] === myLevel.value
+  if (!levelSelections.value.length || isDefault) {
+    delete query.levels
+  } else {
+    query.levels = levelSelections.value.join(',')
+  }
+  void router.replace({ query })
 }
 
 // จำนวนตัวกรองที่ active (badge บนปุ่ม filter) — ไม่นับ default 'not_resolved' และตัวกรองหน้าที่
@@ -150,6 +170,8 @@ function clearFilters() {
   const query = { ...route.query }
   delete query.category
   delete query.main_category
+  delete query.status
+  delete query.levels
   void router.replace({ query })
   page.value = 1
   load()
@@ -181,9 +203,41 @@ if (initCat && mainOfCategory(initCat) === effectiveMain) {
   subcategoryFilter.value = initCat
 }
 
-// Default: กรองตามหน้าที่อัตโนมัติ (ยกเว้นกดเข้ามาจากลิงก์ที่ระบุหมวดเจาะจง — ให้เกียรติ URL
+// ── ค่าที่รับทาง URL (มาจากการ์ดสถิติของ Dashboard) ────────────────────────────
+// Dashboard ส่ง `?status=` มาเสมอ และส่ง `?levels=` มาด้วยเมื่อ scope ของมันเป็น 'all'
+// (ดู `scopeLevelsParam` ใน `Dashboard.vue` — ตัวเลขบนการ์ดกับในลิสต์นี้ต้องตรงกัน)
+
+// สถานะ: `?status=pending` · `?status=all` = ทุกสถานะ (ดู `STATUS_URL_ALL`)
+const initStatus = typeof route.query.status === 'string' ? route.query.status : ''
+if (initStatus) {
+  // แปลงโทเคนของ URL → ค่าที่ชิปใช้ (`''` = ทุกสถานะ) แล้วรับเฉพาะค่าที่มีชิปจริง
+  const wanted = initStatus === STATUS_URL_ALL ? '' : initStatus
+  if (STATUS_FILTERS.some((f) => f.value === wanted)) statusFilter.value = wanted
+}
+
+// ระดับ: `?levels=room,level,council`
+// 🔴 **ตัดระดับที่ผู้ใช้มองไม่เห็นทิ้ง (fail-closed)** — URL ที่ถูกแก้มือต้องไม่ขยายสิทธิ์
+//    การเห็นเรื่องระดับสูงกว่าตัวเองเป็นเรื่องของสิทธิ์ ไม่ใช่ของ query string
+const initLevels = typeof route.query.levels === 'string' ? route.query.levels : ''
+if (initLevels) {
+  const wanted = initLevels
+    .split(',')
+    .filter((lv): lv is IssueLevel => selectableLevels.value.includes(lv as IssueLevel))
+  if (wanted.length) levelSelections.value = wanted
+}
+
+/** มาจากลิงก์ของ Dashboard หรือไม่ — ใช้ปิดตัวกรอง "ตามหน้าที่" (ให้เกียรติ URL) */
+const cameFromDashboard = Boolean(initStatus) || Boolean(initLevels)
+
+// Default: กรองตามหน้าที่อัตโนมัติ (ยกเว้นกดเข้ามาจากลิงก์ที่ระบุหมวด/สถานะเจาะจง — ให้เกียรติ URL
 // เช่น คลิกจาก Dashboard มาเจอหมวดนั้นเลย ไม่ถูกหน้าที่แทรกแซง)
-const respFilterOn = ref(hasResponsibilities.value && !(Boolean(effectiveMain) || Boolean(initCat)))
+//
+// ⚠️ **`cameFromDashboard` ต้องปิดตัวกรองหน้าที่ด้วย** ไม่งั้นตัวเลขจะไม่ตรงกับการ์ด:
+//    หน้านี้กรองตามหน้าที่อัตโนมัติ ⇒ ยอดจะเหลือแค่หมวดในหน้าที่ (5) ขณะที่การ์ดบอก 34
+//    ⇒ ผู้ใช้ที่กดการ์ดมาจะเห็นเลขไม่ตรงกันทันที (วัดจริงบน staging แล้ว)
+const respFilterOn = ref(
+  hasResponsibilities.value && !(Boolean(effectiveMain) || Boolean(initCat) || cameFromDashboard),
+)
 
 // สลับ "กรองตามหน้าที่ของฉัน" เปิด/ปิด
 // - เปิด : ส่งหมวด = หน้าที่รวมกัน (comma) — เห็นเฉพาะเรื่องตรงหน้าที่
@@ -277,8 +331,24 @@ function onFilterChange() {
  *    ระหว่างประโยคออก (skills #10) แล้วเทมเพลตที่คอมไพล์แล้วกลายเป็นนิพจน์เดียวที่พัง
  */
 function onStatusChip(value: string) {
+  if (statusFilter.value === value) return // กดชิปที่เลือกอยู่แล้ว → ไม่ต้องเขียน URL ซ้ำ
   statusFilter.value = value
+  writeStatusToUrl()
   onFilterChange()
+}
+
+/**
+ * เขียนสถานะกลับไปที่ URL — `not_resolved` (ค่าเริ่มต้นของหน้านี้) **ลบคีย์ทิ้ง**
+ * เพื่อให้ URL ของการใช้งานปกติสะอาด และ deep link เดิมยังได้พฤติกรรมเดิม
+ */
+function writeStatusToUrl() {
+  const query = { ...route.query }
+  if (statusFilter.value === 'not_resolved') {
+    delete query.status
+  } else {
+    query.status = statusFilter.value === '' ? STATUS_URL_ALL : statusFilter.value
+  }
+  void router.replace({ query })
 }
 
 // search / sort เปลี่ยน (จาก Toolbar) → กลับหน้า 1 แล้วโหลด
