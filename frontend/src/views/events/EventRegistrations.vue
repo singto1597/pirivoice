@@ -512,10 +512,14 @@ const isEmptyByFilter = computed(() => filter.value !== 'all')
             </AppEmptyState>
 
             <ul v-else class="divide-y divide-line">
-              <li v-for="r in regs" :key="r.id" class="flex items-center gap-3 py-2.5">
-                <span class="w-7 shrink-0 text-center text-xs tabular-nums text-ink-3">
-                  {{ r.id }}
-                </span>
+              <li v-for="r in regs" :key="r.id" class="flex items-center gap-3 py-3">
+                <!--
+                  ⚠️ **ไม่มีเลขนำหน้าแล้ว** — ของเดิมโชว์ `r.id` ซึ่งคือ **primary key ของแถว
+                  `event_registrations`** ไม่ใช่เลขที่ที่นั่ง/ลำดับคิว ⇒ มันเรียงไม่ต่อกัน
+                  (เห็น 2 แล้ว 1) เพราะ backend เรียงตามเวลาสมัคร ไม่ได้เรียงตาม id
+                  ⇒ ผู้ใช้อ่านเป็น "ลำดับที่ผิด" แล้วต้องหยุดตีความ = ต้นทุนที่ไม่ได้อะไรกลับมา
+                  ถ้าต้องการลำดับจริง ๆ ต้องเป็นเลขที่ backend คำนวณ (เช่น อันดับคิวสำรอง) ไม่ใช่ id
+                -->
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-body font-medium text-ink-1">
                     {{ r.user_name ?? `ผู้ใช้ #${r.user_id}` }}
