@@ -5,6 +5,9 @@ import Swal from 'sweetalert2'
 import { getIssue, updateIssue } from '@/services/issue'
 import { MAIN_CATEGORIES, type MainCategory, type Category } from '@/types/issue'
 import { useAuthStore } from '@/stores/auth'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -150,21 +153,15 @@ async function handleSubmit() {
       </div>
     </div>
 
-    <!-- โหลดไม่สำเร็จ: inline error + retry -->
-    <div
-      v-else-if="loadError"
-      class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
-    >
-      <i class="bi bi-exclamation-triangle text-3xl text-ink-3 mb-3"></i>
-      <p class="text-stone-600 px-6">{{ loadError }}</p>
-      <button
-        type="button"
-        class="inline-flex items-center mt-4 rounded-lg bg-brand px-5 min-h-11 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
-        @click="loadIssue"
-      >
-        ลองอีกครั้ง
-      </button>
-    </div>
+    <!-- โหลดไม่สำเร็จ: inline error + retry — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+    <AppCard v-else-if="loadError" :padded="false" class="py-4">
+      <AppEmptyState icon="bi-exclamation-triangle" title="โหลดเรื่องนี้ไม่สำเร็จ" :description="loadError">
+        <AppButton variant="secondary" @click="loadIssue">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองอีกครั้ง
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
     <template v-else>
       <!-- Step 1: หมวดหลัก -->

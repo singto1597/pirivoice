@@ -17,6 +17,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import CommentThread from '@/components/boards/CommentThread.vue'
 import BookmarkButton from '@/components/BookmarkButton.vue'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
 const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
@@ -167,19 +170,18 @@ const rootComments = computed(() => board.value?.comments ?? [])
     </div>
   </div>
 
-  <!-- ข้อผิดพลาด -->
-  <div v-else-if="loadError" class="max-w-3xl mx-auto border-2 border-dashed border-stone-200 rounded-2xl py-20 px-6 text-center">
-    <div class="text-4xl text-stone-300 mb-3"><i class="bi bi-file-earmark-x"></i></div>
-    <p class="text-stone-600 font-medium">{{ loadError }}</p>
-    <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
-      <button @click="load" class="inline-flex items-center px-5 min-h-11 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong">
-        <i class="bi bi-arrow-clockwise mr-1"></i> ลองอีกครั้ง
-      </button>
-      <button @click="router.push({ name: 'boards' })" class="inline-flex items-center px-5 min-h-11 py-2.5 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200">
-        กลับไป PIRI Boards
-      </button>
-    </div>
-  </div>
+  <!-- ข้อผิดพลาด — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+  <AppCard v-else-if="loadError" :padded="false" class="max-w-3xl mx-auto py-4">
+    <AppEmptyState icon="bi-file-earmark-x" title="เปิดกระทู้นี้ไม่สำเร็จ" :description="loadError">
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <AppButton variant="secondary" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองอีกครั้ง
+        </AppButton>
+        <AppButton :to="{ name: 'boards' }" variant="text">กลับไป PIRI Boards</AppButton>
+      </div>
+    </AppEmptyState>
+  </AppCard>
 
   <div v-else-if="board" class="max-w-3xl mx-auto space-y-5">
     <!-- 🔴 ไม่มีปุ่มย้อนที่นี่ — `AppHeader` วาดปุ่ม ← (จาก `meta.headerBack` = `boards`) ให้แล้ว (R0.3) -->

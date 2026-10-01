@@ -16,6 +16,9 @@ import { fmtDayTime } from '@/datetime'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import PaginationBar from '@/components/PaginationBar.vue'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
 /**
  * 🚩 คิวรายงานความไม่เหมาะสม (สภานักเรียน/แอดมิน)
@@ -205,25 +208,28 @@ async function handleResolve(r: ReportItem, action: 'hide' | 'dismiss') {
         </div>
       </div>
 
-      <!-- ข้อผิดพลาด -->
-      <div v-else-if="error" class="border-2 border-dashed border-stone-200 rounded-2xl py-20 px-6 text-center">
-        <i class="bi bi-wifi-off text-3xl text-stone-300 mb-3 inline-block"></i>
-        <p class="text-stone-600 font-medium">{{ error }}</p>
-        <button
-          type="button"
-          @click="load"
-          class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-sm font-bold text-white hover:bg-brand-strong transition-colors"
-        >
-          <i class="bi bi-arrow-clockwise"></i> ลองอีกครั้ง
-        </button>
-      </div>
+      <!-- ข้อผิดพลาด — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+      <AppCard v-else-if="error" :padded="false" class="py-4">
+        <AppEmptyState icon="bi-wifi-off" title="โหลดรายงานไม่สำเร็จ" :description="error">
+          <AppButton variant="secondary" @click="load">
+            <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+            ลองอีกครั้ง
+          </AppButton>
+        </AppEmptyState>
+      </AppCard>
 
       <!-- ว่าง -->
-      <div v-else-if="!reports.length" class="border border-dashed border-stone-200 rounded-2xl bg-white p-12 text-center text-ink-3">
-        <div class="text-4xl mb-2"><i class="bi bi-flag"></i></div>
-        <p v-if="statusFilter === 'open'" class="text-stone-500">ไม่มีรายงานค้าง — นักเรียนยังไม่แจ้ง หรือสภาจัดการหมดแล้ว</p>
-        <p v-else class="text-stone-500">ไม่พบรายงานในเงื่อนไขนี้</p>
-      </div>
+      <AppCard v-else-if="!reports.length" :padded="false" class="py-4">
+        <AppEmptyState
+          icon="bi-flag"
+          :title="statusFilter === 'open' ? 'ไม่มีรายงานค้าง' : 'ไม่พบรายงานในเงื่อนไขนี้'"
+          :description="
+            statusFilter === 'open'
+              ? 'นักเรียนยังไม่แจ้ง หรือสภาจัดการหมดแล้ว'
+              : 'ลองเปลี่ยนสถานะหรือเหตุผลที่กรองอยู่'
+          "
+        />
+      </AppCard>
 
       <div v-else class="space-y-3">
         <div

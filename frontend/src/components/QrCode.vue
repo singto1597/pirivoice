@@ -49,10 +49,11 @@ const src = computed<string | null>(() => {
     class="rounded-xl border border-stone-200 bg-white"
     data-testid="qr-code"
   />
-  <!-- วาดไม่สำเร็จ — บอกตรง ๆ ดีกว่าเว้นที่ว่างแล้วให้ผู้ใช้เดาว่าพังหรือยังโหลดไม่เสร็จ -->
+  <!-- วาดไม่สำเร็จ — บอกตรง ๆ ดีกว่าเว้นที่ว่างแล้วให้ผู้ใช้เดาว่าพังหรือยังโหลดไม่เสร็จ
+       ⚠️ เส้นประถูกถอดออก (R5.5) — เส้นทึบอ่านว่า "กล่องข้อความ" ไม่ใช่ "ของที่ยังไม่เสร็จ" -->
   <p
     v-else
-    class="rounded-xl border border-dashed border-amber-300 bg-amber-50 px-3 py-6 text-center text-xs text-amber-800"
+    class="rounded-xl border border-amber-300 bg-amber-50 px-3 py-6 text-center text-xs text-amber-800"
   >
     <i class="bi bi-exclamation-triangle mr-1"></i>แสดงคิวอาร์ไม่ได้ — ใช้รหัสด้านล่างแทน
   </p>

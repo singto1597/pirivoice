@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 import { getMyActivity } from '@/services/me'
 import { listBookmarks } from '@/services/bookmark'
 import {
@@ -212,39 +215,32 @@ function metaClass(a: ActivityItem): string {
         </div>
       </div>
 
-      <!-- โหลดไม่สำเร็จ -->
-      <div
-        v-else-if="actError"
-        class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
-      >
-        <i class="bi bi-wifi-off mb-3 text-3xl text-ink-3"></i>
-        <p class="text-stone-600">{{ actError }}</p>
-        <button
-          type="button"
-          class="inline-flex items-center mt-4 rounded-lg bg-brand px-5 min-h-11 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
-          @click="loadActivity"
-        >
-          ลองอีกครั้ง
-        </button>
-      </div>
+      <!-- โหลดไม่สำเร็จ — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+      <AppCard v-else-if="actError" :padded="false" class="py-4">
+        <AppEmptyState icon="bi-wifi-off" title="โหลดกิจกรรมไม่สำเร็จ" :description="actError">
+          <AppButton variant="secondary" @click="loadActivity">
+            <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+            ลองอีกครั้ง
+          </AppButton>
+        </AppEmptyState>
+      </AppCard>
 
       <!-- ว่าง -->
-      <div
-        v-else-if="!actItems.length"
-        class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-6 py-16 text-center"
-      >
-        <div class="mb-2 text-4xl text-stone-300"><i class="bi bi-clock-history"></i></div>
-        <p class="text-stone-600">
-          {{ actType ? 'ไม่มีกิจกรรมประเภทนี้' : 'ยังไม่มีกิจกรรม' }}
-        </p>
-        <RouterLink
-          v-if="!actType"
-          to="/app/issues/new"
-          class="mt-3 inline-block font-medium text-brand hover:underline"
+      <AppCard v-else-if="!actItems.length" :padded="false" class="py-4">
+        <AppEmptyState
+          icon="bi-clock-history"
+          :title="actType ? 'ไม่มีกิจกรรมประเภทนี้' : 'ยังไม่มีกิจกรรม'"
+          :description="actType ? 'ลองดูประเภทอื่น หรือกลับไปดูทั้งหมด' : undefined"
         >
-          เริ่มจากการแจ้งเรื่องแรก <i class="bi bi-arrow-right"></i>
-        </RouterLink>
-      </div>
+          <RouterLink
+            v-if="!actType"
+            to="/app/issues/new"
+            class="inline-flex items-center gap-1 font-medium text-brand hover:underline"
+          >
+            เริ่มจากการแจ้งเรื่องแรก <i class="bi bi-arrow-right" aria-hidden="true"></i>
+          </RouterLink>
+        </AppEmptyState>
+      </AppCard>
 
       <!-- ledger -->
       <TransitionGroup
@@ -343,31 +339,22 @@ function metaClass(a: ActivityItem): string {
         </div>
       </div>
 
-      <div
-        v-else-if="bmError"
-        class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
-      >
-        <i class="bi bi-wifi-off mb-3 text-3xl text-ink-3"></i>
-        <p class="text-stone-600">{{ bmError }}</p>
-        <button
-          type="button"
-          class="inline-flex items-center mt-4 rounded-lg bg-brand px-5 min-h-11 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
-          @click="loadBookmarks"
-        >
-          ลองอีกครั้ง
-        </button>
-      </div>
+      <AppCard v-else-if="bmError" :padded="false" class="py-4">
+        <AppEmptyState icon="bi-wifi-off" title="โหลดเรื่องที่บันทึกไว้ไม่สำเร็จ" :description="bmError">
+          <AppButton variant="secondary" @click="loadBookmarks">
+            <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+            ลองอีกครั้ง
+          </AppButton>
+        </AppEmptyState>
+      </AppCard>
 
-      <div
-        v-else-if="!bmItems.length"
-        class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-white px-6 py-16 text-center"
-      >
-        <div class="mb-2 text-4xl text-stone-300"><i class="bi bi-bookmark"></i></div>
-        <p class="text-stone-600">ยังไม่มีเรื่องที่บันทึกไว้</p>
-        <p class="mt-2 text-xs text-stone-500">
-          กดไอคอน <i class="bi bi-bookmark"></i> ที่หัวเรื่องหรือหัวบอร์ด เพื่อเก็บไว้ดูทีหลัง
-        </p>
-      </div>
+      <AppCard v-else-if="!bmItems.length" :padded="false" class="py-4">
+        <AppEmptyState
+          icon="bi-bookmark"
+          title="ยังไม่มีเรื่องที่บันทึกไว้"
+          description="กดไอคอนบุ๊กมาร์กที่หัวเรื่องหรือหัวบอร์ด เพื่อเก็บไว้ดูทีหลัง"
+        />
+      </AppCard>
 
       <TransitionGroup
         v-else

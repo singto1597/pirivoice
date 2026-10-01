@@ -4,6 +4,9 @@ import { useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import { getMyProfile, updateMyProfile } from '@/services/profile';
 import { useAuthStore } from '@/stores/auth';
+import AppCard from '@/components/ui/AppCard.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppEmptyState from '@/components/ui/AppEmptyState.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -85,19 +88,19 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
       </div>
     </div>
 
-    <!-- Error + retry -->
-    <div v-else-if="loadError" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center">
-      <i class="bi bi-pencil-square mb-3 block text-3xl text-ink-3"></i>
-      <p class="text-[15px] font-semibold text-stone-700">ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ในขณะนี้</p>
-      <p class="mt-1 text-sm text-stone-500">ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
-      <button
-        type="button"
-        @click="loadProfile"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+    <!-- Error + retry — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+    <AppCard v-else-if="loadError" :padded="false" class="py-4">
+      <AppEmptyState
+        icon="bi-pencil-square"
+        title="ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ในขณะนี้"
+        description="ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง"
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
-    </div>
+        <AppButton variant="secondary" @click="loadProfile">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
     <form v-else @submit.prevent="saveProfile" class="space-y-4">
       <!-- 🔴 ไม่มี <h1>/eyebrow/ปุ่มย้อนที่นี่ — `AppHeader` วาดชื่อหน้า (routeTitles) เป็น <h1>

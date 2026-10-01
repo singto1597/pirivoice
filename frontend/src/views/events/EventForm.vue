@@ -26,6 +26,9 @@ import {
 } from '@/eventForm'
 import { STATUS_ICONS, STATUS_LABELS, type Event } from '@/types/event'
 import type { ApiError } from '@/services/api'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
 /**
  * ✍️ สร้าง/แก้ไขกิจกรรม — **หน้าเต็มหน้า ไม่ใช่ modal** (รอบ 4)
@@ -423,39 +426,33 @@ const inputCls =
       </div>
     </div>
 
-    <!-- ไม่มีกิจกรรมนี้ -->
-    <div
-      v-else-if="notFound"
-      class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center"
-    >
-      <i class="bi bi-calendar-x mb-3 block text-3xl text-ink-3"></i>
-      <p class="text-[15px] font-semibold text-stone-700">ไม่พบกิจกรรมนี้</p>
-      <p class="mt-1 text-sm text-stone-500">อาจถูกลบถาวรไปแล้ว หรือลิงก์ไม่ถูกต้อง</p>
-      <button
-        type="button"
-        @click="goBack"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+    <!-- ไม่มีกิจกรรมนี้ — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+    <AppCard v-else-if="notFound" :padded="false" class="py-4">
+      <AppEmptyState
+        icon="bi-calendar-x"
+        title="ไม่พบกิจกรรมนี้"
+        description="อาจถูกลบถาวรไปแล้ว หรือลิงก์ไม่ถูกต้อง"
       >
-        <i class="bi bi-arrow-left"></i> กลับหน้าจัดการกิจกรรม
-      </button>
-    </div>
+        <AppButton variant="secondary" @click="goBack">
+          <template #icon><i class="bi bi-arrow-left" aria-hidden="true" /></template>
+          กลับหน้าจัดการกิจกรรม
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
-    <!-- Error + retry -->
-    <div
-      v-else-if="loadError"
-      class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center"
-    >
-      <i class="bi bi-plugin mb-3 block text-3xl text-ink-3"></i>
-      <p class="text-[15px] font-semibold text-stone-700">โหลดข้อมูลกิจกรรมไม่สำเร็จ</p>
-      <p class="mt-1 text-sm text-stone-500">ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
-      <button
-        type="button"
-        @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+    <!-- Error + retry — 「ไม่มีการ์ดเส้นประ」 -->
+    <AppCard v-else-if="loadError" :padded="false" class="py-4">
+      <AppEmptyState
+        icon="bi-plugin"
+        title="โหลดข้อมูลกิจกรรมไม่สำเร็จ"
+        description="ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง"
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
-    </div>
+        <AppButton variant="secondary" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
     <form v-else @submit.prevent="save" class="space-y-4">
       <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` วาดชื่อหน้า (routeTitles) เป็น <h1> ให้แล้ว (R0.3)

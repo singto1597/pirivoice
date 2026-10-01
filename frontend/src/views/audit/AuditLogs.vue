@@ -5,6 +5,9 @@ import { listAuditLogs } from '@/services/audit';
 import type { AuditLogEntry } from '@/types/audit';
 import { fmtDateTimeSec } from '@/datetime';
 import PaginationBar from '@/components/PaginationBar.vue';
+import AppCard from '@/components/ui/AppCard.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppEmptyState from '@/components/ui/AppEmptyState.vue';
 
 // ===== ป้าย action → ภาษาไทย (ให้ตรงกับ backend dashboard_service.ACTION_LABELS) =====
 const ACTION_LABELS: Record<string, string> = {
@@ -289,25 +292,24 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
       </div>
     </div>
 
-    <!-- Error -->
-    <div v-else-if="error && !hasData" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white p-12 text-center">
-      <div class="mb-3 text-3xl text-stone-300"><i class="bi bi-exclamation-triangle"></i></div>
-      <h2 class="mb-1 text-lg font-bold text-stone-800">โหลดข้อมูลไม่สำเร็จ</h2>
-      <p class="mx-auto mb-5 max-w-md text-sm text-stone-500">{{ error }}</p>
-      <button
-        type="button"
-        @click="load"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-5 min-h-11 py-2.5 text-sm font-medium text-white transition hover:bg-brand-strong"
-      >
-        <i class="bi bi-arrow-clockwise mr-1"></i> ลองใหม่
-      </button>
-    </div>
+    <!-- Error — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+    <AppCard v-else-if="error && !hasData" :padded="false" class="py-4">
+      <AppEmptyState icon="bi-exclamation-triangle" title="โหลดข้อมูลไม่สำเร็จ" :description="error">
+        <AppButton variant="secondary" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
     <!-- Empty -->
-    <div v-else-if="!isLoading && !hasData" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white p-12 text-center">
-      <div class="mb-3 text-3xl text-stone-300"><i class="bi bi-inbox"></i></div>
-      <p class="text-sm text-stone-500">ยังไม่มีบันทึกการใช้งานตามเงื่อนไขนี้</p>
-    </div>
+    <AppCard v-else-if="!isLoading && !hasData" :padded="false" class="py-4">
+      <AppEmptyState
+        icon="bi-inbox"
+        title="ยังไม่มีบันทึกการใช้งานตามเงื่อนไขนี้"
+        description="ลองขยายช่วงวันที่ หรือล้างตัวกรองผู้ใช้/หมวด"
+      />
+    </AppCard>
 
     <!-- ตาราง -->
     <div v-else class="overflow-hidden rounded-2xl border border-stone-200 bg-white">

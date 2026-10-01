@@ -13,6 +13,9 @@ import {
   IMPORT_STATUS_LABELS,
   isImportJobRunning,
 } from '@/constants/importStatus';
+import AppCard from '@/components/ui/AppCard.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppEmptyState from '@/components/ui/AppEmptyState.vue';
 
 // Short polling — ดึงสถานะงานจาก API ทุกๆ 2.5 วิ (ผู้ใช้ไม่ต้องรอลุ้นหน้าเว็บค้าง)
 const POLL_INTERVAL_MS = 2500;
@@ -395,21 +398,21 @@ onBeforeUnmount(stopPolling);
         </div>
       </div>
 
-      <!-- โหลดพลาด (ไม่ใช่ "ไม่มีไฟล์") — โชว์ error + ปุ่มลองใหม่ กันครูเห็น "ไม่มีไฟล์" แล้วอัปโหลดซ้ำซ้อน -->
-      <div v-else-if="loadError" class="rounded-xl border-2 border-dashed border-stone-200 bg-white py-12 text-center" role="alert">
-        <i class="bi bi-wifi-off mb-2 block text-3xl text-stone-300"></i>
-        <p class="text-sm font-semibold text-stone-700">ไม่สามารถโหลด Queue List ได้</p>
-        <p class="mt-1 text-xs text-stone-500">ตรวจสอบการเชื่อมต่อกับระบบแล้วลองอีกครั้ง</p>
-        <button
-          @click="refreshJobs(true)"
-          :disabled="isRefreshing"
-          class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 min-h-11 py-2 text-xs font-bold text-white transition hover:bg-brand-strong disabled:opacity-50"
+      <!-- โหลดพลาด (ไม่ใช่ "ไม่มีไฟล์") — โชว์ error + ปุ่มลองใหม่ กันครูเห็น "ไม่มีไฟล์" แล้วอัปโหลดซ้ำซ้อน
+           「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+      <AppCard v-else-if="loadError" :padded="false" class="py-4" role="alert">
+        <AppEmptyState
+          icon="bi-wifi-off"
+          title="ไม่สามารถโหลด Queue List ได้"
+          description="ตรวจสอบการเชื่อมต่อกับระบบแล้วลองอีกครั้ง"
+          compact
         >
-          <span v-if="isRefreshing" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
-          <i v-else class="bi bi-arrow-clockwise"></i>
-          ลองใหม่
-        </button>
-      </div>
+          <AppButton variant="secondary" size="sm" :loading="isRefreshing" @click="refreshJobs(true)">
+            <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+            ลองใหม่
+          </AppButton>
+        </AppEmptyState>
+      </AppCard>
 
       <div v-else-if="jobs.length === 0" class="py-10 text-center text-sm text-stone-500">
         <i class="bi bi-inbox mb-2 block text-3xl text-stone-300"></i>

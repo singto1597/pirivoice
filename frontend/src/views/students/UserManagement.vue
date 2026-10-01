@@ -6,6 +6,9 @@ import { RESPONSIBLE_ROLES, CATEGORY_OPTIONS } from '@/types/issue'
 import type { Student, Room } from '@/types/student'
 import { useAuthStore } from '@/stores/auth'
 import { roleLabel } from '@/constants/roles'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
 // 🧑‍💼 หน้า User Management — จัดการกลุ่ม สภานักเรียน / ผู้ช่วยหัวหน้าระดับ / คณะกรรมการห้อง
 // หลักการ: Backend บังคับขอบเขตไว้แล้ว (grade scope + hierarchy rank) — หน้านี้กรอง/แสดงผลให้ใช้ง่าย
@@ -338,31 +341,25 @@ const editMeta = computed(() => {
       </div>
     </div>
 
-    <!-- Error + retry -->
-    <div
-      v-else-if="hasError"
-      class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center"
-    >
-      <i class="bi bi-people mb-3 block text-3xl text-stone-300"></i>
-      <p class="text-[15px] font-semibold text-stone-700">ไม่สามารถโหลดสมาชิกได้</p>
-      <button
-        type="button"
-        @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
-      >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
-    </div>
+    <!-- Error + retry — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+    <AppCard v-else-if="hasError" :padded="false" class="py-4">
+      <AppEmptyState icon="bi-people" title="ไม่สามารถโหลดสมาชิกได้" description="ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง">
+        <AppButton variant="secondary" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
     <div v-else>
       <!-- กลุ่มที่เลือกยังว่าง (เช่น ระดับตัวเองยังไม่มีสภา) -->
-      <div
-        v-if="!visibleStudents.length"
-        class="rounded-2xl border border-dashed border-stone-200 bg-white py-16 text-center"
-      >
-        <i class="bi bi-people mb-2 block text-3xl text-stone-300"></i>
-        <p class="text-stone-600">ไม่พบสมาชิกในกลุ่มนี้</p>
-      </div>
+      <AppCard v-if="!visibleStudents.length" :padded="false" class="py-4">
+        <AppEmptyState
+          icon="bi-people"
+          title="ไม่พบสมาชิกในกลุ่มนี้"
+          description="ลองเปลี่ยนกลุ่มหรือคำค้นหา"
+        />
+      </AppCard>
 
       <!-- มีข้อมูล → แสดงทั้งการ์ดมือถือ + ตารางเดสก์ท็อป -->
       <template v-else>

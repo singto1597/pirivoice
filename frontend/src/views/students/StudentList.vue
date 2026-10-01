@@ -4,6 +4,9 @@ import Swal from 'sweetalert2';
 import { listStudents, listRooms, updateStudent } from '@/services/student'
 import { roleLabel, STUDENT_ROLE_OPTIONS } from '@/constants/roles';
 import type { Student, Room } from '@/types/student';
+import AppCard from '@/components/ui/AppCard.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppEmptyState from '@/components/ui/AppEmptyState.vue';
 
 const students = ref<Student[]>([]);
 const rooms = ref<Room[]>([]);
@@ -86,19 +89,19 @@ async function changeRole(student: Student) {
       </div>
     </div>
 
-    <!-- Error + retry -->
-    <div v-else-if="hasError" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center">
-      <i class="bi bi-people mb-3 block text-3xl text-stone-300"></i>
-      <p class="text-[15px] font-semibold text-stone-700">ไม่สามารถโหลดรายชื่อนักเรียนได้</p>
-      <p class="mt-1 text-sm text-stone-500">ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
-      <button
-        type="button"
-        @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+    <!-- Error + retry — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+    <AppCard v-else-if="hasError" :padded="false" class="py-4">
+      <AppEmptyState
+        icon="bi-people"
+        title="ไม่สามารถโหลดรายชื่อนักเรียนได้"
+        description="ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง"
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
-    </div>
+        <AppButton variant="secondary" @click="load">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
+    </AppCard>
 
     <div v-else>
       <!-- ===== มือถือ: การ์ดรายการ (อ่านง่าย ไม่เบียดตาราง) ===== -->
@@ -126,9 +129,8 @@ async function changeRole(student: Student) {
             {{ roleLabel(s.class_role) }} <i class="bi bi-pencil-square text-[10px]"></i>
           </button>
         </div>
-        <div v-if="!students.length" class="rounded-2xl border border-dashed border-stone-200 p-8 text-center text-stone-500">
-          <i class="bi bi-people mb-2 block text-3xl text-stone-300"></i>
-          ไม่พบนักเรียน
+        <div v-if="!students.length" class="rounded-2xl border border-line bg-white">
+          <AppEmptyState icon="bi-people" title="ไม่พบนักเรียน" description="ลองเปลี่ยนห้องหรือคำค้นหา" compact />
         </div>
       </div>
 

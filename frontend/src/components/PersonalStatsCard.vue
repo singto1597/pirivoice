@@ -5,6 +5,8 @@
 import { computed } from 'vue'
 import type { PersonalStats } from '@/types/me'
 import { STAT_ITEMS, statsPeriodLabel, statsPeriodRange } from '@/types/me'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
 const props = defineProps<{
   stats: PersonalStats | null
@@ -51,20 +53,19 @@ const numberSize = computed(() => (props.compact ? 'text-lg' : 'text-2xl'))
       </div>
     </div>
 
-    <!-- โหลดไม่สำเร็จ: ไม่ปิดกั้นทั้งหน้า แค่การ์ดนี้ -->
-    <div
-      v-if="error"
-      class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center"
-    >
-      <i class="bi bi-cloud-slash mb-2 block text-2xl text-ink-3"></i>
-      <p class="text-sm font-semibold text-stone-700">โหลดสถิติไม่ได้</p>
-      <button
-        type="button"
-        @click="$emit('retry')"
-        class="mt-3 inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 min-h-11 py-2 text-[13px] font-bold text-stone-700 transition-colors hover:bg-stone-100"
+    <!-- โหลดไม่สำเร็จ: ไม่ปิดกั้นทั้งหน้า แค่การ์ดนี้ — 「ไม่มีการ์ดเส้นประ」 -->
+    <div v-if="error" class="rounded-xl bg-canvas">
+      <AppEmptyState
+        icon="bi-cloud-slash"
+        title="โหลดสถิติไม่ได้"
+        description="ตัวเลขอื่นในหน้านี้ยังใช้ได้ตามปกติ"
+        compact
       >
-        <i class="bi bi-arrow-clockwise"></i> ลองใหม่
-      </button>
+        <AppButton variant="secondary" size="sm" @click="$emit('retry')">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองใหม่
+        </AppButton>
+      </AppEmptyState>
     </div>
 
     <div v-else-if="loading && !hasData" class="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-busy="true">

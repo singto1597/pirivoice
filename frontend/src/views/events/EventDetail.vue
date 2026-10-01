@@ -23,6 +23,9 @@ import type { ApiError } from '@/services/api'
 import { goUnavailable } from '@/router/unavailable'
 import { fmtDateTime, fmtTime } from '@/datetime'
 import QrCode from '@/components/QrCode.vue'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
 /**
  * 📅 รายละเอียดกิจกรรม (ฝั่งนักเรียน) + ลงทะเบียน / ถอน
@@ -227,30 +230,18 @@ async function handleCancel() {
     </div>
   </div>
 
-  <!-- ผิดพลาด -->
-  <div
-    v-else-if="loadError"
-    class="max-w-3xl mx-auto border-2 border-dashed border-stone-200 rounded-2xl py-20 px-6 text-center"
-  >
-    <div class="text-4xl text-stone-300 mb-3"><i class="bi bi-calendar-x"></i></div>
-    <p class="text-stone-600 font-medium">{{ loadError }}</p>
-    <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
-      <button
-        type="button"
-        @click="load()"
-        class="inline-flex items-center px-5 min-h-11 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong"
-      >
-        <i class="bi bi-arrow-clockwise mr-1"></i> ลองอีกครั้ง
-      </button>
-      <button
-        type="button"
-        @click="router.push({ name: 'events' })"
-        class="inline-flex items-center px-5 min-h-11 py-2.5 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200"
-      >
-        กลับไปหน้ากิจกรรม
-      </button>
-    </div>
-  </div>
+  <!-- ผิดพลาด — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
+  <AppCard v-else-if="loadError" :padded="false" class="max-w-3xl mx-auto py-4">
+    <AppEmptyState icon="bi-calendar-x" title="เปิดกิจกรรมนี้ไม่สำเร็จ" :description="loadError">
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <AppButton variant="secondary" @click="load()">
+          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
+          ลองอีกครั้ง
+        </AppButton>
+        <AppButton :to="{ name: 'events' }" variant="text">กลับไปหน้ากิจกรรม</AppButton>
+      </div>
+    </AppEmptyState>
+  </AppCard>
 
   <div v-else-if="event" class="max-w-3xl mx-auto space-y-5">
     <!-- 🔴 ไม่มีปุ่มย้อนที่นี่ — `AppHeader` วาดปุ่ม ← (จาก `meta.headerBack` = `events`) ให้แล้ว (R0.3) -->
