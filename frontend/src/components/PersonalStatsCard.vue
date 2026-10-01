@@ -46,7 +46,7 @@ const numberSize = computed(() => (props.compact ? 'text-lg' : 'text-2xl'))
         <h2 class="text-lg font-bold text-stone-900">สถิติของฉัน</h2>
         <p class="mt-0.5 text-xs text-stone-500">
           {{ periodLabel }}
-          <span v-if="periodRange" class="text-stone-400">· {{ periodRange }}</span>
+          <span v-if="periodRange" class="text-ink-3">· {{ periodRange }}</span>
         </p>
       </div>
     </div>
@@ -56,12 +56,12 @@ const numberSize = computed(() => (props.compact ? 'text-lg' : 'text-2xl'))
       v-if="error"
       class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center"
     >
-      <i class="bi bi-cloud-slash mb-2 block text-2xl text-stone-400"></i>
+      <i class="bi bi-cloud-slash mb-2 block text-2xl text-ink-3"></i>
       <p class="text-sm font-semibold text-stone-700">โหลดสถิติไม่ได้</p>
       <button
         type="button"
         @click="$emit('retry')"
-        class="mt-3 inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2 text-[13px] font-bold text-stone-700 transition-colors hover:bg-stone-100"
+        class="mt-3 inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 min-h-11 py-2 text-[13px] font-bold text-stone-700 transition-colors hover:bg-stone-100"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -92,7 +92,7 @@ const numberSize = computed(() => (props.compact ? 'text-lg' : 'text-2xl'))
         :class="tilePadding"
       >
         <p class="flex items-center gap-1.5 text-[11px] font-semibold text-stone-500">
-          <i :class="item.icon" class="text-stone-400"></i>
+          <i :class="item.icon" class="text-ink-3"></i>
           <span class="truncate">{{ item.label }}</span>
         </p>
         <!-- tabular-nums → หลักตรงกันทุกช่อง ตัวเลขกวาดตาง่าย -->

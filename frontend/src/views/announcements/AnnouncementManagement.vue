@@ -353,7 +353,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
       <button
         type="button"
         @click="openAdd"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 min-h-11 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
       >
         <i class="bi bi-plus-lg"></i> เพิ่มประกาศ
       </button>
@@ -366,7 +366,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
         :key="t.value"
         type="button"
         @click="changeStatus(t.value)"
-        class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors"
+        class="inline-flex items-center rounded-full px-3.5 min-h-11 py-1.5 text-[13px] font-semibold transition-colors"
         :class="
           statusFilter === t.value
             ? 'bg-stone-900 text-white shadow-sm'
@@ -375,7 +375,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
       >
         {{ t.label }}
       </button>
-      <span v-if="!isLoading" class="ml-1 text-[13px] text-stone-400">
+      <span v-if="!isLoading" class="ml-1 text-[13px] text-ink-3">
         {{ total }} รายการ
       </span>
     </div>
@@ -398,7 +398,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
       <button
         type="button"
         @click="load"
-        class="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-brand ring-1 ring-red-200 hover:bg-red-100"
+        class="inline-flex items-center mt-3 rounded-xl bg-white px-4 min-h-11 py-2 text-sm font-semibold text-brand ring-1 ring-red-200 hover:bg-red-100"
       >
         ลองใหม่
       </button>
@@ -419,7 +419,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
               : 'ยังไม่มีประกาศ'
         }}
       </p>
-      <p class="mt-1 text-[13px] text-stone-400">
+      <p class="mt-1 text-[13px] text-ink-3">
         {{
           statusFilter === 'deleted'
             ? 'ประกาศที่ลบจะมาแสดงที่นี่'
@@ -474,7 +474,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
               >
                 <i class="bi bi-archive mr-1"></i>ปลดระวางแล้ว
               </span>
-              <span class="text-[11px] text-stone-400">{{ fmtDateTime(a.created_at) }}</span>
+              <span class="text-[11px] text-ink-3">{{ fmtDateTime(a.created_at) }}</span>
             </div>
 
             <p
@@ -496,7 +496,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
             </a>
 
             <!-- ผู้ประกาศ/ผู้แก้ (created_by_name = null ได้ ถ้าเป็นประกาศ seed เก่า หรือผู้ใช้ถูกลบ) -->
-            <p class="mt-3 text-[12px] text-stone-400">
+            <p class="mt-3 text-[12px] text-ink-3">
               <span>
                 <i class="bi bi-person-circle mr-1"></i>
                 {{ a.created_by_name || 'ไม่ทราบผู้ประกาศ' }}
@@ -529,7 +529,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="doRestore(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'restore')"
@@ -546,7 +546,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="doUnretire(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'unretire')"
@@ -559,7 +559,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="confirmDelete(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-brand ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 min-h-11 py-2 text-[13px] font-semibold text-brand ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'delete')"
@@ -573,7 +573,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
               <button
                 type="button"
                 @click="openEdit(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-50"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 min-h-11 py-2 text-[13px] font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-50"
               >
                 <i class="bi bi-pencil"></i> แก้ไข
               </button>
@@ -582,7 +582,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="confirmRetire(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 min-h-11 py-2 text-[13px] font-semibold text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-50 disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'retire')"
@@ -594,7 +594,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 :disabled="actingId === a.id"
                 @click="confirmDelete(a)"
-                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-brand ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl px-3.5 min-h-11 py-2 text-[13px] font-semibold text-brand ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
                 <span
                   v-if="busy(a, 'delete')"
@@ -640,8 +640,9 @@ const hasAnyItems = computed(() => items.value.length > 0)
               </div>
               <button
                 type="button"
+                aria-label="ปิดหน้าต่าง"
                 @click="closeModal"
-                class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
+                class="rounded-xl p-2 text-ink-3 hover:bg-stone-100"
               >
                 <i class="bi bi-x-lg"></i>
               </button>
@@ -661,7 +662,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                   placeholder="เช่น เข้าแถวหน้าชั้นเรียน เพราะฝนตก วันที่ 30 ก.ย."
                   class="w-full resize-none rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                 ></textarea>
-                <p class="mt-1 text-right text-[11px] text-stone-400">
+                <p class="mt-1 text-right text-[11px] text-ink-3">
                   {{ form.message.length }}/1000
                 </p>
               </div>
@@ -674,7 +675,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                     :key="opt.value"
                     type="button"
                     @click="form.priority = opt.value"
-                    class="flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors"
+                    class="flex items-center gap-2 rounded-xl border px-3 min-h-11 py-2.5 text-left transition-colors"
                     :class="
                       form.priority === opt.value
                         ? 'border-brand bg-brand/5'
@@ -695,14 +696,14 @@ const hasAnyItems = computed(() => items.value.length > 0)
                     </span>
                   </button>
                 </div>
-                <p class="mt-1.5 text-[11px] text-stone-400">
+                <p class="mt-1.5 text-[11px] text-ink-3">
                   {{ PRIORITY_OPTIONS.find((o) => o.value === form.priority)?.hint }}
                 </p>
               </div>
 
               <div>
                 <label class="mb-1 block text-xs font-semibold text-stone-500" for="ann-link">
-                  ลิงก์แนบ <span class="text-stone-400">(ไม่บังคับ)</span>
+                  ลิงก์แนบ <span class="text-ink-3">(ไม่บังคับ)</span>
                 </label>
                 <input
                   id="ann-link"
@@ -712,7 +713,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                   placeholder="https://..."
                   class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                 />
-                <p class="mt-1 text-[11px] text-stone-400">
+                <p class="mt-1 text-[11px] text-ink-3">
                   ต้องขึ้นต้นด้วย http:// หรือ https:// เท่านั้น — เว้นว่าง = ไม่มีลิงก์
                 </p>
               </div>
@@ -731,7 +732,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 @click="closeModal"
                 :disabled="saving"
-                class="rounded-xl px-4 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
+                class="inline-flex items-center rounded-xl px-4 min-h-11 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
               >
                 ยกเลิก
               </button>
@@ -739,7 +740,7 @@ const hasAnyItems = computed(() => items.value.length > 0)
                 type="button"
                 @click="submitForm"
                 :disabled="!canSubmit"
-                class="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong disabled:opacity-60"
+                class="inline-flex items-center gap-2 rounded-xl bg-brand px-5 min-h-11 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong disabled:opacity-60"
               >
                 <span
                   v-if="saving"

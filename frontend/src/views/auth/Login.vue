@@ -92,7 +92,7 @@ async function handleLogin() {
         </div>
         <router-link to="/" class="flex flex-col items-start leading-none">
           <span class="text-lg font-bold tracking-tight text-stone-900">PIRI<span class="text-brand">voice</span></span>
-          <span class="mt-1 hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400 sm:block">Student Council</span>
+          <span class="mt-1 hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-3 sm:block">Student Council</span>
         </router-link>
       </div>
       <div class="hidden md:block">
@@ -115,7 +115,7 @@ async function handleLogin() {
             <div class="group">
               <label class="mb-1.5 block text-sm font-semibold text-stone-700 transition-colors group-focus-within:text-brand">รหัสนักเรียน</label>
               <div class="relative">
-                <i class="bi bi-person absolute left-4 top-1/2 -translate-y-1/2 text-lg text-stone-400 transition-colors group-focus-within:text-brand"></i>
+                <i class="bi bi-person absolute left-4 top-1/2 -translate-y-1/2 text-lg text-ink-3 transition-colors group-focus-within:text-brand"></i>
                 <input
                   v-model="username"
                   type="text"
@@ -131,7 +131,7 @@ async function handleLogin() {
             <div class="group">
               <label class="mb-1.5 block text-sm font-semibold text-stone-700 transition-colors group-focus-within:text-brand">รหัสผ่าน</label>
               <div class="relative">
-                <i class="bi bi-lock absolute left-4 top-1/2 -translate-y-1/2 text-lg text-stone-400 transition-colors group-focus-within:text-brand"></i>
+                <i class="bi bi-lock absolute left-4 top-1/2 -translate-y-1/2 text-lg text-ink-3 transition-colors group-focus-within:text-brand"></i>
                 <input
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
@@ -143,7 +143,7 @@ async function handleLogin() {
                 <button
                   type="button"
                   @click="showPassword = !showPassword"
-                  class="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                  class="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-stone-100 hover:text-stone-600"
                   :aria-label="showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'"
                 >
                   <i :class="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
@@ -185,7 +185,7 @@ async function handleLogin() {
         <p class="text-sm font-medium text-stone-500">
           คณะกรรมการสภานักเรียน · <span class="font-bold text-stone-700">โรงเรียนพิริยาลัยจังหวัดแพร่</span>
         </p>
-        <div class="flex flex-col items-center gap-2 text-xs font-medium text-stone-400 sm:flex-row">
+        <div class="flex flex-col items-center gap-2 text-xs font-medium text-ink-3 sm:flex-row">
           <span>© 2026 PIRIvoice. สงวนลิขสิทธิ์</span>
           <span class="hidden text-stone-300 sm:inline-block">•</span>
           <div class="flex items-center gap-1.5">
@@ -194,7 +194,7 @@ async function handleLogin() {
               href="https://www.singto1597.xyz/"
               target="_blank"
               rel="noopener noreferrer"
-              class="rounded-md border border-stone-200 bg-stone-100 px-2.5 py-1 font-semibold text-stone-600 transition-colors hover:border-brand/40 hover:bg-brand/5 hover:text-brand"
+              class="inline-flex items-center rounded-md border border-stone-200 bg-stone-100 px-2.5 min-h-11 py-1 font-semibold text-stone-600 transition-colors hover:border-brand/40 hover:bg-brand/5 hover:text-brand"
             >
               นายพัฒนพล สุธรรม
             </a>

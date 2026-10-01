@@ -42,20 +42,21 @@ function go(n: number) {
       type="button"
       :disabled="page <= 1 || loading"
       @click="go(page - 1)"
-      class="w-9 h-9 flex items-center justify-center rounded-xl border text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+      aria-label="หน้าก่อนหน้า"
+      class="flex h-11 w-11 items-center justify-center rounded-xl border text-sm disabled:opacity-40 disabled:cursor-not-allowed"
       :class="page > 1 ? 'border-stone-300 text-stone-600 hover:bg-stone-50' : 'border-stone-100 text-stone-300'"
     >
       <i class="bi bi-chevron-left"></i>
     </button>
 
     <template v-for="(it, i) in items" :key="`${it}-${i}`">
-      <span v-if="it === 'ellipsis'" class="px-0.5 text-stone-400">…</span>
+      <span v-if="it === 'ellipsis'" class="px-0.5 text-ink-3">…</span>
       <button
         v-else
         type="button"
         :disabled="loading"
         @click="go(it)"
-        class="min-w-9 h-9 px-2 flex items-center justify-center rounded-xl text-sm font-medium transition"
+        class="flex h-11 min-w-11 items-center justify-center rounded-xl px-2 text-sm font-medium transition"
         :class="
           it === page
             ? 'bg-brand text-white'
@@ -70,7 +71,8 @@ function go(n: number) {
       type="button"
       :disabled="page >= pages || loading"
       @click="go(page + 1)"
-      class="w-9 h-9 flex items-center justify-center rounded-xl border text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+      aria-label="หน้าถัดไป"
+      class="flex h-11 w-11 items-center justify-center rounded-xl border text-sm disabled:opacity-40 disabled:cursor-not-allowed"
       :class="page < pages ? 'border-stone-300 text-stone-600 hover:bg-stone-50' : 'border-stone-100 text-stone-300'"
     >
       <i class="bi bi-chevron-right"></i>

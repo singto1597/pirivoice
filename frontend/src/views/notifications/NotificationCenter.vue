@@ -468,7 +468,7 @@ function go(n: NotificationItem) {
     >
       <button
         type="button"
-        class="inline-flex items-center gap-2 rounded-control bg-brand px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
+        class="inline-flex items-center gap-2 rounded-control bg-brand px-5 min-h-11 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
         @click="load"
       >
         <i class="bi bi-arrow-clockwise" aria-hidden="true" /> ลองใหม่

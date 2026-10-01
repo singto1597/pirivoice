@@ -46,7 +46,7 @@ function onChildClick() {
         type="button"
         :title="isOpen ? 'ย่อเมนู' : 'ขยายเมนู'"
         :aria-expanded="isOpen"
-        class="w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 transition-colors shrink-0 mr-1.5"
+        class="flex h-11 w-11 items-center justify-center rounded-lg text-ink-3 hover:bg-stone-100 hover:text-stone-700 transition-colors shrink-0 mr-1.5"
         @click="isOpen = !isOpen"
       >
         <i :class="['bi text-xs transition-transform', isOpen ? 'bi-chevron-up' : 'bi-chevron-down']"></i>
@@ -65,10 +65,10 @@ function onChildClick() {
           :key="pb.id"
           :to="{ name: 'playbook-reader', params: { id: pb.id } }"
           @click="onChildClick"
-          class="flex items-center px-3 py-2 text-[13px] font-medium rounded-lg transition-colors"
+          class="flex items-center px-3 min-h-11 py-2 text-[13px] font-medium rounded-lg transition-colors"
           :class="isChildActive(pb.id) ? 'bg-stone-100 text-brand' : 'text-stone-500 hover:bg-stone-100 hover:text-stone-900'"
         >
-          <i class="bi bi-book-half text-sm mr-2.5" :class="isChildActive(pb.id) ? 'text-brand' : 'text-stone-400'"></i>
+          <i class="bi bi-book-half text-sm mr-2.5" :class="isChildActive(pb.id) ? 'text-brand' : 'text-ink-3'"></i>
           <span class="truncate">{{ pb.title }}</span>
         </RouterLink>
       </div>

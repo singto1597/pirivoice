@@ -777,7 +777,7 @@ function countdownLabel(deadline: string): string {
           <button
             v-if="canManage && !s.is_completed"
             type="button"
-            class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-line text-ink-3 transition-colors hover:border-brand hover:text-brand"
+            class="tap-44 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-line text-ink-3 transition-colors hover:border-brand hover:text-brand"
             :aria-label="`ทำเครื่องหมายว่าขั้นตอน “${s.step_title}” เสร็จแล้ว`"
             @click="handleCompleteStep(s.id)"
           >

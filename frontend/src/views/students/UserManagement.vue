@@ -269,7 +269,7 @@ const editMeta = computed(() => {
       <button
         type="button"
         @click="openAdd"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 min-h-11 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
       >
         <i class="bi bi-person-plus-fill"></i> เพิ่มผู้ใช้งาน
       </button>
@@ -280,7 +280,7 @@ const editMeta = computed(() => {
       <button
         type="button"
         @click="groupFilter = 'all'"
-        class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors"
+        class="inline-flex items-center rounded-full px-3.5 min-h-11 py-1.5 text-[13px] font-semibold transition-colors"
         :class="
           groupFilter === 'all'
             ? 'bg-stone-900 text-white shadow-sm'
@@ -294,7 +294,7 @@ const editMeta = computed(() => {
         :key="g.key"
         type="button"
         @click="groupFilter = g.key"
-        class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors"
+        class="inline-flex items-center rounded-full px-3.5 min-h-11 py-1.5 text-[13px] font-semibold transition-colors"
         :class="
           groupFilter === g.key
             ? 'bg-brand text-white shadow-sm'
@@ -304,7 +304,7 @@ const editMeta = computed(() => {
         {{ g.label }}
         <span
           v-if="groupCount(g.key) > 0"
-          :class="groupFilter === g.key ? 'opacity-70' : 'text-stone-400'"
+          :class="groupFilter === g.key ? 'opacity-70' : 'text-ink-3'"
         >
           ({{ groupCount(g.key) }})
         </span>
@@ -348,7 +348,7 @@ const editMeta = computed(() => {
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -409,7 +409,7 @@ const editMeta = computed(() => {
             <button
               type="button"
               @click="openEdit(s)"
-              class="shrink-0 rounded-xl p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-brand"
+              class="shrink-0 rounded-xl p-2.5 text-ink-3 transition-colors hover:bg-stone-100 hover:text-brand"
               :title="'แก้ไข: ' + (s.first_name || '')"
             >
               <i class="bi bi-pencil-square text-lg"></i>
@@ -475,7 +475,7 @@ const editMeta = computed(() => {
                   <button
                     type="button"
                     @click="openEdit(s)"
-                    class="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/10"
+                    class="inline-flex items-center rounded-lg px-2.5 min-h-11 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/10"
                   >
                     <i class="bi bi-pencil-square mr-1"></i> แก้ไข
                   </button>
@@ -514,8 +514,9 @@ const editMeta = computed(() => {
               </div>
               <button
                 type="button"
+                aria-label="ปิดหน้าต่าง"
                 @click="closeModal"
-                class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
+                class="rounded-xl p-2 text-ink-3 hover:bg-stone-100"
               >
                 <i class="bi bi-x-lg"></i>
               </button>
@@ -538,7 +539,7 @@ const editMeta = computed(() => {
                 <div>
                   <label class="mb-1 block text-xs font-semibold text-stone-500"
                     >รหัสผ่านเริ่มต้น
-                    <span class="text-stone-400"
+                    <span class="text-ink-3"
                       >(ไม่กรอก = สุ่ม + บังคับเปลี่ยนครั้งแรก)</span
                     ></label
                   >
@@ -557,7 +558,7 @@ const editMeta = computed(() => {
                       :key="p"
                       type="button"
                       @click="form.prefix = form.prefix === p ? '' : p"
-                      class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
+                      class="inline-flex items-center rounded-full px-3 min-h-11 py-1 text-xs font-medium transition-colors"
                       :class="
                         form.prefix === p
                           ? 'bg-stone-900 text-white'
@@ -588,7 +589,7 @@ const editMeta = computed(() => {
                 </div>
                 <div>
                   <label class="mb-1 block text-xs font-semibold text-stone-500"
-                    >ชื่อเล่น <span class="text-stone-400">(ไม่บังคับ)</span></label
+                    >ชื่อเล่น <span class="text-ink-3">(ไม่บังคับ)</span></label
                   >
                   <input
                     v-model="form.nickname"
@@ -623,7 +624,7 @@ const editMeta = computed(() => {
               <!-- หน้าที่ — เฉพาะ role ที่รับผิดชอบหมวดได้ -->
               <div v-if="canHaveResponsibilities">
                 <p class="mb-1 text-xs font-semibold text-stone-500">
-                  หน้าที่ที่รับผิดชอบ <span class="text-stone-400">(เลือกได้หลายหมวด)</span>
+                  หน้าที่ที่รับผิดชอบ <span class="text-ink-3">(เลือกได้หลายหมวด)</span>
                 </p>
                 <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   <button
@@ -631,7 +632,7 @@ const editMeta = computed(() => {
                     :key="opt.value"
                     type="button"
                     @click="toggleResponsibility(opt.value)"
-                    class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[13px] font-medium transition-colors"
+                    class="flex items-center gap-2 rounded-xl border px-3 min-h-11 py-2 text-left text-[13px] font-medium transition-colors"
                     :class="
                       form.responsibilities.includes(opt.value)
                         ? 'border-brand bg-brand/5 text-brand'
@@ -669,7 +670,7 @@ const editMeta = computed(() => {
                 type="button"
                 @click="closeModal"
                 :disabled="saving"
-                class="rounded-xl px-4 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
+                class="inline-flex items-center rounded-xl px-4 min-h-11 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-50"
               >
                 ยกเลิก
               </button>
@@ -677,7 +678,7 @@ const editMeta = computed(() => {
                 type="button"
                 @click="submitForm"
                 :disabled="saving"
-                class="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong disabled:opacity-60"
+                class="inline-flex items-center gap-2 rounded-xl bg-brand px-5 min-h-11 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong disabled:opacity-60"
               >
                 <span
                   v-if="saving"

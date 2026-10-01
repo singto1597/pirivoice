@@ -82,7 +82,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
           </p>
           <h2 class="text-sm sm:text-base font-bold text-stone-900 truncate leading-tight">{{ playbook.title }}</h2>
         </div>
-        <a :href="playbook.pdfUrl" download class="btn-gradient !py-2 !px-3 sm:!px-4 text-xs sm:text-sm shrink-0">
+        <a :href="playbook.pdfUrl" download class="btn-gradient !h-11 !px-3 sm:!px-4 text-xs sm:text-sm shrink-0">
           <i class="bi bi-file-earmark-pdf text-sm sm:text-base"></i>
           <span class="hidden sm:inline">ดาวน์โหลด PDF ต้นฉบับ</span>
           <span class="sm:hidden">ดาวน์โหลด</span>
@@ -135,7 +135,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
       </div>
 
       <!-- 🏁 สิ้นสุดเล่ม -->
-      <div class="mt-8 flex items-center justify-center gap-3 text-stone-400">
+      <div class="mt-8 flex items-center justify-center gap-3 text-ink-3">
         <div class="h-px w-14 sm:w-20 bg-stone-200"></div>
         <span class="text-xs font-semibold">จบเล่ม</span>
         <div class="h-px w-14 sm:w-20 bg-stone-200"></div>
@@ -161,7 +161,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
       <div class="mt-6 text-center">
         <button
           type="button"
-          class="btn-ghost-ui !py-2 !px-3 text-xs"
+          class="btn-ghost-ui !h-11 !px-3 text-xs"
           @click="scrollParent?.scrollTo({ top: 0, behavior: 'smooth' })"
         >
           <i class="bi bi-arrow-up mr-1"></i> กลับขึ้นบน
@@ -174,7 +174,7 @@ const volumeLabel = computed(() => (playbook.value ? `เล่มที่ ${pl
   <div v-else class="text-center py-20">
     <div class="text-5xl mb-4"><i class="bi bi-journal-x text-stone-300"></i></div>
     <h2 class="text-lg font-bold text-stone-700 mb-2">ไม่พบเล่มที่ระบุ</h2>
-    <p class="text-sm text-stone-400 mb-6">ลิงก์นี้อาจไม่ถูกต้อง หรือเล่มถูกนำออกจากคู่มือแล้ว</p>
+    <p class="text-sm text-ink-3 mb-6">ลิงก์นี้อาจไม่ถูกต้อง หรือเล่มถูกนำออกจากคู่มือแล้ว</p>
     <RouterLink to="/playbooks" class="btn-gradient">กลับไปหน้าคู่มือ</RouterLink>
   </div>
 </template>

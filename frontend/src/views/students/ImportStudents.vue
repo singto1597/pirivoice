@@ -223,7 +223,7 @@ onBeforeUnmount(stopPolling);
       <button
         @click="handleDownloadTemplate"
         :disabled="isDownloadingTemplate"
-        class="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-800 disabled:opacity-50"
+        class="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-4 min-h-11 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-800 disabled:opacity-50"
       >
         <span v-if="isDownloadingTemplate" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
         <i v-else class="bi bi-file-earmark-excel"></i>
@@ -297,7 +297,7 @@ onBeforeUnmount(stopPolling);
     <div class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
       <div>
         <label class="mb-2 block text-sm font-semibold text-stone-700">
-          1. เลือกไฟล์ Excel <span class="font-normal text-stone-400">(.xlsx)</span>
+          1. เลือกไฟล์ Excel <span class="font-normal text-ink-3">(.xlsx)</span>
         </label>
         <div class="flex flex-wrap items-center gap-2">
           <input
@@ -314,11 +314,11 @@ onBeforeUnmount(stopPolling);
           >
             <i class="bi bi-file-earmark-excel text-brand"></i>
             <span class="max-w-[260px] truncate">{{ file.name }}</span>
-            <button type="button" class="text-stone-400 transition hover:text-brand" title="ล้างไฟล์ที่เลือก" @click="file = null">
+            <button type="button" class="text-ink-3 transition hover:text-brand" title="ล้างไฟล์ที่เลือก" @click="file = null">
               <i class="bi bi-x-lg"></i>
             </button>
           </span>
-          <span v-else class="text-xs text-stone-400">ยังไม่ได้เลือกไฟล์ (.xlsx)</span>
+          <span v-else class="text-xs text-ink-3">ยังไม่ได้เลือกไฟล์ (.xlsx)</span>
         </div>
       </div>
       <button
@@ -329,7 +329,7 @@ onBeforeUnmount(stopPolling);
         <span v-if="isUploading" class="mr-1 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px]"></span>
         {{ isUploading ? 'กำลังตรวจสอบและอัปโหลดเข้า Queue...' : 'อัปโหลดเข้า Queue' }}
       </button>
-      <p class="text-xs text-stone-400">
+      <p class="text-xs text-ink-3">
         <i class="bi bi-arrow-clockwise mr-1"></i>
         อัปโหลดเสร็จ ไฟล์จะถูกส่งเข้า <b class="text-stone-600">Queue</b> ทันที — ไม่ต้องค้างหน้านี้รอ
         จากนั้นกด <b class="text-stone-600">"เริ่มเดี๋ยวนี้"</b> ใน Queue List เพื่อสั่งให้ระบบทำงานเบื้องหลัง
@@ -341,7 +341,7 @@ onBeforeUnmount(stopPolling);
       <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 class="text-lg font-bold text-stone-900">
           <i class="bi bi-list-ul mr-1 text-brand"></i> Queue List — คิวนำเข้านักเรียน
-          <span v-if="jobs.length" class="ml-1 text-sm font-normal text-stone-400">({{ jobs.length }})</span>
+          <span v-if="jobs.length" class="ml-1 text-sm font-normal text-ink-3">({{ jobs.length }})</span>
         </h2>
         <div class="flex items-center gap-2">
           <span v-if="runningJobs.length" class="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
@@ -351,7 +351,7 @@ onBeforeUnmount(stopPolling);
           <button
             @click="refreshJobs(true)"
             :disabled="isRefreshing"
-            class="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-800 disabled:opacity-50"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 min-h-11 py-1.5 text-xs font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-800 disabled:opacity-50"
           >
             <span v-if="isRefreshing" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
             <i v-else class="bi bi-arrow-clockwise"></i>
@@ -372,7 +372,7 @@ onBeforeUnmount(stopPolling);
         <button
           @click="refreshJobs(true)"
           :disabled="isRefreshing"
-          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-brand/20 bg-white px-3 py-1 text-xs font-bold text-brand transition hover:bg-brand/5 disabled:opacity-50"
+          class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-brand/20 bg-white px-3 min-h-11 py-1 text-xs font-bold text-brand transition hover:bg-brand/5 disabled:opacity-50"
         >
           <span v-if="isRefreshing" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
           <i v-else class="bi bi-arrow-clockwise"></i>
@@ -402,7 +402,7 @@ onBeforeUnmount(stopPolling);
         <button
           @click="refreshJobs(true)"
           :disabled="isRefreshing"
-          class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-strong disabled:opacity-50"
+          class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 min-h-11 py-2 text-xs font-bold text-white transition hover:bg-brand-strong disabled:opacity-50"
         >
           <span v-if="isRefreshing" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
           <i v-else class="bi bi-arrow-clockwise"></i>
@@ -431,7 +431,7 @@ onBeforeUnmount(stopPolling);
               <tr class="align-middle">
                 <td class="px-4 py-3 font-medium text-stone-800">
                   {{ job.file_name }}
-                  <div class="text-xs text-stone-400">
+                  <div class="text-xs text-ink-3">
                     {{ new Date(job.created_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) }}
                   </div>
                 </td>
@@ -479,7 +479,7 @@ onBeforeUnmount(stopPolling);
                     v-if="job.status === 'PENDING'"
                     @click="handleStart(job.id)"
                     :disabled="isStartingJobId !== null"
-                    class="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-brand-strong disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 min-h-11 py-2 text-xs font-semibold text-white transition hover:bg-brand-strong disabled:opacity-50"
                   >
                     <span v-if="isStartingJobId === job.id" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
                     <i v-else class="bi bi-play-fill"></i>
@@ -490,7 +490,7 @@ onBeforeUnmount(stopPolling);
                     v-else-if="job.status === 'FAILED'"
                     @click="handleStart(job.id)"
                     :disabled="isStartingJobId !== null"
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-brand/30 bg-white px-3.5 py-2 text-xs font-semibold text-brand transition hover:bg-brand/5 disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-brand/30 bg-white px-3.5 min-h-11 py-2 text-xs font-semibold text-brand transition hover:bg-brand/5 disabled:opacity-50"
                   >
                     <span v-if="isStartingJobId === job.id" class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
                     <i v-else class="bi bi-arrow-counterclockwise"></i>
@@ -500,7 +500,7 @@ onBeforeUnmount(stopPolling);
                   <span v-else-if="isImportJobRunning(job.status)" class="inline-flex items-center gap-1.5 text-xs font-medium text-brand">
                     <span class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span> ทำงานอยู่
                   </span>
-                  <span v-else class="text-xs text-stone-400">—</span>
+                  <span v-else class="text-xs text-ink-3">—</span>
                 </td>
               </tr>
               <!-- error_logs รายแถว (แถวที่ข้อมูลผิด/ถูกข้าม) -->

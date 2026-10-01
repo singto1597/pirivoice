@@ -67,7 +67,7 @@ function onAction(key: string): void {
       <div class="flex items-center gap-3">
         <RouterLink
           to="/app/profile"
-          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-bold text-white"
+          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-bold text-white"
           :aria-label="`โปรไฟล์ของ ${identity.displayName.value}`"
         >
           {{ identity.avatarChar.value }}

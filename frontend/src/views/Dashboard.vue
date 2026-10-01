@@ -359,7 +359,7 @@ const hasTrafficData = computed(
           @click="loadDashboard"
           :disabled="isLoading"
           title="รีเฟรชข้อมูล"
-          class="w-9 h-9 rounded-xl bg-white border border-stone-200 text-stone-500 hover:text-brand hover:border-brand/40 flex items-center justify-center transition disabled:opacity-50"
+          class="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/40 hover:text-brand disabled:opacity-50"
         >
           <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoading }"></i>
         </button>
@@ -546,7 +546,7 @@ const hasTrafficData = computed(
                     <span v-if="idx < 3" class="text-base" role="img" :aria-label="`อันดับ ${idx + 1}`">
                       {{ rankEmoji(idx + 1) }}
                     </span>
-                    <span v-else class="text-sm font-bold text-stone-400" :aria-label="`อันดับ ${idx + 1}`">
+                    <span v-else class="text-sm font-bold text-ink-3" :aria-label="`อันดับ ${idx + 1}`">
                       {{ idx + 1 }}
                     </span>
                   </span>
@@ -556,7 +556,7 @@ const hasTrafficData = computed(
                       <p class="font-semibold text-stone-800 truncate">{{ sc.label }}</p>
                       <span class="text-lg font-bold text-stone-900 shrink-0 tabular-nums">{{ fmtNum(sc.count) }}</span>
                     </div>
-                    <p class="text-[11px] text-stone-400 truncate">{{ sc.description }}</p>
+                    <p class="text-[11px] text-ink-3 truncate">{{ sc.description }}</p>
                     <div class="mt-1.5 flex items-center gap-2">
                       <div class="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden">
                         <div
@@ -565,7 +565,7 @@ const hasTrafficData = computed(
                           :style="{ width: shareWidth(sc.count, maxSubCount(cat)) + '%' }"
                         ></div>
                       </div>
-                      <span class="text-[11px] text-stone-400 shrink-0 tabular-nums">
+                      <span class="text-[11px] text-ink-3 shrink-0 tabular-nums">
                         {{ percent(sc.count, cat.total) }}%
                       </span>
                     </div>
@@ -579,7 +579,7 @@ const hasTrafficData = computed(
                         <span class="w-2 h-2 rounded-full" :class="STATUS_DOT[s.status] ?? 'bg-stone-300'"></span>
                         {{ statusShort(s.status) }} <b class="text-stone-600 tabular-nums">{{ fmtNum(s.count) }}</b>
                       </span>
-                      <span v-if="!sc.by_status.some((x) => x.count > 0)" class="text-[11px] text-stone-400">
+                      <span v-if="!sc.by_status.some((x) => x.count > 0)" class="text-[11px] text-ink-3">
                         ยังไม่มีเรื่อง
                       </span>
                     </div>
@@ -590,19 +590,19 @@ const hasTrafficData = computed(
 
                 <!-- หมวดย่อยนอกระบบ (อื่นๆ) → ไม่คลิก เน้นๆ ให้เห็นว่าไม่ใช่หมวดใน config -->
                 <div v-else class="flex flex-wrap items-center gap-3 rounded-xl p-3 opacity-80">
-                  <span class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-bold text-stone-400"
+                  <span class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-bold text-ink-3"
                     :aria-label="`อันดับ ${idx + 1}`">{{ idx + 1 }}</span>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center justify-between gap-2">
                       <p class="font-semibold text-stone-500 truncate">{{ sc.label }}</p>
                       <span class="text-lg font-bold text-stone-500 shrink-0 tabular-nums">{{ fmtNum(sc.count) }}</span>
                     </div>
-                    <p class="text-[11px] text-stone-400 truncate">{{ sc.description }}</p>
+                    <p class="text-[11px] text-ink-3 truncate">{{ sc.description }}</p>
                   </div>
                 </div>
               </template>
             </div>
-            <p v-else class="text-sm text-stone-400 py-8 text-center">
+            <p v-else class="text-sm text-ink-3 py-8 text-center">
               <i class="bi bi-inbox mr-1"></i> ยังไม่มีเรื่องในหมวดนี้
             </p>
           </div>
@@ -624,7 +624,7 @@ const hasTrafficData = computed(
                 <span class="w-2 h-2 rounded-full shrink-0" :class="STATUS_DOT[r.status] ?? 'bg-stone-300'"></span>
                 <div class="flex-1 min-w-0">
                   <p class="text-sm text-stone-800 truncate group-hover:text-stone-900">{{ r.title }}</p>
-                  <p class="text-[11px] text-stone-400 truncate">
+                  <p class="text-[11px] text-ink-3 truncate">
                     {{ r.category_label }} · {{ r.room_name || 'ไม่ระบุห้อง' }} · {{ fmtDate(r.created_at) }}
                   </p>
                 </div>
@@ -636,7 +636,7 @@ const hasTrafficData = computed(
                 </span>
               </RouterLink>
             </div>
-            <p v-else class="text-sm text-stone-400 py-4 text-center">ยังไม่มีเรื่องล่าสุด</p>
+            <p v-else class="text-sm text-ink-3 py-4 text-center">ยังไม่มีเรื่องล่าสุด</p>
           </div>
         </div>
       </section>
@@ -652,7 +652,7 @@ const hasTrafficData = computed(
             @click="loadTraffic"
             :disabled="isLoadingTraffic"
             title="รีเฟรชสถิติการใช้งาน"
-            class="w-8 h-8 rounded-lg bg-stone-100 text-stone-500 hover:text-brand hover:bg-brand/5 flex items-center justify-center transition disabled:opacity-50"
+            class="flex h-11 w-11 items-center justify-center rounded-lg bg-stone-100 text-stone-500 transition hover:bg-brand/5 hover:text-brand disabled:opacity-50"
           >
             <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoadingTraffic }"></i>
           </button>
@@ -747,7 +747,7 @@ const hasTrafficData = computed(
           <div class="mt-3 pt-3 border-t border-stone-100">
             <div class="flex items-center justify-between">
               <p class="font-display text-2xl font-bold text-stone-900 tabular-nums">{{ fmtNum(data.usage_count) }}</p>
-              <span class="text-xs text-stone-400">ครั้ง (ยอดสะสม)</span>
+              <span class="text-xs text-ink-3">ครั้ง (ยอดสะสม)</span>
             </div>
             <p class="text-xs text-stone-500 mt-1 mb-2"><i class="bi bi-person-check mr-1"></i> การเข้าใช้งานล่าสุด</p>
             <div v-if="data.recent_logins.length" class="space-y-1.5">
@@ -757,10 +757,10 @@ const hasTrafficData = computed(
                 class="flex items-center justify-between text-xs"
               >
                 <span class="text-stone-600 truncate">{{ lg.actor }}</span>
-                <span class="text-stone-400 ml-2 shrink-0">{{ fmtDate(lg.at) }}</span>
+                <span class="text-ink-3 ml-2 shrink-0">{{ fmtDate(lg.at) }}</span>
               </div>
             </div>
-            <p v-else class="text-sm text-stone-400 py-2">ยังไม่มีข้อมูลการเข้าใช้งาน</p>
+            <p v-else class="text-sm text-ink-3 py-2">ยังไม่มีข้อมูลการเข้าใช้งาน</p>
           </div>
         </div>
       </div>

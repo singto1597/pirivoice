@@ -138,8 +138,8 @@ async function handleHide() {
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-sm font-semibold text-stone-800">{{ comment.commenter_name || 'ไม่ระบุชื่อ' }}</span>
-          <span class="text-xs text-stone-400">{{ fmtTime(comment.created_at) }}</span>
-          <span v-if="comment.is_edited" class="text-[11px] text-stone-400">· แก้ไขแล้ว</span>
+          <span class="text-xs text-ink-3">{{ fmtTime(comment.created_at) }}</span>
+          <span v-if="comment.is_edited" class="text-[11px] text-ink-3">· แก้ไขแล้ว</span>
         </div>
         <p class="text-sm text-stone-700 mt-0.5 whitespace-pre-wrap break-words">{{ comment.body }}</p>
         <!-- action: ตอบกลับ / แจ้ง (ทุกคน ยกเว้นตัวเอง) / ซ่อน (สภา/แอดมิน) -->
@@ -148,7 +148,7 @@ async function handleHide() {
             type="button"
             data-testid="reply-btn"
             @click="replying = !replying"
-            class="text-stone-400 hover:text-brand font-medium flex items-center gap-1"
+            class="text-ink-3 hover:text-brand font-medium flex items-center gap-1"
           >
             <i class="bi bi-reply"></i> ตอบกลับ
           </button>
@@ -158,7 +158,7 @@ async function handleHide() {
             data-testid="report-btn"
             @click="handleReport"
             :disabled="acting"
-            class="text-stone-400 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
+            class="text-ink-3 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
           >
             <i class="bi bi-flag"></i> แจ้ง
           </button>
@@ -168,7 +168,7 @@ async function handleHide() {
             data-testid="hide-btn"
             @click="handleHide"
             :disabled="acting"
-            class="text-stone-400 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
+            class="text-ink-3 hover:text-brand font-medium flex items-center gap-1 disabled:opacity-40"
           >
             <i class="bi bi-eye-slash"></i> ซ่อน
           </button>
@@ -188,7 +188,7 @@ async function handleHide() {
             type="button"
             :disabled="posting || !replyBody.trim()"
             @click="submitReply"
-            class="px-3.5 py-2 bg-brand text-white rounded-xl text-sm hover:bg-brand-strong disabled:opacity-50"
+            class="inline-flex items-center px-3.5 min-h-11 py-2 bg-brand text-white rounded-xl text-sm hover:bg-brand-strong disabled:opacity-50"
           >
             {{ posting ? '...' : 'ตอบ' }}
           </button>

@@ -308,7 +308,7 @@ function coversToday(t: AcademicTerm): boolean {
       <button
         type="button"
         @click="openAdd"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 min-h-11 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-brand-strong hover:shadow-lg active:scale-[0.97]"
       >
         <i class="bi bi-plus-lg"></i> เพิ่มภาคเรียน
       </button>
@@ -321,7 +321,7 @@ function coversToday(t: AcademicTerm): boolean {
         :key="t.value"
         type="button"
         @click="changeStatus(t.value)"
-        class="rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors"
+        class="inline-flex items-center rounded-full px-3.5 min-h-11 py-1.5 text-[13px] font-semibold transition-colors"
         :class="
           statusFilter === t.value
             ? 'bg-stone-900 text-white shadow-sm'
@@ -330,7 +330,7 @@ function coversToday(t: AcademicTerm): boolean {
       >
         {{ t.label }}
       </button>
-      <span v-if="!isLoading" class="ml-1 text-[13px] text-stone-400">
+      <span v-if="!isLoading" class="ml-1 text-[13px] text-ink-3">
         {{ total }} ภาคเรียน
       </span>
     </div>
@@ -350,7 +350,7 @@ function coversToday(t: AcademicTerm): boolean {
       <button
         type="button"
         @click="load"
-        class="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-brand ring-1 ring-red-200 hover:bg-red-100"
+        class="inline-flex items-center mt-3 rounded-xl bg-white px-4 min-h-11 py-2 text-sm font-semibold text-brand ring-1 ring-red-200 hover:bg-red-100"
       >
         ลองใหม่
       </button>
@@ -362,7 +362,7 @@ function coversToday(t: AcademicTerm): boolean {
       <p class="text-sm font-semibold text-stone-600">
         {{ statusFilter === 'deleted' ? 'ไม่มีภาคเรียนที่ถูกลบ' : 'ยังไม่มีภาคเรียน' }}
       </p>
-      <p class="mt-1 text-[13px] text-stone-400">
+      <p class="mt-1 text-[13px] text-ink-3">
         {{
           statusFilter === 'deleted'
             ? 'ภาคเรียนที่ลบจะมาแสดงที่นี่'
@@ -435,7 +435,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="actingId === t.id"
                 @click="doRestore(t)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
                 <i :class="busy(t, 'restore') ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-arrow-counterclockwise'"></i>
                 กู้คืน
@@ -447,7 +447,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="actingId === t.id"
                 @click="doSetCurrent(t)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 min-h-11 py-2 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
               >
                 <i :class="busy(t, 'current') ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check2-circle'"></i>
                 ใช้เป็นภาคปัจจุบัน
@@ -456,7 +456,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="actingId === t.id"
                 @click="openEdit(t)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-[13px] font-bold text-stone-700 ring-1 ring-stone-200 transition-colors hover:bg-stone-100 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 min-h-11 py-2 text-[13px] font-bold text-stone-700 ring-1 ring-stone-200 transition-colors hover:bg-stone-100 disabled:opacity-50"
               >
                 <i class="bi bi-pencil-square"></i> แก้ไข
               </button>
@@ -464,7 +464,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="actingId === t.id"
                 @click="doDelete(t)"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-[13px] font-bold text-red-600 ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 min-h-11 py-2 text-[13px] font-bold text-red-600 ring-1 ring-red-200 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
                 <i :class="busy(t, 'delete') ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-trash3'"></i>
                 ลบ
@@ -507,7 +507,7 @@ function coversToday(t: AcademicTerm): boolean {
               <button
                 type="button"
                 @click="closeModal"
-                class="rounded-xl p-2 text-stone-400 hover:bg-stone-100"
+                class="rounded-xl p-2 text-ink-3 hover:bg-stone-100"
                 aria-label="ปิด"
               >
                 <i class="bi bi-x-lg"></i>
@@ -553,7 +553,7 @@ function coversToday(t: AcademicTerm): boolean {
                   />
                 </div>
               </div>
-              <p class="text-[11px] text-stone-400">
+              <p class="text-[11px] text-ink-3">
                 <i class="bi bi-info-circle mr-1"></i>วันสิ้นสุด <b>รวมวันสุดท้ายด้วย</b> —
                 ถ้าภาคจบวันที่ 10 ต.ค. ให้เลือก 10 ต.ค.
               </p>
@@ -589,7 +589,7 @@ function coversToday(t: AcademicTerm): boolean {
               <button
                 type="button"
                 @click="closeModal"
-                class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-100"
+                class="inline-flex items-center rounded-xl bg-white px-4 min-h-11 py-2.5 text-sm font-semibold text-stone-600 ring-1 ring-stone-200 transition-colors hover:bg-stone-100"
               >
                 ยกเลิก
               </button>
@@ -597,7 +597,7 @@ function coversToday(t: AcademicTerm): boolean {
                 type="button"
                 :disabled="saving || !!formError"
                 @click="save"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 min-h-11 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-50"
               >
                 <i :class="saving ? 'bi bi-arrow-repeat animate-spin' : 'bi bi-check-lg'"></i>
                 {{ modalMode === 'add' ? 'เพิ่มภาคเรียน' : 'บันทึก' }}

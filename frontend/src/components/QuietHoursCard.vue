@@ -147,7 +147,7 @@ onMounted(load)
       <p>{{ loadError }}</p>
       <button
         type="button"
-        class="mt-3 rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        class="inline-flex items-center mt-3 rounded-lg border border-stone-300 px-3 min-h-11 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
         @click="load"
       >
         ลองอีกครั้ง
@@ -175,7 +175,7 @@ onMounted(load)
           :aria-checked="enabled"
           :aria-label="enabled ? 'ปิดการพักแจ้งเตือน' : 'เปิดการพักแจ้งเตือน'"
           :disabled="saving"
-          class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
+          class="tap-44 relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
           :class="enabled ? 'bg-brand' : 'bg-stone-300'"
           @click="setEnabled(!enabled)"
         >
@@ -210,7 +210,7 @@ onMounted(load)
           <button
             type="button"
             :disabled="saving || !isDirty"
-            class="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-[#a11717] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
+            class="inline-flex items-center rounded-xl bg-brand px-4 min-h-11 py-2 text-sm font-semibold text-white hover:bg-[#a11717] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
             @click="saveWindow"
           >
             บันทึกช่วงเวลา
@@ -224,7 +224,7 @@ onMounted(load)
             :key="p.label"
             type="button"
             :disabled="saving"
-            class="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
+            class="inline-flex items-center rounded-full border border-stone-300 px-3 min-h-11 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
             @click="usePreset(p)"
           >
             {{ p.label }}

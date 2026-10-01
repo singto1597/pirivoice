@@ -43,7 +43,7 @@ function select(to: { name: string }): void {
         :key="option.key"
         type="button"
         :aria-current="route.name === option.to.name ? 'page' : undefined"
-        class="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[10px] text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        class="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-[10px] text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
         :class="
           route.name === option.to.name
             ? 'bg-surface text-brand ring-1 ring-line'

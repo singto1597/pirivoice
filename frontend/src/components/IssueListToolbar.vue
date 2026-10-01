@@ -44,7 +44,7 @@ watch(sort, () => emit('change'))
   <div ref="rootEl" class="flex flex-wrap items-center gap-2">
     <!-- 🔍 ค้นหา -->
     <div class="relative flex-1 min-w-[200px] sm:flex-none sm:w-72">
-      <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-sm"></i>
+      <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 text-sm"></i>
       <input
         v-model="q"
         type="search"
@@ -56,7 +56,7 @@ watch(sort, () => emit('change'))
         type="button"
         @click="q = ''"
         title="ล้างคำค้นหา"
-        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-sm"
+        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3 hover:text-stone-600 text-sm"
       >
         <i class="bi bi-x-circle-fill"></i>
       </button>
@@ -69,7 +69,7 @@ watch(sort, () => emit('change'))
         @click="open = !open"
         :aria-expanded="open"
         title="กรอง / เรียงลำดับ"
-        class="relative flex items-center gap-1.5 px-3 py-2.5 border rounded-xl text-sm transition"
+        class="relative flex min-w-11 items-center gap-1.5 px-3 h-11 border rounded-xl text-sm transition"
         :class="
           open
             ? 'border-brand bg-red-50 text-brand'
@@ -103,7 +103,7 @@ watch(sort, () => emit('change'))
                 type="button"
                 @click="sort = 'desc'"
                 :class="sort === 'desc' ? 'bg-white border border-stone-200 text-brand' : 'border border-transparent text-stone-500 hover:text-stone-700'"
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
+                class="inline-flex items-center px-3 min-h-11 py-1.5 rounded-lg text-sm font-medium transition"
               >
                 ใหม่ไปเก่า
               </button>
@@ -111,7 +111,7 @@ watch(sort, () => emit('change'))
                 type="button"
                 @click="sort = 'asc'"
                 :class="sort === 'asc' ? 'bg-white border border-stone-200 text-brand' : 'border border-transparent text-stone-500 hover:text-stone-700'"
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
+                class="inline-flex items-center px-3 min-h-11 py-1.5 rounded-lg text-sm font-medium transition"
               >
                 เก่าไปใหม่
               </button>
@@ -122,7 +122,7 @@ watch(sort, () => emit('change'))
     </div>
 
     <!-- จำนวนเรื่อง -->
-    <span class="text-sm text-stone-400 ml-auto tabular-nums" :class="{ 'opacity-50': loading }">
+    <span class="text-sm text-ink-3 ml-auto tabular-nums" :class="{ 'opacity-50': loading }">
       {{ count.toLocaleString('en-US') }} / {{ total.toLocaleString('en-US') }} เรื่อง
     </span>
   </div>

@@ -229,7 +229,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
         @click="load"
         :disabled="isLoading"
         title="รีเฟรช"
-        class="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand disabled:opacity-50"
+        class="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand disabled:opacity-50"
       >
         <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoading }"></i>
       </button>
@@ -301,7 +301,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
       <button
         type="button"
         @click="load"
-        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white transition hover:bg-brand-strong"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-5 min-h-11 py-2.5 text-sm font-medium text-white transition hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise mr-1"></i> ลองใหม่
       </button>
@@ -335,7 +335,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                 <td class="whitespace-nowrap px-4 py-2.5 text-stone-500 tabular-nums">{{ fmtDateTime(e.created_at) }}</td>
                 <td class="px-4 py-2.5">
                   <span class="font-medium text-stone-700">{{ e.actor_identifier }}</span>
-                  <span v-if="!isBlank(e.ip_address)" class="block text-[11px] text-stone-400 tabular-nums">{{ e.ip_address }}</span>
+                  <span v-if="!isBlank(e.ip_address)" class="block text-[11px] text-ink-3 tabular-nums">{{ e.ip_address }}</span>
                 </td>
                 <td class="whitespace-nowrap px-4 py-2.5">
                   <span v-if="hasRoom(e)" class="text-stone-600">{{ fmtRoom(e) }}</span>
@@ -344,13 +344,13 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                 <td class="px-4 py-2.5">
                   <span class="inline-flex items-center gap-1.5">
                     <span class="font-medium text-stone-800">{{ actionLabel(e.action) }}</span>
-                    <span class="font-mono text-[11px] text-stone-400">{{ e.action }}</span>
+                    <span class="font-mono text-[11px] text-ink-3">{{ e.action }}</span>
                   </span>
-                  <span v-if="!isBlank(e.endpoint_or_command)" class="block font-mono text-[11px] text-stone-400">{{ e.endpoint_or_command }}</span>
+                  <span v-if="!isBlank(e.endpoint_or_command)" class="block font-mono text-[11px] text-ink-3">{{ e.endpoint_or_command }}</span>
                 </td>
                 <td class="px-4 py-2.5 text-stone-500">
                   <template v-if="!isBlank(e.entity_type)">
-                    <span class="text-stone-400">{{ e.entity_type }}</span>
+                    <span class="text-ink-3">{{ e.entity_type }}</span>
                     <span v-if="!isBlank(e.entity_id)" class="font-mono text-stone-600">#{{ e.entity_id }}</span>
                   </template>
                   <span v-else class="text-stone-300">-</span>
@@ -366,7 +366,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
                     v-if="hasPayload(e)"
                     type="button"
                     @click="toggleExpand(e.id)"
-                    class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition hover:bg-brand/5 hover:text-brand"
+                    class="inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink-3 transition hover:bg-brand/5 hover:text-brand"
                     :title="expanded.has(e.id) ? 'ย่อรายละเอียด' : 'ดูรายละเอียด'"
                   >
                     <i class="bi" :class="expanded.has(e.id) ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
@@ -397,7 +397,7 @@ const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 
         </table>
       </div>
 
-      <div class="flex items-center justify-between px-4 py-3 text-xs text-stone-400">
+      <div class="flex items-center justify-between px-4 py-3 text-xs text-ink-3">
         <span>แสดง {{ items.length }} จาก {{ total }} รายการ</span>
         <span v-if="pages > 1">หน้า {{ page }} / {{ pages }}</span>
       </div>

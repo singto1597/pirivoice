@@ -153,7 +153,7 @@ function metaClass(a: ActivityItem): string {
       <button
         type="button"
         :aria-pressed="tab === 'activity'"
-        class="rounded-xl border px-4 py-2 text-sm font-bold transition-all"
+        class="inline-flex items-center rounded-xl border px-4 min-h-11 py-2 text-sm font-bold transition-all"
         :class="tab === 'activity'
           ? 'border-brand bg-brand text-white'
           : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
@@ -164,7 +164,7 @@ function metaClass(a: ActivityItem): string {
       <button
         type="button"
         :aria-pressed="tab === 'bookmarks'"
-        class="rounded-xl border px-4 py-2 text-sm font-bold transition-all"
+        class="inline-flex items-center rounded-xl border px-4 min-h-11 py-2 text-sm font-bold transition-all"
         :class="tab === 'bookmarks'
           ? 'border-brand bg-brand text-white'
           : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
@@ -183,7 +183,7 @@ function metaClass(a: ActivityItem): string {
           :key="t.value || 'all'"
           type="button"
           :aria-pressed="actType === t.value"
-          class="rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-all"
+          class="inline-flex items-center rounded-xl border px-3 min-h-11 py-1.5 text-[13px] font-semibold transition-all"
           :class="actType === t.value
             ? 'border-brand bg-brand text-white'
             : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
@@ -219,11 +219,11 @@ function metaClass(a: ActivityItem): string {
         v-else-if="actError"
         class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
       >
-        <i class="bi bi-wifi-off mb-3 text-3xl text-stone-400"></i>
+        <i class="bi bi-wifi-off mb-3 text-3xl text-ink-3"></i>
         <p class="text-stone-600">{{ actError }}</p>
         <button
           type="button"
-          class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
+          class="inline-flex items-center mt-4 rounded-lg bg-brand px-5 min-h-11 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
           @click="loadActivity"
         >
           ลองอีกครั้ง
@@ -268,7 +268,7 @@ function metaClass(a: ActivityItem): string {
           </div>
           <div class="min-w-0 flex-1">
             <div class="mb-1 flex flex-wrap items-center gap-2">
-              <span class="text-[11px] font-bold text-stone-400">
+              <span class="text-[11px] font-bold text-ink-3">
                 {{ ACTIVITY_VERBS[a.activity_type] }}
               </span>
               <span
@@ -290,7 +290,7 @@ function metaClass(a: ActivityItem): string {
               {{ a.excerpt }}
             </p>
           </div>
-          <span class="shrink-0 text-xs tabular-nums text-stone-400">{{ fmtTime(a.created_at) }}</span>
+          <span class="shrink-0 text-xs tabular-nums text-ink-3">{{ fmtTime(a.created_at) }}</span>
         </component>
       </TransitionGroup>
 
@@ -309,7 +309,7 @@ function metaClass(a: ActivityItem): string {
         <button
           type="button"
           :aria-pressed="bmEntityType === ''"
-          class="rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-all"
+          class="inline-flex items-center rounded-xl border px-3 min-h-11 py-1.5 text-[13px] font-semibold transition-all"
           :class="bmEntityType === ''
             ? 'border-brand bg-brand text-white'
             : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
@@ -322,7 +322,7 @@ function metaClass(a: ActivityItem): string {
           :key="key"
           type="button"
           :aria-pressed="bmEntityType === key"
-          class="rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-all"
+          class="inline-flex items-center rounded-xl border px-3 min-h-11 py-1.5 text-[13px] font-semibold transition-all"
           :class="bmEntityType === key
             ? 'border-brand bg-brand text-white'
             : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
@@ -349,11 +349,11 @@ function metaClass(a: ActivityItem): string {
         v-else-if="bmError"
         class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
       >
-        <i class="bi bi-wifi-off mb-3 text-3xl text-stone-400"></i>
+        <i class="bi bi-wifi-off mb-3 text-3xl text-ink-3"></i>
         <p class="text-stone-600">{{ bmError }}</p>
         <button
           type="button"
-          class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
+          class="inline-flex items-center mt-4 rounded-lg bg-brand px-5 min-h-11 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
           @click="loadBookmarks"
         >
           ลองอีกครั้ง
@@ -407,7 +407,7 @@ function metaClass(a: ActivityItem): string {
               {{ b.excerpt }}
             </p>
           </div>
-          <span class="shrink-0 text-xs tabular-nums text-stone-400">{{ fmtTime(b.created_at) }}</span>
+          <span class="shrink-0 text-xs tabular-nums text-ink-3">{{ fmtTime(b.created_at) }}</span>
         </component>
       </TransitionGroup>
 

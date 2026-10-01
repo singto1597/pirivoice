@@ -87,13 +87,13 @@ const inputCls = 'w-full px-3.5 py-2.5 border border-stone-300 rounded-xl text-s
 
     <!-- Error + retry -->
     <div v-else-if="loadError" class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center">
-      <i class="bi bi-pencil-square mb-3 block text-3xl text-stone-400"></i>
+      <i class="bi bi-pencil-square mb-3 block text-3xl text-ink-3"></i>
       <p class="text-[15px] font-semibold text-stone-700">ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ในขณะนี้</p>
       <p class="mt-1 text-sm text-stone-500">ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
       <button
         type="button"
         @click="loadProfile"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>

@@ -350,7 +350,7 @@ function destinationIcon(dest: string | null | undefined): string {
             v-for="it in pendingOnMe"
             :key="it.id"
             :to="{ name: 'issue-detail', params: { id: it.id } }"
-            class="group flex items-center gap-3 rounded-control px-2.5 py-2.5 transition-colors hover:bg-canvas"
+            class="group flex items-center gap-3 rounded-control px-2.5 min-h-11 py-2.5 transition-colors hover:bg-canvas"
           >
             <!-- ⚠️ ความสำคัญสื่อด้วย **น้ำหนักสี** (เข้ม/กลาง/อ่อน) ไม่ใช่สีใหม่ —
                  `urgent` เป็นแดงทึบ `high` เป็นแดงอ่อน `normal` เป็นกลาง ⇒ เรียงลำดับ
@@ -408,7 +408,7 @@ function destinationIcon(dest: string | null | undefined): string {
             v-for="b in unvotedBoards"
             :key="b.id"
             :to="{ name: 'board-detail', params: { id: b.id } }"
-            class="group flex items-center gap-3 rounded-control px-2.5 py-2.5 transition-colors hover:bg-canvas"
+            class="group flex items-center gap-3 rounded-control px-2.5 min-h-11 py-2.5 transition-colors hover:bg-canvas"
           >
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
               <i class="bi bi-hand-thumbs-up"></i>
@@ -473,7 +473,7 @@ function destinationIcon(dest: string | null | undefined): string {
             v-for="ev in closingSoon"
             :key="ev.id"
             :to="{ name: 'event-detail', params: { id: ev.id } }"
-            class="group flex items-center gap-3 rounded-control px-2.5 py-2.5 transition-colors hover:bg-canvas"
+            class="group flex items-center gap-3 rounded-control px-2.5 min-h-11 py-2.5 transition-colors hover:bg-canvas"
           >
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warn-soft text-warn">
               <i class="bi bi-calendar-event"></i>
@@ -598,7 +598,7 @@ function destinationIcon(dest: string | null | undefined): string {
         <div class="grid grid-cols-4 gap-1">
           <RouterLink
             :to="{ name: 'my-issues' }"
-            class="rounded-control px-2 py-2 transition-colors hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            class="inline-flex items-center rounded-control px-2 min-h-11 py-2 transition-colors hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             <p
               class="font-display text-xl font-bold leading-none tabular-nums text-ink-1 sm:text-2xl"
@@ -611,7 +611,7 @@ function destinationIcon(dest: string | null | undefined): string {
             v-for="tile in SUMMARY_TILES"
             :key="tile.status"
             :to="{ name: 'my-issues', query: { status: tile.status } }"
-            class="rounded-control px-2 py-2 transition-colors hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            class="inline-flex items-center rounded-control px-2 min-h-11 py-2 transition-colors hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             <p
               class="font-display text-xl font-bold leading-none tabular-nums text-ink-1 sm:text-2xl"
@@ -633,7 +633,7 @@ function destinationIcon(dest: string | null | undefined): string {
             v-for="c in otherStatusChips"
             :key="c.status"
             :to="{ name: 'my-issues', query: { status: c.status } }"
-            class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors"
+            class="inline-flex items-center gap-1.5 rounded-full px-3 min-h-11 py-1.5 text-[11px] font-bold transition-colors"
             :class="
               c.attention
                 ? 'bg-brand-tint text-brand hover:bg-brand/15'
@@ -654,7 +654,7 @@ function destinationIcon(dest: string | null | undefined): string {
               v-for="it in summary.recent.slice(0, 2)"
               :key="it.id"
               :to="{ name: 'issue-detail', params: { id: it.id } }"
-              class="group flex items-center gap-3 rounded-control px-2.5 py-2.5 transition-colors hover:bg-canvas"
+              class="group flex items-center gap-3 rounded-control px-2.5 min-h-11 py-2.5 transition-colors hover:bg-canvas"
             >
               <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-canvas text-ink-2">
                 <i :class="['bi', destinationIcon(it.requested_destination)]"></i>
@@ -725,7 +725,7 @@ function destinationIcon(dest: string | null | undefined): string {
             v-for="r in reports.slice(0, 3)"
             :key="r.id"
             :to="{ name: 'board-reports' }"
-            class="group flex items-start gap-3 rounded-control px-2.5 py-2.5 transition-colors hover:bg-canvas"
+            class="group flex items-start gap-3 rounded-control px-2.5 min-h-11 py-2.5 transition-colors hover:bg-canvas"
           >
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-canvas text-ink-2">
               <i class="bi bi-flag text-sm"></i>

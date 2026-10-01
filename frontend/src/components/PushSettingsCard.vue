@@ -211,7 +211,7 @@ async function onRepair() {
         <button
           type="button"
           :disabled="toggling || busy"
-          class="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
+          class="inline-flex items-center rounded-lg bg-brand px-3 min-h-11 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
           @click="onRepair"
         >
           เปิดใหม่บนเครื่องนี้
@@ -219,7 +219,7 @@ async function onRepair() {
         <button
           type="button"
           :disabled="toggling || busy"
-          class="rounded-lg border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2 disabled:opacity-50"
+          class="inline-flex items-center rounded-lg border border-stone-300 px-3 min-h-11 py-2 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2 disabled:opacity-50"
           @click="onToggle"
         >
           ปิดบนเครื่องนี้
@@ -247,7 +247,7 @@ async function onRepair() {
         :aria-checked="pushSubscribed"
         :aria-label="pushSubscribed ? 'ปิดการแจ้งเตือนบนเครื่องนี้' : 'เปิดการแจ้งเตือนบนเครื่องนี้'"
         :disabled="toggling || busy"
-        class="relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
+        class="tap-44 relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
         :class="pushSubscribed ? 'bg-brand' : 'bg-stone-300'"
         @click="onToggle"
       >

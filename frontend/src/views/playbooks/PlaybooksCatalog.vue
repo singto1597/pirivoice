@@ -35,7 +35,7 @@ const isCoverBroken = (id: string) => failedCovers.value.has(id)
             @error="onCoverError(pb.id)"
             class="absolute inset-0 w-full h-full object-cover"
           />
-          <div v-else class="text-center text-stone-400">
+          <div v-else class="text-center text-ink-3">
             <i class="bi bi-journal-text text-5xl"></i>
             <p class="text-xs font-semibold mt-2">ยังไม่พร้อมใช้งาน</p>
           </div>
@@ -51,7 +51,7 @@ const isCoverBroken = (id: string) => failedCovers.value.has(id)
           <p class="text-sm text-stone-500 mb-3 line-clamp-2">{{ pb.description }}</p>
 
           <div class="mt-auto flex items-center justify-between pt-3 border-t border-stone-200">
-            <span class="text-xs text-stone-400 flex items-center gap-1.5">
+            <span class="text-xs text-ink-3 flex items-center gap-1.5">
               <i class="bi bi-file-earmark-text"></i> {{ pb.totalPages }} หน้า
             </span>
             <span class="inline-flex items-center gap-1.5 text-xs font-bold text-brand">

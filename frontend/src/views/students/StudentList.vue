@@ -67,7 +67,7 @@ async function changeRole(student: Student) {
       </select>
       <input v-model="search" @keyup.enter="load" type="text" placeholder="ค้นหา รหัสนักเรียน/ชื่อ..."
         class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm sm:flex-1" />
-      <button @click="load" class="rounded-xl bg-stone-100 px-4 py-2.5 text-sm font-medium hover:bg-stone-200">
+      <button @click="load" class="inline-flex items-center rounded-xl bg-stone-100 px-4 min-h-11 py-2.5 text-sm font-medium hover:bg-stone-200">
         <i class="bi bi-search"></i> ค้นหา
       </button>
     </div>
@@ -94,7 +94,7 @@ async function changeRole(student: Student) {
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -121,7 +121,7 @@ async function changeRole(student: Student) {
               <span class="ml-1.5">· {{ s.room_code }}</span>
             </p>
           </div>
-          <button @click="changeRole(s)" class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium"
+          <button @click="changeRole(s)" class="inline-flex items-center shrink-0 rounded-full px-2.5 min-h-11 py-1 text-xs font-medium"
             :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
             {{ roleLabel(s.class_role) }} <i class="bi bi-pencil-square text-[10px]"></i>
           </button>
@@ -153,7 +153,7 @@ async function changeRole(student: Student) {
               </td>
               <td class="px-4 py-2.5 text-stone-600">{{ s.room_code }}</td>
               <td class="px-4 py-2.5">
-                <button @click="changeRole(s)" class="rounded-full px-2.5 py-1 text-xs font-medium"
+                <button @click="changeRole(s)" class="inline-flex items-center rounded-full px-2.5 min-h-11 py-1 text-xs font-medium"
                   :class="s.class_role === 'student' ? 'bg-stone-100 text-stone-600' : 'bg-brand/10 text-brand'">
                   {{ roleLabel(s.class_role) }} <i class="bi bi-pencil-square text-[10px]"></i>
                 </button>

@@ -35,7 +35,7 @@ const columns = computed(() => `repeat(${props.tabs.length}, minmax(0, 1fr))`)
       type="button"
       role="tab"
       :aria-selected="tab.key === props.modelValue"
-      class="-mb-px flex h-11 items-center justify-center gap-1.5 border-b-2 px-2 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+      class="-mb-px flex min-h-11 items-center justify-center gap-1.5 border-b-2 px-2 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
       :class="
         tab.key === props.modelValue
           ? 'border-brand text-brand'

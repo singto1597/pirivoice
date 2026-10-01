@@ -261,14 +261,14 @@ function fmtTime(iso: string): string {
       <button
         type="button"
         @click="load()"
-        class="px-5 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong"
+        class="inline-flex items-center px-5 min-h-11 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise mr-1"></i> ลองอีกครั้ง
       </button>
       <button
         type="button"
         @click="router.push({ name: 'events' })"
-        class="px-5 py-2.5 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200"
+        class="inline-flex items-center px-5 min-h-11 py-2.5 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200"
       >
         กลับไปหน้ากิจกรรม
       </button>
@@ -299,7 +299,7 @@ function fmtTime(iso: string): string {
         <span v-else-if="event.is_registration_open" class="text-[11px] font-semibold text-emerald-600">
           <i class="bi bi-door-open mr-1"></i>เปิดรับสมัคร
         </span>
-        <span v-else class="text-[11px] text-stone-400">
+        <span v-else class="text-[11px] text-ink-3">
           <i class="bi bi-lock mr-1"></i>ปิดรับสมัครแล้ว
         </span>
         <span v-if="isFull && event.status !== 'cancelled'" class="text-[11px] font-semibold text-red-600">
@@ -321,10 +321,10 @@ function fmtTime(iso: string): string {
 
       <div class="mt-3 space-y-1.5 text-sm text-stone-600">
         <div>
-          <i class="bi bi-clock mr-1.5 text-stone-400"></i>{{ fmtDateTime(event.event_date) }}
+          <i class="bi bi-clock mr-1.5 text-ink-3"></i>{{ fmtDateTime(event.event_date) }}
         </div>
         <div v-if="event.location">
-          <i class="bi bi-geo-alt mr-1.5 text-stone-400"></i>{{ event.location }}
+          <i class="bi bi-geo-alt mr-1.5 text-ink-3"></i>{{ event.location }}
         </div>
         <!-- ⏳ ปิดรับเมื่อไหร่ (4.5) — ใช้ `closes_at` = min(วันจัด, กำหนดปิดรับ) ที่ backend คิดให้
              🚨 เดิมบล็อกนี้เป็น `v-if="event.registration_deadline"` ⇒ กิจกรรมที่ **ไม่ได้ตั้ง
@@ -332,10 +332,10 @@ function fmtTime(iso: string): string {
                 ไม่มีบรรทัดนี้เลย ทั้งที่ความจริงมันปิดรับที่ *วันจัด* ⇒ ผู้ใช้ไม่รู้เลยว่าหมดเขตเมื่อไหร่
              ⚠️ ห้ามเทียบเวลาที่นี่ — `is_registration_open` มาจาก server (คำนวณใน SQL) -->
         <div>
-          <i class="bi bi-hourglass-split mr-1.5 text-stone-400"></i>
+          <i class="bi bi-hourglass-split mr-1.5 text-ink-3"></i>
           <template v-if="event.is_registration_open">
             <span class="font-semibold text-stone-700">{{ closingLabel(event.closes_at) }}</span>
-            <span class="text-stone-400">
+            <span class="text-ink-3">
               · {{ fmtDateTime(event.closes_at) }}<template v-if="!event.registration_deadline"> (พร้อมวันจัด)</template>
             </span>
           </template>
@@ -375,7 +375,7 @@ function fmtTime(iso: string): string {
       </div>
       <p
         v-if="event.capacity !== null"
-        class="mt-2.5 text-[11px] text-stone-400"
+        class="mt-2.5 text-[11px] text-ink-3"
       >
         <i class="bi bi-info-circle mr-1"></i>รับทั้งหมด {{ event.capacity.toLocaleString('en-US') }} ที่นั่ง
         · ที่นั่งเต็มแล้วระบบจะเข้าคิวสำรองให้อัตโนมัติ
@@ -428,7 +428,7 @@ function fmtTime(iso: string): string {
             <button
               type="button"
               data-testid="copy-share-url"
-              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
+              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand px-4 min-h-11 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
               @click="copyShareUrl"
             >
               <i class="bi bi-clipboard"></i> คัดลอก
@@ -440,7 +440,7 @@ function fmtTime(iso: string): string {
             ล็อกอิน ซึ่งอ่านได้ว่า "ลิงก์เสีย" · บอกตรงนี้จึงลดการตีความผิด (และระบบจำปลายทางไว้
             แล้ว พอล็อกอินเสร็จจะกลับมาที่หน้านี้เอง)
           -->
-          <p class="text-[11px] text-stone-400">
+          <p class="text-[11px] text-ink-3">
             <i class="bi bi-info-circle mr-1"></i>ต้องเข้าสู่ระบบก่อนจึงจะลงทะเบียนได้
             — ถ้ายังไม่ล็อกอิน ระบบจะพากลับมาที่หน้านี้หลังเข้าสู่ระบบ
           </p>
@@ -511,7 +511,7 @@ function fmtTime(iso: string): string {
             ⚠️ ไม่ใช่ความลับ (ไม่มีอะไรเสียหายถ้าคนอื่นเห็น — ตัวกันการปลอมคือลายเซ็น
                ไม่ใช่การปิดบังรหัส) ⇒ โชว์ตลอด ไม่ใช่ซ่อนรอให้ QR พังก่อน
           -->
-          <p class="mt-3 text-[11px] text-stone-400">หรืออ่านรหัสนี้ให้สภาพิมพ์</p>
+          <p class="mt-3 text-[11px] text-ink-3">หรืออ่านรหัสนี้ให้สภาพิมพ์</p>
           <p
             class="mt-1 select-all break-all font-mono text-[11px] text-stone-600"
             data-testid="checkin-token"
@@ -548,7 +548,7 @@ function fmtTime(iso: string): string {
 
       <p
         v-else-if="event.status !== 'cancelled'"
-        class="py-3 text-center text-sm text-stone-400"
+        class="py-3 text-center text-sm text-ink-3"
       >
         <i class="bi bi-lock mr-1"></i>ปิดรับสมัครแล้ว
       </p>

@@ -428,13 +428,13 @@ const inputCls =
       v-else-if="notFound"
       class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center"
     >
-      <i class="bi bi-calendar-x mb-3 block text-3xl text-stone-400"></i>
+      <i class="bi bi-calendar-x mb-3 block text-3xl text-ink-3"></i>
       <p class="text-[15px] font-semibold text-stone-700">ไม่พบกิจกรรมนี้</p>
       <p class="mt-1 text-sm text-stone-500">อาจถูกลบถาวรไปแล้ว หรือลิงก์ไม่ถูกต้อง</p>
       <button
         type="button"
         @click="goBack"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-left"></i> กลับหน้าจัดการกิจกรรม
       </button>
@@ -445,13 +445,13 @@ const inputCls =
       v-else-if="loadError"
       class="rounded-2xl border-2 border-dashed border-stone-200 bg-white py-16 text-center"
     >
-      <i class="bi bi-plugin mb-3 block text-3xl text-stone-400"></i>
+      <i class="bi bi-plugin mb-3 block text-3xl text-ink-3"></i>
       <p class="text-[15px] font-semibold text-stone-700">โหลดข้อมูลกิจกรรมไม่สำเร็จ</p>
       <p class="mt-1 text-sm text-stone-500">ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
       <button
         type="button"
         @click="load"
-        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
+        class="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand px-5 min-h-11 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-strong"
       >
         <i class="bi bi-arrow-clockwise"></i> ลองใหม่
       </button>
@@ -461,7 +461,7 @@ const inputCls =
       <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` วาดชื่อหน้า (routeTitles) เป็น <h1> ให้แล้ว (R0.3)
            ที่เหลือคือ *ชื่อกิจกรรมที่กำลังแก้* ซึ่งเป็นเนื้อหา ไม่ใช่ชื่อหน้า -->
       <p v-if="isEdit && event" class="truncate text-sm text-stone-500">
-        <i class="bi bi-calendar-event mr-1 text-stone-400"></i>{{ event.title }}
+        <i class="bi bi-calendar-event mr-1 text-ink-3"></i>{{ event.title }}
       </p>
 
       <!-- ถูกลบแล้ว (soft delete) — GET คืนแถวตามจริง แต่ PATCH จะ 404 ⇒ ปิดปุ่มบันทึกไว้ก่อน -->
@@ -485,7 +485,7 @@ const inputCls =
       >
         <i :class="STATUS_ICONS[event.status]"></i>
         สถานะ: <b>{{ STATUS_LABELS[event.status] }}</b>
-        <span v-if="event.status === 'published'" class="text-stone-400">
+        <span v-if="event.status === 'published'" class="text-ink-3">
           · แก้แล้วมีผลกับนักเรียนที่เห็นอยู่ทันที
         </span>
       </div>
@@ -539,7 +539,7 @@ const inputCls =
               class="mt-1"
             />
             <!-- คำอ่าน พ.ศ. — picker ไม่รองรับพุทธศักราช (date-fns) ⇒ ช่องเป็น ค.ศ. แล้วอ่านเป็นไทยใต้ช่อง -->
-            <p class="mt-1 text-[11px] text-stone-400">
+            <p class="mt-1 text-[11px] text-ink-3">
               {{ formatThaiDateTimeInput(form.event_date) || 'ยังไม่ได้เลือก' }}
             </p>
           </div>
@@ -554,7 +554,7 @@ const inputCls =
               placeholder="วว/ดด/ปปปป ชช:นน"
               class="mt-1"
             />
-            <p class="mt-1 text-[11px] text-stone-400">
+            <p class="mt-1 text-[11px] text-ink-3">
               {{
                 form.registration_deadline
                   ? formatThaiDateTimeInput(form.registration_deadline)
@@ -578,7 +578,7 @@ const inputCls =
               placeholder="เว้นว่าง = ไม่จำกัด"
               :class="inputCls"
             />
-            <p class="mt-1 text-[11px] text-stone-400">
+            <p class="mt-1 text-[11px] text-ink-3">
               ที่นั่งเต็มแล้วระบบจะเข้าคิวสำรองให้อัตโนมัติ
             </p>
           </div>
@@ -609,7 +609,7 @@ const inputCls =
               {{ o.label }}
             </option>
           </select>
-          <p class="mt-1 text-[11px] text-stone-400">
+          <p class="mt-1 text-[11px] text-ink-3">
             ใช้กรองในรายการกิจกรรม — ไม่กระทบใครที่สมัครไว้แล้ว
           </p>
         </div>

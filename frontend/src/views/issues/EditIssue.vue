@@ -155,11 +155,11 @@ async function handleSubmit() {
       v-else-if="loadError"
       class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-center"
     >
-      <i class="bi bi-exclamation-triangle text-3xl text-stone-400 mb-3"></i>
+      <i class="bi bi-exclamation-triangle text-3xl text-ink-3 mb-3"></i>
       <p class="text-stone-600 px-6">{{ loadError }}</p>
       <button
         type="button"
-        class="mt-4 rounded-lg bg-brand px-5 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
+        class="inline-flex items-center mt-4 rounded-lg bg-brand px-5 min-h-11 py-2 text-[13px] font-bold text-white hover:bg-brand-strong"
         @click="loadIssue"
       >
         ลองอีกครั้ง
@@ -204,7 +204,7 @@ async function handleSubmit() {
             :key="c"
             type="button"
             @click="category = c"
-            class="px-4 py-2 rounded-full border text-sm transition"
+            class="inline-flex items-center px-4 min-h-11 py-2 rounded-full border text-sm transition"
             :class="
               category === c
                 ? 'bg-brand text-white border-brand'

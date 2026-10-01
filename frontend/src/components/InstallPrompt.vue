@@ -85,7 +85,7 @@ async function onInstall() {
         </div>
         <button
           type="button"
-          class="shrink-0 rounded-xl bg-brand px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-strong"
+          class="inline-flex items-center shrink-0 rounded-xl bg-brand px-3.5 min-h-11 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-strong"
           @click="applyUpdate"
         >
           อัปเดต
@@ -112,7 +112,7 @@ async function onInstall() {
         <button
           type="button"
           :disabled="isWorking"
-          class="shrink-0 rounded-xl bg-brand px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-60"
+          class="inline-flex items-center shrink-0 rounded-xl bg-brand px-3.5 min-h-11 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-strong disabled:opacity-60"
           @click="onInstall"
         >
           <i v-if="isWorking" class="bi bi-arrow-repeat animate-spin"></i>
@@ -121,7 +121,7 @@ async function onInstall() {
         <button
           type="button"
           aria-label="ปิด"
-          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-stone-100 hover:text-stone-600"
           @click="dismissInstall"
         >
           <i class="bi bi-x-lg text-xs"></i>
@@ -163,7 +163,7 @@ async function onInstall() {
         <button
           type="button"
           aria-label="ปิด"
-          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-stone-100 hover:text-stone-600"
           @click="dismissIosHint"
         >
           <i class="bi bi-x-lg text-xs"></i>

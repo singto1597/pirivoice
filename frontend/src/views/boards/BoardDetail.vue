@@ -175,10 +175,10 @@ const rootComments = computed(() => board.value?.comments ?? [])
     <div class="text-4xl text-stone-300 mb-3"><i class="bi bi-file-earmark-x"></i></div>
     <p class="text-stone-600 font-medium">{{ loadError }}</p>
     <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
-      <button @click="load" class="px-5 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong">
+      <button @click="load" class="inline-flex items-center px-5 min-h-11 py-2.5 bg-brand text-white rounded-xl text-sm font-bold hover:bg-brand-strong">
         <i class="bi bi-arrow-clockwise mr-1"></i> ลองอีกครั้ง
       </button>
-      <button @click="router.push({ name: 'boards' })" class="px-5 py-2.5 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200">
+      <button @click="router.push({ name: 'boards' })" class="inline-flex items-center px-5 min-h-11 py-2.5 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200">
         กลับไป PIRI Boards
       </button>
     </div>
@@ -194,7 +194,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           <i :class="boardTypeIcon(board.board_type)"></i> {{ boardTypeHeading(board.board_type) }}
         </span>
         <div class="flex items-center gap-2">
-          <span class="text-xs text-stone-400">{{ fmtDate(board.created_at) }}</span>
+          <span class="text-xs text-ink-3">{{ fmtDate(board.created_at) }}</span>
           <!-- 🔖 บันทึกไว้อ่านทีหลัง (C2) -->
           <BookmarkButton entity-type="board" :entity-id="board.id" size="sm" />
           <button
@@ -203,7 +203,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
             @click="handleHideBoard"
             :disabled="hidingBoard"
             data-testid="hide-board-btn"
-            class="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-brand/25 text-brand hover:bg-brand/5 disabled:opacity-40"
+            class="inline-flex items-center px-2.5 min-h-11 py-1 text-[11px] font-medium rounded-lg border border-brand/25 text-brand hover:bg-brand/5 disabled:opacity-40"
             title="ซ่อนบอร์ดนี้ (สภา/แอดมิน)"
           >
             <i class="bi bi-eye-slash mr-1"></i> ซ่อนบอร์ด
@@ -270,7 +270,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
         </button>
       </div>
 
-      <p v-if="!board.choices.length" class="text-sm text-stone-400 py-2">ยังไม่มีตัวเลือกโหวต</p>
+      <p v-if="!board.choices.length" class="text-sm text-ink-3 py-2">ยังไม่มีตัวเลือกโหวต</p>
 
       <button
         v-if="!myVoted"
@@ -288,7 +288,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
     <div v-else class="page-card p-5">
       <h2 class="text-lg font-bold text-stone-900 mb-4">
         <i class="bi bi-chat-left-text mr-1 text-stone-500"></i> พูดคุย
-        <span v-if="rootComments.length" class="text-sm font-normal text-stone-400">({{ board.comment_count }})</span>
+        <span v-if="rootComments.length" class="text-sm font-normal text-ink-3">({{ board.comment_count }})</span>
       </h2>
 
       <!-- ปิดคอมเมนต์ -->
@@ -312,7 +312,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
           :disabled="postingComment || !commentBody.trim()"
           data-testid="comment-submit"
           @click="submitComment"
-          class="px-4 py-2.5 bg-brand text-white rounded-xl text-sm hover:bg-brand-strong disabled:opacity-50"
+          class="inline-flex items-center px-4 min-h-11 py-2.5 bg-brand text-white rounded-xl text-sm hover:bg-brand-strong disabled:opacity-50"
         >
           {{ postingComment ? '...' : 'ส่ง' }}
         </button>
@@ -322,7 +322,7 @@ const rootComments = computed(() => board.value?.comments ?? [])
       <div v-if="rootComments.length" class="space-y-4">
         <CommentThread v-for="c in rootComments" :key="c.id" :board-id="board.id" :comment="c" @refresh="load" />
       </div>
-      <p v-else-if="board.allow_comments" class="text-sm text-stone-400 py-2">ยังไม่มีความเห็น — เป็นคนแรกที่ร่วมพูดคุย</p>
+      <p v-else-if="board.allow_comments" class="text-sm text-ink-3 py-2">ยังไม่มีความเห็น — เป็นคนแรกที่ร่วมพูดคุย</p>
     </div>
   </div>
 </template>
