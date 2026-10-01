@@ -15,6 +15,7 @@ import type { DashboardSummary } from '@/types/dashboard';
 import { listReports } from '@/services/board';
 import type { ReportItem } from '@/types/board';
 import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
+import SchoolSystemsCard from '@/components/SchoolSystemsCard.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import AppEmptyState from '@/components/ui/AppEmptyState.vue';
 import AppButton from '@/components/ui/AppButton.vue';
@@ -543,6 +544,16 @@ function destinationIcon(dest: string | null | undefined): string {
         </div>
       </div>
     </AppCard>
+
+    <!-- ============ เมนูลัด → ระบบอื่นของโรงเรียน ============
+         ⭐ วาง **ใต้ประกาศ** ตามที่เจ้าของระบบกำหนด ("กดง่าย ไม่อยู่ลึก แต่ไม่อยู่บนเกิน
+            จนบังสิ่งสำคัญ") ⇒ ยังอยู่หลังบล็อกที่ต้องลงมือทำทั้งหมด (รอฉันตอบ/โหวต/
+            กิจกรรมใกล้ปิดรับ) จึงไม่ดันของที่ต้องกดให้ตกจอบน 360dp
+
+         ⚠️ **ไม่ผูกกับ `homeError` โดยเจตนา** (ต่างจากประกาศ/สรุปเรื่องของฉัน) — การ์ดนี้
+            เป็นลิงก์นิ่ง ไม่ได้ข้อมูลจาก API ⇒ ถ้า API ของเราล่ม นักเรียนยังต้องออกไปใช้
+            ระบบอื่นของโรงเรียนได้ · ข้อมูล/URL อยู่ใน `constants/schoolSystems.ts` -->
+    <SchoolSystemsCard />
 
     <!-- ============ My-issue summary (ทุกคน) ============
          ⚠️ อยู่ **หลัง** บล็อกที่ต้องลงมือทำโดยเจตนา (ของเดิมอยู่อันดับ 3 รองจาก
