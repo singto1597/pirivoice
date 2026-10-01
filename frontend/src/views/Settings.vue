@@ -112,6 +112,7 @@ async function loadPrefs() {
 onMounted(loadPrefs)
 
 async function toggleGroup(group: NotificationGroup) {
+  if (savingGroup.value) return // กันกดซ้ำ — ไม่ใช้ :disabled เพราะจะทำให้โฟกัสหลุด
   const next = !isOn(group)
 
   // ปิดกลุ่ม "เรื่องของฉัน" = เงียบเมื่อเรื่องที่ตัวเองแจ้งมีความเคลื่อนไหว → ถามก่อน
@@ -220,9 +221,9 @@ async function toggleGroup(group: NotificationGroup) {
             type="button"
             role="switch"
             :aria-checked="isOn(g.value)"
-            :aria-label="`${isOn(g.value) ? 'ปิด' : 'เปิด'}การแจ้งเตือน ${g.label}`"
-            :disabled="savingGroup === g.value"
-            class="tap-44 relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-50"
+            :aria-label="`การแจ้งเตือน ${g.label}`"
+            :aria-disabled="savingGroup === g.value"
+            class="tap-44 relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none aria-disabled:opacity-50"
             :class="isOn(g.value) ? 'bg-brand' : 'bg-ink-3/40'"
             @click="toggleGroup(g.value)"
           >
