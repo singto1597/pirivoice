@@ -21,7 +21,15 @@ import type { RouteLocationRaw } from 'vue-router'
 
 const props = withDefaults(
   defineProps<{
-    variant?: 'primary' | 'secondary' | 'text' | 'danger'
+    /**
+     * `light` = ปุ่มบน **พื้นเข้ม** (แถบทับกล้องในหน้าสแกนเช็คอิน)
+     *
+     * 🔴 **ต้องเป็น variant ไม่ใช่ส่ง `class="text-white"`** — ค่าประกอบสีของ Tailwind
+     *    ตัดสินกันที่ **ลำดับในสไตล์ชีต** ไม่ใช่ลำดับในแอตทริบิวต์ `class` และสีที่
+     *    `extend` เข้าไป (`brand`) ถูกสร้าง **หลัง** สีพื้นฐาน (`white`) เสมอ
+     *    ⇒ `class="text-white"` บน `variant="text"` จะได้ตัวอักษร **แดงบนวิดีโอเข้ม** ทุกครั้ง
+     */
+    variant?: 'primary' | 'secondary' | 'text' | 'danger' | 'light'
     size?: 'sm' | 'md' | 'lg'
     /** กำลังโหลด — ปุ่มจม + ขึ้นวงกลมหมุน + กันกดซ้ำ */
     loading?: boolean
@@ -52,11 +60,12 @@ const SIZE: Record<'sm' | 'md' | 'lg', string> = {
   lg: 'h-12 px-5 text-body rounded-control',
 }
 
-const VARIANT: Record<'primary' | 'secondary' | 'text' | 'danger', string> = {
+const VARIANT: Record<'primary' | 'secondary' | 'text' | 'danger' | 'light', string> = {
   primary: 'bg-brand text-white hover:bg-brand-strong',
   secondary: 'bg-surface text-ink-1 border border-line hover:bg-canvas',
   text: 'text-brand hover:bg-brand/5',
   danger: 'text-danger hover:bg-danger/5',
+  light: 'text-white/90 hover:bg-white/10 hover:text-white',
 }
 </script>
 

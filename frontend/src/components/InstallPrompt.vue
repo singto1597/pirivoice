@@ -19,6 +19,7 @@
 import { ref } from 'vue'
 import Swal from 'sweetalert2'
 import { BRAND } from '@/constants/brand'
+import { useAppChrome } from '@/composables/useAppChrome'
 import {
   applyUpdate,
   dismissInstall,
@@ -28,6 +29,20 @@ import {
   showIosHint,
   showUpdateBanner,
 } from '@/pwa'
+
+/**
+ * 🔴 **ต้องซ่อนบนหน้าที่ไม่มีแถบล่าง (`meta.navHidden`)** — ไม่ใช่แค่ความสะอาดตา
+ *
+ * `.banner-anchor` วาง `bottom: safe-area + 4.5rem` ซึ่งเป็นเลขที่ **คำนวณมาเพื่อแถบล่าง
+ * ที่สูง 3.5rem** ⇒ บนหน้า `navHidden` (ฟอร์ม/สแกน/นำเข้า) ไม่มีแถบนั้นอยู่ ช่องไฟ 4.5rem
+ * กลายเป็นช่องว่างลอย ๆ และแบนเนอร์ `z-40` จะไปลอยทับ **ช่องมองของกล้องในหน้าสแกนเช็คอิน**
+ * (หน้าที่ผู้ใช้ต้องเห็นวิดีโอเต็มจอที่สุด) · อีกทั้งเป็นหน้าที่ "หนึ่งหน้า หนึ่งงานหลัก"
+ * ⇒ แบนเนอร์ชวนติดตั้งแอปไม่ใช่เรื่องที่ควรแทรกกลางงานนั้น
+ *
+ * ⚠️ **`v-if` ที่ตัวแบนเนอร์ ไม่ใช่ CSS `hidden`** — กล่องที่ยังอยู่ใน DOM ยัง **กลืนคลิก**
+ *    (กลไกเดียวกับ skills #9)
+ */
+const { navVisible } = useAppChrome()
 
 const isWorking = ref(false)
 
@@ -55,7 +70,7 @@ async function onInstall() {
   <!-- มีเวอร์ชันใหม่ → สำคัญกว่าชวนติดตั้ง ⇒ แสดงแทนกัน ไม่ซ้อนกัน -->
   <Transition name="prompt">
     <div
-      v-if="showUpdateBanner"
+      v-if="showUpdateBanner && navVisible"
       class="banner-anchor pointer-events-none fixed inset-x-0 z-40 px-3"
     >
       <div
@@ -81,7 +96,7 @@ async function onInstall() {
 
   <Transition name="prompt">
     <div
-      v-if="showInstallBanner && !showUpdateBanner"
+      v-if="showInstallBanner && !showUpdateBanner && navVisible"
       class="banner-anchor pointer-events-none fixed inset-x-0 z-40 px-3"
     >
       <div
@@ -124,7 +139,7 @@ async function onInstall() {
   -->
   <Transition name="prompt">
     <div
-      v-if="showIosHint && !showUpdateBanner"
+      v-if="showIosHint && !showUpdateBanner && navVisible"
       class="banner-anchor pointer-events-none fixed inset-x-0 z-40 px-3"
     >
       <div

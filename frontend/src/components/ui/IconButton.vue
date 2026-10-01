@@ -27,13 +27,22 @@ const props = withDefaults(
     to?: RouteLocationRaw
     /** `md` = 44dp (ค่าเริ่มต้น) · `lg` = 48dp สำหรับหัวแถบ */
     size?: 'md' | 'lg'
+    /**
+     * โทนสี — `light` สำหรับปุ่มที่วางบน **พื้นเข้ม** (แถบทับกล้องในหน้าสแกนเช็คอิน)
+     *
+     * 🔴 **ต้องมี prop ไม่ใช่ส่ง `class="text-white"`** — ค่าประกอบสีของ Tailwind
+     *    ตัดสินกันที่ **ลำดับในสไตล์ชีต** ไม่ใช่ลำดับในแอตทริบิวต์ `class` และสีที่
+     *    `extend` เข้าไป (`ink`) ถูกสร้าง **หลัง** สีพื้นฐาน (`white`) เสมอ
+     *    ⇒ `text-ink-2` จะชนะ `text-white` ทุกครั้ง ⇒ ไอคอนดำบนวิดีโอ = มองไม่เห็น
+     */
+    tone?: 'default' | 'light'
     /** ไฮไลต์ว่ากำลัง active อยู่ (ใช้ในแถบล่าง/แถบ segment) */
     active?: boolean
     /** แดง — สำหรับ action อันตราย (ลบ/ซ่อน) */
     danger?: boolean
     disabled?: boolean
   }>(),
-  { size: 'md', active: false, danger: false, disabled: false },
+  { size: 'md', tone: 'default', active: false, danger: false, disabled: false },
 )
 
 const isLink = computed(() => props.to !== undefined)
@@ -55,11 +64,13 @@ const SIZE: Record<'md' | 'lg', string> = {
     class="inline-flex shrink-0 items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
     :class="[
       SIZE[props.size],
-      props.active
-        ? 'bg-brand/10 text-brand'
-        : props.danger
-          ? 'text-ink-2 hover:bg-danger/5 hover:text-danger'
-          : 'text-ink-2 hover:bg-canvas hover:text-ink-1',
+      props.tone === 'light'
+        ? 'text-white hover:bg-white/15 active:bg-white/25'
+        : props.active
+          ? 'bg-brand/10 text-brand'
+          : props.danger
+            ? 'text-ink-2 hover:bg-danger/5 hover:text-danger'
+            : 'text-ink-2 hover:bg-canvas hover:text-ink-1',
     ]"
   >
     <i :class="['bi', props.icon, 'text-xl']" aria-hidden="true" />

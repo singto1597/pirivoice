@@ -312,6 +312,13 @@ const router = createRouter({
             navTab: 'events',
             navHidden: true,
             headerHidden: true,
+            // 🔴 **ต้องประกาศแม้หัวแถบจะถูกซ่อน** — ปุ่ม `X` ในหน้าใช้ `chrome.backTarget`
+            //    เป็นแหล่งความจริงเดียว (ดู `close()` ใน `EventCheckIn.vue`) ถ้าไม่ประกาศ
+            //    มันจะถอยไปใช้ `NAV_TABS['events'].to` = **หน้ารวมกิจกรรมสาธารณะ**
+            //    ⇒ สภาออกจากหน้ากล้องแล้วหลุดออกจากโหมดจัดการ (เหตุผลเดียวกับ
+            //    `event-registrations` ข้างบน) และถ้าวันหนึ่งมีคนเปิดหัวแถบ ปุ่ม `←`
+            //    จะพาไปถูกที่ทันทีโดยไม่ต้องแก้สองที่
+            headerBack: { name: 'event-management' },
           },
         },
         {
