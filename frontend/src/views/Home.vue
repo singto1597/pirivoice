@@ -6,7 +6,15 @@ import { useAuthStore } from '@/stores/auth';
 import { useNotificationsStore } from '@/stores/notifications';
 import { getHomeSummary } from '@/services/home';
 import type { HomeSummary } from '@/types/home';
-import { remainingLabel, voteCountLabel } from '@/types/home';
+import {
+  dashboardBlockState,
+  myIssuesBlockState,
+  pendingOnMeBlockState,
+  personalStatsBlockState,
+  remainingLabel,
+  reportQueueBlockState,
+  voteCountLabel,
+} from '@/types/home';
 // กติกาที่เกี่ยวกับ "กิจกรรม" อยู่ใน `@/types/event` — การ์ดหน้าแรกเป็นแค่ *ผู้ใช้* ของมัน
 // ⇒ `EventDetail.vue` เรียกใช้ตัวเดียวกันได้โดยไม่ต้อง import จากโมดูลของหน้าแรก
 import { closingLabel, registrationChip, seatsWarning } from '@/types/event';
@@ -17,6 +25,7 @@ import type { ReportItem } from '@/types/board';
 import PersonalStatsCard from '@/components/PersonalStatsCard.vue';
 import SchoolSystemsCard from '@/components/SchoolSystemsCard.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
+import AppEmptyRow from '@/components/ui/AppEmptyRow.vue';
 import AppEmptyState from '@/components/ui/AppEmptyState.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppCard from '@/components/ui/AppCard.vue';
@@ -128,6 +137,13 @@ const reports = ref<ReportItem[]>([]);
 const reportsTotal = ref(0);
 const loadingReports = ref(isCouncil.value);
 const reportsError = ref(false);
+// "ยิงแล้วและจบแล้ว" — **ต่างจาก `loadingReports`** ซึ่งเป็น false ได้โดยไม่เคยยิงเลย
+//   ⚠️ `loadingReports` เริ่มที่ `isCouncil` และ `loadReports()` return ทันทีเมื่อ `!isCouncil`
+//      ⇒ ถ้าสิทธิ์เพิ่งกลายเป็นจริง *หลัง* mount (เส้นทางจริง: `MainLayout` เรียก `loadMe()`
+//      ทีหลัง และ guard ตอนนำทางกลืน error ไว้) จะได้ `loadingReports === false` +
+//      `reports === []` **ทั้งที่ยังไม่เคยถามเซิร์ฟเวอร์** ⇒ หน้าจะประกาศว่า "คิวว่าง"
+//      จากข้อมูลที่ไม่มีอยู่ · ตัวนี้บังคับว่าต้องยิงสำเร็จรอบหนึ่งก่อนจึงจะยุบได้
+const reportsLoaded = ref(false);
 
 async function loadReports() {
   if (!isCouncil.value) return;
@@ -141,6 +157,9 @@ async function loadReports() {
     reportsError.value = true;
   } finally {
     loadingReports.value = false;
+    // ตั้งแม้ตอน error — "ยิงแล้ว" ไม่ได้แปลว่า "ได้ข้อมูล" · ตัวที่กันการประกาศว่าว่าง
+    // ตอนพังคือ `reportsError` (เช็คก่อน `reportsLoaded` ใน `reportQueueBlockState`)
+    reportsLoaded.value = true;
   }
 }
 
@@ -161,6 +180,57 @@ async function loadDash() {
     loadingDash.value = false;
   }
 }
+
+// ============ 🗜️ สถานะ "ยุบ / เต็ม / ซ่อน" ของแต่ละบล็อก ============
+// ตารางความจริงทั้งหมดอยู่ใน `@/types/home` (ฟังก์ชันบริสุทธิ์ + เทสต์)
+// ⚠️ **ห้ามย้ายเงื่อนไขพวกนี้กลับมาเขียนเป็น `v-if` ในเทมเพลต** — เหตุผลเต็ม ๆ อยู่ที่
+//    `types/home.ts` สรุปคือ: *ว่าง* / *พัง* / *ยังโหลดไม่เสร็จ* ให้ผลเหมือนกันถ้าเช็คแค่
+//    `length === 0` และ `?? []` จะกลืน "พัง" ให้กลายเป็น "ว่าง" อย่างเงียบ ๆ
+const pendingOnMeState = computed(() =>
+  pendingOnMeBlockState({
+    canReceive: canReceive.value,
+    homeError: homeError.value,
+    loading: loadingHome.value,
+    pendingCount: pendingOnMe.value.length,
+    // ⚠️ ต้องส่งทั้งสองสัญญาณ — `pending_on_me` กับ `issue_received` เป็นคนละชุดกัน
+    unreadCount: unreadCount('issue_received'),
+  }),
+);
+
+const myIssuesState = computed(() =>
+  myIssuesBlockState({
+    homeError: homeError.value,
+    loading: loadingHome.value,
+    summary: summary.value,
+  }),
+);
+
+const personalStatsState = computed(() =>
+  personalStatsBlockState({
+    homeError: homeError.value,
+    loading: loadingHome.value,
+    stats: stats.value,
+  }),
+);
+
+const reportQueueState = computed(() =>
+  reportQueueBlockState({
+    isCouncil: isCouncil.value,
+    loading: loadingReports.value,
+    loaded: reportsLoaded.value,
+    error: reportsError.value,
+    count: reports.value.length,
+  }),
+);
+
+const dashboardState = computed(() =>
+  dashboardBlockState({
+    canDashboard: canDashboard.value,
+    loading: loadingDash.value,
+    error: dashError.value,
+    hasData: dash.value !== null,
+  }),
+);
 
 onMounted(() => {
   void loadHome();
@@ -309,8 +379,26 @@ function destinationIcon(dest: string | null | undefined): string {
          รวมเรื่องที่ฉันแค่เป็นผู้แจ้ง/มี countdown ของฉัน ⇒ ไม่ใช่ "รอฉันตอบ")
          ⚠️ ไม่พิมพ์ยอดไว้ข้างลิงก์ "คิวทั้งหมด" — ยอดนี้เป็นเป้าแคบ
             ไม่เท่ากับที่หน้าคิว (`/app/issues/received`) แสดง ⇒ ใส่ไปจะดูเหมือนบั๊ก
-            (ขึ้นยอดจริงไว้ในตัวบล็อกแทน) -->
-    <AppCard v-if="!homeError && canReceive" :padded="false">
+            (ขึ้นยอดจริงไว้ในตัวบล็อกแทน)
+
+         🗜️ **ว่างแล้วยุบเหลือแถวเดียว** — เงื่อนไข/เหตุผลอยู่ใน `pendingOnMeBlockState()`
+            ⚠️ ยุบเฉพาะเมื่อ **ทั้ง** `pending_on_me` และ `issue_received` (ที่ยังไม่อ่าน) เป็น 0
+               ⇒ คนที่มี 0 เรื่องค้างแต่มีการแจ้งเตือนที่ยังไม่อ่าน **ยังได้การ์ดเต็ม** โดยเจตนา
+               เพราะป้าย badge ที่หัวการ์ดคือสิ่งเดียวที่บอกว่ามีของใหม่ — ยุบแล้วมันหายไป
+               (การ์ดที่ยังเต็มในกรณีนั้นจึงไม่ใช่ "ความว่างที่ลืมยุบ") -->
+    <AppCard v-if="pendingOnMeState !== 'hidden'" :padded="false">
+      <!-- แถวเดียว — ใช้เมื่อ "ตรวจแล้วไม่มีอะไรค้าง" จริง ๆ -->
+      <AppEmptyRow
+        v-if="pendingOnMeState === 'collapsed'"
+        icon="bi-check2-circle"
+        tone="ok"
+        title="ไม่มีเรื่องค้างรอคุณ"
+        :to="{ name: 'received-issues' }"
+        action-label="คิวทั้งหมด"
+        context="รอฉันตอบ"
+      />
+
+      <template v-else>
       <div class="flex items-center justify-between gap-3 px-4 pb-1 pt-4">
         <div class="flex items-center gap-3">
           <span class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white">
@@ -378,6 +466,7 @@ function destinationIcon(dest: string | null | undefined): string {
           </p>
         </div>
       </div>
+      </template>
     </AppCard>
 
     <!-- ============ โหวตที่ยังไม่โหวต (ทุกคน) ============
@@ -558,8 +647,26 @@ function destinationIcon(dest: string | null | undefined): string {
     <!-- ============ My-issue summary (ทุกคน) ============
          ⚠️ อยู่ **หลัง** บล็อกที่ต้องลงมือทำโดยเจตนา (ของเดิมอยู่อันดับ 3 รองจาก
             การ์ดต้อนรับกับทางลัด ⇒ ต้องเลื่อนผ่านสถิติของตัวเองก่อนถึง "รอฉันตอบ"
-            ซึ่งเป็นสิ่งเดียวในหน้านี้ที่ต้อง *ทำ*) -->
-    <AppCard v-if="!homeError" :padded="false">
+            ซึ่งเป็นสิ่งเดียวในหน้านี้ที่ต้อง *ทำ*)
+
+         🗜️ **ยังไม่เคยแจ้งเรื่อง → ยุบเหลือแถวเดียว** (`myIssuesBlockState()`)
+            ⚠️ คำเชิญ "แจ้งเรื่องแรกเลย" **ไม่หายไปไหน** แค่ย้ายจากปุ่มกลางการ์ดมาเป็น
+               ลิงก์ท้ายแถว — ยังกดได้ใน 1 แตะเท่าเดิม (เป็นคำเชิญเดียวในแอปสำหรับ
+               คนที่ยังไม่เคยแจ้ง จึงห้ามทำให้หาย)
+            ⚠️ ส่วน empty state เดิมในตัวการ์ด **ถูกลบ** เพราะกลายเป็นสาขาที่ไปไม่ถึง:
+               `total_issues === 0` ที่โหลดเสร็จแล้ว → `collapsed` เสมอ ⇒ โค้ดที่ไม่มีวันรัน
+               คือโค้ดที่ไม่มีใครรู้ว่าพัง -->
+    <AppCard v-if="myIssuesState !== 'hidden'" :padded="false">
+      <AppEmptyRow
+        v-if="myIssuesState === 'collapsed'"
+        icon="bi-megaphone"
+        title="ยังไม่เคยแจ้งเรื่อง"
+        :to="{ name: 'new-issue' }"
+        action-label="แจ้งเรื่อง"
+        context="สรุปเรื่องของฉัน"
+      />
+
+      <template v-else>
       <!-- Header -->
       <div class="flex items-center justify-between gap-3 px-4 pb-1 pt-4">
         <div class="flex items-center gap-3">
@@ -587,18 +694,10 @@ function destinationIcon(dest: string | null | undefined): string {
         </div>
       </div>
 
-      <!-- Empty: ยังไม่เคยแจ้ง -->
-      <AppEmptyState
-        v-else-if="summary && summary.total_issues === 0"
-        icon="bi-megaphone"
-        title="ยังไม่เคยแจ้งเรื่องเลย"
-        description="เจอปัญหาหรือมีข้อเสนอแนะ? แจ้งเข้ามาได้เลย หัวหน้าห้องและสภานักเรียนจะช่วยติดตามให้"
-      >
-        <AppButton :to="{ name: 'new-issue' }">
-          <template #icon><i class="bi bi-plus-lg" /></template>
-          แจ้งเรื่องแรกเลย
-        </AppButton>
-      </AppEmptyState>
+      <!-- Empty: ยังไม่เคยแจ้ง — ★ **ถูกลบ** ตอนยุบบล็อก
+           `total_issues === 0` ที่โหลดเสร็จแล้ว ⇒ `myIssuesState === 'collapsed'` เสมอ
+           ⇒ บล็อกนี้ไม่มีวันถูกเรนเดอร์ · คำเชิญ "แจ้งเรื่องแรกเลย" ไม่ได้หายไป
+           แค่ย้ายไปเป็นลิงก์ท้าย `AppEmptyRow` ข้างบน (ดูคอมเมนต์หัวบล็อก) -->
 
       <!-- Loaded with data -->
       <div v-else-if="summary" class="px-4 pb-4 pt-3">
@@ -679,20 +778,50 @@ function destinationIcon(dest: string | null | undefined): string {
           </div>
         </div>
       </div>
+      </template>
     </AppCard>
 
     <!-- ============ สถิติของฉัน (C3) ============
          ใช้การ์ดตัวเดียวกับ Profile.vue — ข้อมูลมาจาก home summary ไม่ต้องยิงซ้ำ
-         ⚠️ ไม่ต้องใส่หัวข้อเอง การ์ดมีหัวข้อ + ช่วงภาค (พ.ศ.) ในตัวแล้ว -->
+         ⚠️ ไม่ต้องใส่หัวข้อเอง การ์ดมีหัวข้อ + ช่วงภาค (พ.ศ.) ในตัวแล้ว
+
+         🗜️ **0 ทุกช่อง → ยุบเหลือแถวเดียว** (`personalStatsBlockState()`)
+            ⚠️ ตัดสิน **ที่นี่ ไม่ใช่ในคอมโพเนนต์** — `Profile.vue` ใช้การ์ดตัวเดียวกัน
+               และต้องคงกล่อง "ยังไม่มีสถิติในช่วงนี้" เต็มรูปแบบไว้ (ต่างบริบทกัน:
+               ในหน้าโปรไฟล์ผู้ใช้ *ตั้งใจ* เข้ามาดูสถิติ ⇒ กล่องว่างคือคำตอบที่ต้องการ)
+            ⚠️ ข้อความผูกกับ **ภาคเรียน** ("ในช่วงนี้") ไม่ใช่ "ยังไม่เคยแจ้งเรื่อง" —
+               `total_reported` นับตามภาค แต่ `my_issues.total_issues` นับตลอดชีพ ⇒ ถ้าใช้คำ
+               เดียวกัน นักเรียนที่แจ้ง 20 เรื่องภาคที่แล้วจะเห็นบล็อกบน "20 เรื่อง" แต่บล็อกล่าง
+               "ยังไม่เคยแจ้ง" ซึ่งขัดกันเองต่อหน้าต่อตา
+            ⚠️ `rounded-2xl` ของ `PersonalStatsCard` = `rounded-card` ของ `AppCard` (16px)
+               เท่ากัน ⇒ ขอบไม่เปลี่ยนทรงตอนสลับแถว/การ์ด -->
+    <AppCard v-if="personalStatsState === 'collapsed'" :padded="false">
+      <AppEmptyRow icon="bi-stars" title="ยังไม่มีสถิติในช่วงนี้" />
+    </AppCard>
     <PersonalStatsCard
-      v-if="!homeError"
+      v-else-if="personalStatsState === 'full'"
       :stats="stats"
       :loading="loadingHome"
       compact
     />
 
-    <!-- ============ คิวรายงาน (สภา/แอดมิน) ============ -->
-    <AppCard v-if="isCouncil" :padded="false">
+    <!-- ============ คิวรายงาน (สภา/แอดมิน) ============
+         🗜️ **คิวว่าง → ยุบเหลือแถวเดียว** (`reportQueueBlockState()`)
+            ⚠️ **ไม่มีลิงก์ท้ายแถว** — คิวว่างแปลว่าไม่เหลืออะไรให้ไปจัดการ ลิงก์ไปหน้าคิวว่าง
+               แย่กว่าไม่มีลิงก์ (empty state เดิมก็ไม่มีปุ่มอยู่แล้ว ⇒ ไม่ถอยหลัง)
+            ⚠️ `reportsLoaded` ต้องเป็นจริงก่อนจึงจะยุบได้ — `loadingReports` เป็น false ได้
+               **โดยไม่เคยยิงเลย** (สิทธิ์เพิ่งกลายเป็นจริงหลัง mount) ⇒ ถ้าเช็คแต่ `!loading`
+               หน้าจะประกาศ "คิวว่าง" จากข้อมูลที่ยังไม่เคยถาม (เหตุผลเต็มอยู่ที่
+               `reportQueueBlockState()`) -->
+    <AppCard v-if="reportQueueState !== 'hidden'" :padded="false">
+      <AppEmptyRow
+        v-if="reportQueueState === 'collapsed'"
+        icon="bi-check2-circle"
+        tone="ok"
+        title="คิวรายงานว่าง"
+      />
+
+      <template v-else>
       <div class="flex items-center justify-between gap-3 px-4 pb-1 pt-4">
         <div class="flex items-center gap-3">
           <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-canvas text-ink-2">
@@ -724,13 +853,10 @@ function destinationIcon(dest: string | null | undefined): string {
             ลองใหม่
           </AppButton>
         </AppEmptyState>
-        <AppEmptyState
-          v-else-if="reports.length === 0"
-          compact
-          icon="bi-check2-circle"
-          title="คิวรายงานว่าง"
-          description="ไม่มีคอมเมนต์ที่รอรีวิว"
-        />
+        <!-- Empty: คิวว่าง — ★ **ถูกลบ** ตอนยุบบล็อก
+             `reports.length === 0` ที่ยิงเสร็จแล้ว ⇒ `reportQueueState === 'collapsed'` เสมอ
+             ⇒ บล็อกนี้ไม่มีวันถูกเรนเดอร์ (สาขานี้จึงเหลือ skeleton / error / แถวข้อมูล) -->
+
         <div v-else class="space-y-1">
           <RouterLink
             v-for="r in reports.slice(0, 3)"
@@ -749,10 +875,19 @@ function destinationIcon(dest: string | null | undefined): string {
           </RouterLink>
         </div>
       </div>
+      </template>
     </AppCard>
 
-    <!-- ============ สถิติ (VIEW_DASHBOARD) ============ -->
-    <AppCard v-if="canDashboard" :padded="false">
+    <!-- ============ สถิติ (VIEW_DASHBOARD) ============
+         🗜️ **ไม่มีข้อมูล → ไม่แสดงเลย** (`dashboardBlockState()`)
+            🔴 บล็อกนี้เดิมเช็คแค่ `canDashboard` แล้วข้างในมีแค่ `loadingDash` / `dashError` /
+               `dash` **ไม่มีสาขาสุดท้าย** ⇒ เมื่อ `!loading && !error && !dash` การ์ดจะขึ้น
+               *หัวการ์ดที่มีไทล์ + `<h2>` + ปุ่ม "เปิดแดชบอร์ด" แต่เนื้อในว่างเปล่า* ซึ่งอ่าน
+               เป็น "โหลดค้าง" — แย่กว่าการ์ดว่างปกติ · เกิดได้จากเส้นทางเดียวกับคิวรายงาน
+               (สิทธิ์กลายเป็นจริงหลัง mount) ⇒ ที่นี่ตอบ `hidden` แทนการเดาว่ามีข้อมูล
+            ⚠️ บล็อกนี้ **ไม่มียุบ** (ไม่ใช้ `AppEmptyRow`) — "ไม่มีข้อมูลแดชบอร์ด" ไม่ใช่สิ่งที่
+               ผู้ใช้ต้องรู้ และไม่มีทางออกให้ชี้ ⇒ ซ่อนทั้งบล็อกคือคำตอบที่ถูก -->
+    <AppCard v-if="dashboardState !== 'hidden'" :padded="false">
       <div class="px-4 py-4">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">

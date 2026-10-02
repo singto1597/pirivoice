@@ -20,9 +20,17 @@
 - **Views (`src/views/`):** จัดการ UI Logic, Lifecycle และการแสดงผล
 - **Components (`src/components/`):** UI ชิ้นส่วนที่ใช้ซ้ำได้
   - **`ui/` = design system** — `AppCard` · `AppButton` · `AppChip` · `AppTabs` · `AppSheet` ·
-    `AppEmptyState` · `IconButton` · `PageHeader` · `StatusBadge`
+    `AppEmptyState` · `AppEmptyRow` · `IconButton` · `PageHeader` · `StatusBadge`
     ⇒ **ปุ่ม/การ์ด/แท็บ/สถานะว่าง ต้องมาจากที่นี่** ไม่ใช่เขียน utility class ใหม่ในหน้า
     (นี่คือสาเหตุรากของ "สีเส้นปน 3 ค่า มุมปน 4 ค่า" ก่อนรอบ 5)
+    - **สถานะว่างมีสองแบบ ต้องเลือกให้ถูก** (เพิ่ม ต.ค. 2026):
+      · `AppEmptyState` — คอลัมน์จัดกลาง (ไอคอนวงกลม + ชื่อ + คำอธิบาย + ปุ่ม) สำหรับ
+        **พื้นที่ว่างทั้งหน้า/ทั้งการ์ดที่ผู้ใช้จงใจเข้ามาดู** (เช่น `Profile.vue` ที่ผู้ใช้
+        ตั้งใจเข้ามาดูสถิติ ⇒ กล่องว่างคือคำตอบที่ต้องการ)
+      · `AppEmptyRow` — **แถวเดียว 44dp** สำหรับ**บล็อกที่ว่างเป็นปกติ**ในหน้าที่มีหลายบล็อก
+        (หน้าแรก) ⇒ ไม่กินจอด้วย "ความว่าง" ที่ไม่มีใครอ่าน · ยังบอกว่า *ตรวจแล้ว ไม่มีอะไรค้าง*
+        (ยุบ ≠ ซ่อน — บล็อกที่ซ่อนคือ "ของที่ต้องทำ" ซึ่งการหายไปคือคำตอบ ส่วนบล็อกที่ยุบคือ
+        "ของของฉัน" ซึ่งความว่าง *เป็นข้อมูล*)
   - **`layout/` = shell** — `AppHeader` · `AppSidebar` · `AppBottomNav` · `AppTabBar` · `AppFab` ·
     `AppNavRow` · `AppGroupHeader` (ประกอบเข้าด้วยกันที่ `layouts/MainLayout.vue`)
 - **Composables (`src/composables/`):** `useNavItems` · `useAppChrome` · `useIdentity` · `useMediaQuery`
@@ -41,6 +49,15 @@
 - **Loading State:** ทุกครั้งที่มีการดึงข้อมูล ต้องมี `const isLoading = ref(true)` และแสดง Spinner หรือ Skeleton Screen
 - **Notifications:** การแจ้งเตือน Error/Success/Confirm **ต้องใช้ `SweetAlert2` (`Swal.fire`) เท่านั้น** ห้ามใช้ `alert()` หรือ `toast` อื่นๆ
 - **Timezone:** แสดงผลเวลาเป็นภาษาไทย และจัดการให้เป็น `Asia/Bangkok` (UTC+7)
+- 🔴 **"ว่าง" ≠ "พัง" ≠ "ยังโหลดไม่เสร็จ"** (เพิ่ม ต.ค. 2026) — ทั้งสามสถานะให้ผลเหมือนกันเป๊ะ
+  ถ้าเช็คแค่ `list.length === 0` ซึ่งเป็นบั๊กที่ผู้ใช้อ่านแล้วเชื่อ 100% (จอขึ้น "ไม่มีเรื่องค้างรอคุณ"
+  ตอนเซิร์ฟเวอร์ล่ม) และ **มองไม่เห็นจาก UI ว่าผิด**
+  - ทุกเงื่อนไข "ว่าง" ต้องมี `!loading` **และ** `!error` ประกอบเสมอ
+  - ⚠️ `const list = data?.items ?? []` **กลืน "พัง" ให้กลายเป็น "ว่าง"** — ตอน error ค่าคือ `[]`
+    ⇒ **ห้ามให้เงื่อนไขว่างอ่านจากค่าที่มี `?? []` อยู่ต้นทาง** ให้อ่านจากตัวแปร error/loading แทน
+  - เงื่อนไขพวกนี้ต้องเป็น **ฟังก์ชันบริสุทธิ์ที่ทดสอบได้** ไม่เขียนเป็น `v-if` ในเทมเพลต
+    (แบบแผน: `types/home.ts` — `pendingOnMeBlockState()` ฯลฯ · `types/event.ts` — `checkInCardState()`)
+  - สถานะที่ยังไม่รู้ค่า (`null`) ต้อง **fail closed** = ไม่ประกาศว่าว่าง
 
 ## 5. Coding Standards
 - **Component Naming:** ใช้ `PascalCase` สำหรับชื่อไฟล์ Component
@@ -57,9 +74,13 @@
   อยู่หลายปี (ถอด `!important` ชุดนั้นออกแล้วตอนถอด daisyUI — ดู `src/assets/main.css`)
   **ห้ามนำกลับเข้ามา** และ **ห้ามเรียกคลาส `btn`/`card`/`badge` ของ DaisyUI**
 - ✅ ใช้ **component กลางใน `src/components/ui/`** แทน — `AppCard` · `AppButton` · `AppChip` ·
-  `AppTabs` · `AppSheet` · `AppEmptyState` · `IconButton` · `PageHeader` · `StatusBadge`
+  `AppTabs` · `AppSheet` · `AppEmptyState` · `AppEmptyRow` · `IconButton` · `PageHeader` · `StatusBadge`
   ⇒ ปุ่ม/การ์ดที่เขียนเองด้วย utility class โดยไม่ผ่าน component กลาง คือสิ่งที่ทำให้ระบบ
   ไม่สม่ำเสมอ (สีเส้นปน 3 ค่า มุมปน 4 ค่า) — **ให้เพิ่ม variant ที่ component กลางแทนการเขียนใหม่**
+  ⚠️ แต่ "เพิ่ม variant" ไม่ได้หมายถึงยัดทุกอย่างเข้า component เดียว: ถ้า component หนึ่งมี
+  **แกนขนาดอยู่แล้ว** (เช่น `AppEmptyState.compact`) แล้วจะเพิ่มแกนที่สองที่พูดเรื่องเดียวกัน
+  (`variant="row"`) นั่นคือ *สองวิธีพูดเรื่องเดียว* ⇒ แยกเป็น component ใหม่ใน `ui/` ดีกว่า
+  (แบบที่ `AppEmptyRow` แยกออกมา — ดู §2)
 - **สี:** ต้องมาจาก token ใน `tailwind.config.js` (`brand` · `line` · `ink` · `ok` · `warn` ·
   `danger` · `canvas` · `surface`) — **ห้ามฮาร์ดโค้ด hex**
   มีด่านกันอยู่ 2 ตัวที่รันใน `npm run lint`: `lint:colors` (`[#B91C1C]` ฯลฯ) และ

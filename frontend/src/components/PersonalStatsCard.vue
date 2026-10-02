@@ -4,7 +4,7 @@
 // (ได้มาจาก /api/home/summary) ใช้การ์ดตัวเดียวกัน ⇒ เลขสองหน้าไม่มีทางแสดงต่างกัน
 import { computed } from 'vue'
 import type { PersonalStats } from '@/types/me'
-import { STAT_ITEMS, statsPeriodLabel, statsPeriodRange } from '@/types/me'
+import { STAT_ITEMS, statsAllZero, statsPeriodLabel, statsPeriodRange } from '@/types/me'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 
@@ -21,12 +21,14 @@ defineEmits<{ retry: [] }>()
 /** มีข้อมูลแล้วหรือยัง — ใช้เลือกแสดง skeleton แทนการ์ดว่าง */
 const hasData = computed(() => props.stats !== null)
 
-/** 0 ทุกช่อง = ยังไม่มีข้อมูล ⇒ ชวนให้กำลังใจ ไม่ใช่โชว์ตารางเลขศูนย์เรียงกัน */
-const allZero = computed(() => {
-  const s = props.stats
-  if (!s) return false
-  return STAT_ITEMS.every((item) => s[item.key] === 0)
-})
+/**
+ * 0 ทุกช่อง = ยังไม่มีข้อมูล ⇒ ชวนให้กำลังใจ ไม่ใช่โชว์ตารางเลขศูนย์เรียงกัน
+ *
+ * ⚠️ **กติกานี้ประกาศที่ `@/types/me` ไม่ใช่ที่นี่** — หน้าแรก (`personalStatsBlockState()`)
+ *    ใช้ตัวเดียวกันตัดสินว่าควรยุบบล็อกนี้เหลือแถวเดียวไหม ⇒ ถ้าเขียนซ้ำสองที่ วันหน้าจะ
+ *    มีหน้าที่หนึ่งยุบ อีกที่หนึ่งไม่ยุบ ซึ่งอ่านเป็นบั๊ก (บทเรียนเดียวกับ `useIdentity`)
+ */
+const allZero = computed(() => statsAllZero(props.stats))
 
 const periodLabel = computed(() => statsPeriodLabel(props.stats?.term ?? null))
 const periodRange = computed(() => statsPeriodRange(props.stats?.term ?? null))
