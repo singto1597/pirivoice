@@ -2992,3 +2992,28 @@
     เห็นคำว่า `?? []` หรือ `|| []` อยู่ใกล้เงื่อนไข empty state · หรือ UI ที่บอก "ไม่มี…" ทั้งที่ไม่มี
     error ให้เห็นเลย
 - **Date Added:** 2026-10-02
+
+### 🎬 "ยืนยันบน staging จริง" ต้องมีบัญชีที่ล็อกอินได้ — ไม่มีก็ได้แค่ระดับบันเดิล และ Playwright มีกับดัก 3 ตัวที่ทำให้ "รันไม่จบ" ดูเหมือน "ไม่มีอะไรเกิดขึ้น"
+- **Context/Problem:** งานยุบบล็อกว่างตรวจได้แค่ระดับ CSS/บันเดิล (`grep` ในไฟล์ที่ container เสิร์ฟ)
+  เพราะเชื่อว่า "ไม่มีบัญชีให้ล็อกอิน staging" ⇒ **ไม่มีใครเห็นเลยว่าของจริงหน้าตาเป็นอย่างไร**
+  · พอได้บัญชีมาแล้วก็เจอกับดักต่อเนื่อง: สคริปต์ Playwright **timeout 30s ทุกครั้ง** ที่ `networkidle`
+  · ภาพ `fullPage: true` **จับได้แค่จอแรก** · และตัวเฝ้ารอที่ poll ด้วย `ssh` **ไม่ยิง event เลย**
+  จน timeout 1 ชม. ทั้งที่ deploy จบไปแล้ว 57 นาที
+- **Root Cause:** (ก) บัญชี seed ใน `backend/scripts/e2e_seed.py` **ถูกใช้กับ staging จริงด้วย** ไม่ใช่แค่
+  DB ท้องถิ่น — รหัสอยู่ใน `/tmp/e2e_credentials.json` · (ข) หน้าแอปเปิด **SSE ค้างไว้** ⇒ ไม่มี
+  `networkidle` ตลอดกาล ⇒ timeout ไม่ใช่ "หน้าโหลดช้า" · (ค) หน้าแรก **เลื่อนใน container ข้างใน**
+  ไม่ใช่ `window` ⇒ `fullPage` จับได้เท่าจอ · (ง) ตัวเฝ้ารอที่ poll ผ่าน `ssh` ในบริบท background
+  คืนค่าว่างเงียบ ๆ ⇒ เงื่อนไข "จบแล้ว" ไม่เคยเป็นจริง และ **การถูก kill ฝั่ง local ไม่ได้ฆ่า deploy
+  บน VPS** (ssh ตาย แต่ `pull_all.sh` เดินต่อจนจบ)
+- **Correct Pattern/Solution:**
+  - ตรวจ UI บน staging ด้วยบัญชี seed: `POST /api/auth/login` → `addInitScript` ตั้ง
+    `localStorage.access_token` + `user_id_str` (แบบเดียวกับ `frontend/e2e/piri-boards-flow.spec.ts`)
+    · **อ่านรหัสจากไฟล์ตอนรัน ห้ามพิมพ์ลง log** · สคริปต์ต้องวางใน `frontend/` (ESM resolve จากที่อยู่สคริปต์)
+  - ⚠️ `waitUntil: 'domcontentloaded'` + `waitForTimeout` **แทน `networkidle` เสมอ** เมื่อแอปมี SSE
+  - ⚠️ ต้องการภาพทั้งหน้า: วน `querySelectorAll('*')` แล้วตั้ง `scrollTop = scrollHeight`
+    ให้ทุก element ที่ `scrollHeight > clientHeight + 20`
+  - ⚠️ **อย่ารอ deploy ด้วย background task** — เขียน log ลงไฟล์บน VPS แล้ว `ssh … tail` สั้น ๆ
+    เป็นระยะ + `pgrep -af pull_all` · ยืนยันผลด้วย `docker service ps <name> --format '{{.CurrentState}} {{.Image}}'`
+  - **เกณฑ์ปิดงาน:** พิสูจน์ให้ครบ *ทุกสภาพข้อมูล* — ยุบหมด / ผสม (บางบล็อกมีของ) / ไม่ยุบเลย
+    (รอบนี้ใช้ `e2eadm` / `e2ecou` / `e2estu` ครบทั้งสาม)
+- **Date Added:** 2026-10-02
