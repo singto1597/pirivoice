@@ -12,6 +12,7 @@
 import type { PublicAnnouncement } from '@/types/announcement'
 import type { MyIssueSummary } from '@/types/issue'
 import type { PersonalStats } from '@/types/me'
+import { statsAllZero } from '@/types/me'
 
 /**
  * เรื่องที่ `current_assignee_id` เป็นฉันและยังไม่จบ — "รอฉันตอบ"
@@ -102,5 +103,142 @@ export interface ClosingSoonEventItem {
   seats_remaining: number | null
   /** 'registered' / 'checked_in' / null — ใช้ตัดสินว่าจอแสดง *ปุ่มสมัคร* หรือ *ป้ายสมัครแล้ว* */
   my_registration_status: string | null
+}
+
+// ─────────────────────────────────────────────────────────────
+// 🗜️ "ยุบบล็อกที่ว่าง" — ตารางความจริงของหน้าแรก
+//
+// ⚠️ **ทำไมต้องแยกออกมาเป็นฟังก์ชันบริสุทธิ์ ไม่เขียน `v-if` ในเทมเพลต:**
+//    สามสถานะนี้ — *ว่าง* / *พัง* / *ยังโหลดไม่เสร็จ* — ให้ผลเหมือนกันเป๊ะถ้าเช็คแค่
+//    `length === 0` ⇒ เป็น "ตารางความจริง" ที่พลาดง่ายที่สุดของหน้านี้ และซ่อนอยู่ใน
+//    เทมเพลตจะทดสอบไม่ได้ (โปรเจกต์นี้ไม่ mount component ในเทสต์ — ดู `checkInCardState()`
+//    ใน `types/event.ts` ที่แยกด้วยเหตุผลเดียวกัน)
+//
+// 🔴 **กับดักที่ทำให้ทั้งชุดนี้จำเป็น — `?? []` กลืน "พัง" ให้กลายเป็น "ว่าง":**
+//    `pendingOnMe = home.value?.pending_on_me ?? []` ⇒ ตอน `homeError` ค่าคือ `[]`
+//    และ `unreadCount` เป็น 0 และ `loading` เป็น false ⇒ **เงื่อนไข "ว่าง" เป็นจริงทั้งที่
+//    API ล่ม** แล้วหน้าแรกจะขึ้นว่า "ไม่มีเรื่องค้างรอคุณ" ทั้งที่ความจริงคือ *เราไม่รู้*
+//    ⇒ ทุกฟังก์ชันที่นี่จึงต้องรับ `homeError`/`error` เข้ามาเอง **ไม่พึ่ง `v-if` ที่อื่น**
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * สถานะของบล็อกในหน้าแรก
+ *
+ * - `hidden`    — ไม่ต้องแสดงบล็อกนี้เลย
+ * - `collapsed` — แสดงเป็น **แถวเดียว** (บล็อกว่างจริง — ผ่านการตรวจแล้ว)
+ * - `full`      — แสดงการ์ดเต็ม (มีของ · กำลังโหลด · หรือมี error ให้แสดงในกรอบของการ์ด)
+ */
+export type HomeBlockState = 'hidden' | 'collapsed' | 'full'
+
+/**
+ * "รอฉันตอบ" — บล็อกเดียวในหน้าแรกที่ต้อง **ทั้งสองสัญญาณ** เป็นศูนย์จึงจะยุบได้
+ *
+ * 🔴 **`unreadCount` ไม่ใช่ตัวเดียวกับ `pendingCount`** — ยอด "รอฉันตอบ" คือ
+ *    `current_assignee_id = ฉัน` (ดู `PendingOnMeItem`) ส่วน `issue_received` เป็น
+ *    *กลุ่มการแจ้งเตือน* ⇒ คนละชุดกัน · ป้าย badge ที่หัวการ์ดมาจาก `unreadCount`
+ *    ⇒ ถ้ายุบทั้งที่ยังมีของยังไม่อ่าน **สิ่งเดียวที่บอกว่ามีของใหม่จะหายไปพร้อมหัวการ์ด**
+ *
+ * ⚠️ `loading` → `full` โดยเจตนา: หัวการ์ดต้องอยู่เพื่อให้ skeleton มีที่อยู่ในกรอบ
+ *    และเรา **ยังไม่รู้** ว่าว่างไหม ⇒ การขึ้น "ไม่มีเรื่องค้าง" ระหว่างโหลดคือการโกหก
+ */
+export function pendingOnMeBlockState(o: {
+  canReceive: boolean
+  homeError: boolean
+  loading: boolean
+  pendingCount: number
+  unreadCount: number
+}): HomeBlockState {
+  if (!o.canReceive || o.homeError) return 'hidden'
+  if (o.loading) return 'full'
+  return o.pendingCount === 0 && o.unreadCount === 0 ? 'collapsed' : 'full'
+}
+
+/**
+ * "สรุปเรื่องของฉัน"
+ *
+ * ⚠️ `summary === null` → `hidden` (ไม่ใช่ `collapsed`) — **fail closed**: ค่า null
+ *    แปลว่า *ยังไม่รู้* ไม่ใช่ *ว่าง* ⇒ ห้ามขึ้น "ยังไม่เคยแจ้งเรื่อง" จากข้อมูลที่ไม่มี
+ *    (ตามทฤษฎีไม่ถึง เพราะ `!homeError && !loading` แปลว่า `home.value` มีค่าแล้ว
+ *     แต่ถ้าวันหนึ่ง `my_issues` กลายเป็น optional สด ๆ ที่นี่จะไม่พัง)
+ */
+export function myIssuesBlockState(o: {
+  homeError: boolean
+  loading: boolean
+  summary: MyIssueSummary | null
+}): HomeBlockState {
+  if (o.homeError) return 'hidden'
+  if (o.loading) return 'full'
+  if (!o.summary) return 'hidden'
+  return o.summary.total_issues === 0 ? 'collapsed' : 'full'
+}
+
+/**
+ * "สถิติของฉัน"
+ *
+ * ⚠️ การ์ดนี้ **ใช้ร่วมกับ `Profile.vue`** ⇒ ยุบทิ้งได้เฉพาะที่หน้าแรก การตัดสินจึงอยู่ที่นี่
+ *    ไม่ใช่ในตัวคอมโพเนนต์ (Profile ต้องคงกล่อง "ยังไม่มีสถิติในช่วงนี้" เต็มรูปแบบ)
+ * ⚠️ ข้อความของแถวต้องผูกกับ **ภาคเรียน** ("ในช่วงนี้") ไม่ใช่ "ยังไม่เคยแจ้งเรื่อง" —
+ *    `total_reported` นับตามภาค แต่ `my_issues.total_issues` นับตลอดชีพ ⇒ นักเรียนที่แจ้ง
+ *    20 เรื่องภาคที่แล้วและ 0 ภาคนี้ จะเห็นบล็อกบนพูดว่า "20 เรื่อง" และบล็อกล่างพูดว่า
+ *    "ยังไม่เคยแจ้ง" ซึ่งขัดกันเองต่อหน้าต่อตา
+ */
+export function personalStatsBlockState(o: {
+  homeError: boolean
+  loading: boolean
+  stats: PersonalStats | null
+}): HomeBlockState {
+  if (o.homeError) return 'hidden'
+  if (o.loading) return 'full'
+  if (!o.stats) return 'hidden'
+  return statsAllZero(o.stats) ? 'collapsed' : 'full'
+}
+
+/**
+ * "คิวจัดการรายงาน" (สภา/แอดมิน)
+ *
+ * 🔴 **ต้องมี `loaded` แยกจาก `loading`** — `loadingReports` เริ่มที่ `isCouncil` และ
+ *    `loadReports()` **return ทันทีโดยไม่ยิง** เมื่อ `!isCouncil` ⇒ ถ้าสิทธิ์เพิ่งกลายเป็นจริง
+ *    *หลัง* mount (เส้นทางจริง: `MainLayout` เรียก `loadMe()` ทีหลัง และ guard ตอนนำทาง
+ *    กลืน error ไว้) จะได้ `loading === false`, `reports === []` ⇒ เงื่อนไข "ว่าง" เป็นจริง
+ *    **ทั้งที่ยังไม่เคยถามเซิร์ฟเวอร์เลย** ⇒ `loaded` บังคับว่าต้องยิงสำเร็จรอบหนึ่งก่อน
+ *
+ * ⚠️ **ทำไมไม่ต้องดู `total` ประกอบ** — `Home.vue` เรียก `listReports({ status: 'open',
+ *    limit: 5 })` **โดยไม่ส่ง `offset`** ⇒ `items` คือหน้าแรกของคำสั่งเดียวกับที่ได้ `total`
+ *    ⇒ หน้าแรกว่างก็ต่อเมื่อ `total === 0` พอดี · การเช็ค `total` ซ้ำจึงเป็นสาขาที่ไปไม่ถึง
+ *    (ซึ่งแย่กว่าไม่มี เพราะอ่านเหมือนมีเหตุผล)
+ *    🔴 **ถ้าวันหน้าเพิ่ม paging (ส่ง `offset`) ต้องกลับมาใส่ `total === 0` ที่นี่** —
+ *       ตอนนั้น "หน้าแรกว่าง" กับ "ไม่มีของเลย" จะไม่ใช่เรื่องเดียวกันอีก
+ */
+export function reportQueueBlockState(o: {
+  isCouncil: boolean
+  loading: boolean
+  loaded: boolean
+  error: boolean
+  count: number
+}): HomeBlockState {
+  if (!o.isCouncil) return 'hidden'
+  if (o.error || o.loading) return 'full'
+  if (!o.loaded) return 'hidden'
+  return o.count === 0 ? 'collapsed' : 'full'
+}
+
+/**
+ * "ภาพรวมทั้งโรงเรียน" (VIEW_DASHBOARD)
+ *
+ * 🔴 **บล็อกนี้เดิมไม่มีสาขาสุดท้าย** — `v-if` มีแค่ `loadingDash` / `dashError` / `dash`
+ *    ⇒ เมื่อ `!loading && !error && !dash` การ์ดจะขึ้น **หัวการ์ดลอย ๆ ที่มีไทล์ + `<h2>` +
+ *    ปุ่ม "เปิดแดชบอร์ด" แต่เนื้อในว่างเปล่า** ซึ่งเป็น "ที่ว่าง" ที่แย่กว่าการ์ดว่างปกติ
+ *    เพราะดูเหมือนโหลดค้าง · เกิดได้จากเส้นทางเดียวกับ `reportQueueBlockState` (สิทธิ์มา
+ *    หลัง mount) ⇒ ที่นี่ตอบ `hidden` แทนการเดาว่าว่าง
+ */
+export function dashboardBlockState(o: {
+  canDashboard: boolean
+  loading: boolean
+  error: boolean
+  hasData: boolean
+}): HomeBlockState {
+  if (!o.canDashboard) return 'hidden'
+  if (o.loading || o.error) return 'full'
+  return o.hasData ? 'full' : 'hidden'
 }
 
