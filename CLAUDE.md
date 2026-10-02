@@ -97,7 +97,8 @@ frontend/src/
   views/       # pages: UI logic, lifecycle, rendering
   components/  # reusable UI pieces
     ui/        # ★ design system: AppCard · AppButton · AppChip · AppTabs · AppSheet
-               #   AppEmptyState · IconButton · PageHeader · StatusBadge
+               #   AppEmptyState (ว่างทั้งหน้า) · AppEmptyRow (ว่างเป็นแถว 44dp ในหน้าแรก)
+               #   IconButton · PageHeader · StatusBadge
     layout/    # AppHeader · AppSidebar · AppBottomNav · AppTabBar · AppFab
                #   AppNavRow · AppGroupHeader (shell — MainLayout ประกอบเข้าด้วยกัน)
   layouts/     # MainLayout เท่านั้น (222 บรรทัด — ไม่มี GlobalLayout)
