@@ -38,7 +38,7 @@ from models.import_schemas import (
     RESTARTABLE_STATUS,
     CLAIMABLE_STATUS,
 )
-from services import auth_service
+from services import auth_service, year_service
 from services.student_service import map_role_label
 
 logger = logging.getLogger("IMPORT_SERVICE")
@@ -49,6 +49,11 @@ logger = logging.getLogger("IMPORT_SERVICE")
 KNOWN_COLUMNS = [
     "รหัสนักเรียน", "ห้องเรียน", "เลขที่",
     "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเล่น", "ตำแหน่งในห้องเรียน",
+    # 🌟 "ปีการศึกษา" ( migration 028) — ต่อท้ายโดยเจตนา ⇒ ไฟล์เก่า 8 คอลัมน์ยังผ่าน
+    #    (validate_columns ปฏิเสธแค่คอลัมน์ **แปลกปลอม** ไม่ได้บังคับว่าครบ)
+    #    ช่องว่างในเซลล์ = ใช้ปีของ job · และ build_template_xlsx_bytes สร้างหัวตาราง
+    #    จากลิสต์นี้ ⇒ template อัปเดตเองอัตโนมัติโดยไม่ต้องแก้โค้ด
+    "ปีการศึกษา",
 ]
 KNOWN_COLUMNS_SET = set(KNOWN_COLUMNS)
 REQUIRED_COLUMNS = {"รหัสนักเรียน", "ห้องเรียน", "เลขที่"}
@@ -253,12 +258,19 @@ async def create_import_job(
     original_filename: str,
     default_password: str = "1234",
     allowed_level: Optional[str] = None,
+    academic_year_id: Optional[int] = None,
     actor_user_id: Optional[int] = None,
     client_source: str = "web",
 ) -> dict:
     """
     ตรวจคอลัมน์แบบเป๊ะ → บันทึกไฟล์ลง storage → สร้าง record (status=PENDING) + audit
     (ตรวจคอลัมน์ก่อนบันทึกไฟล์ กันไฟล์ขยะค้างใน storage เมื่อคอลัมน์ผิด)
+
+    🌟 `academic_year_id` (migration 028) — ปีของชุดที่กำลังนำเข้า
+      · ระบุ → แถวที่ **ไม่กรอก** คอลัมน์ "ปีการศึกษา" ตกมาอยู่ปีนี้ และแถวที่กรอก
+        **ต้องตรงกัน** ไม่งั้นเป็น error รายแถว (กันไฟล์ค้างปีถูกนำเข้าทับลงปีใหม่เงียบ ๆ)
+      · ไม่ระบุ (None) → โหมดผ่อนปรน: แถวไหนไม่กรอกก็ใช้ **ปีปัจจุบัน** และแถวที่กรอก
+        ปีใดก็ได้ที่ **มีอยู่ในระบบ** (ใช้ตอน backfill ประวัติย้อนหลัง)
     """
     data_rows, _ = load_workbook_rows(content)  # Raise ValidationError ถ้าคอลัมน์/ไฟล์ผิด
 
@@ -272,6 +284,17 @@ async def create_import_job(
             f"ไฟล์มีข้อมูลเกิน {settings.IMPORT_MAX_ROWS} แถว — กรุณาแบ่งไฟล์ออกเป็นหลายไฟล์"
         )
 
+    # 🌟 ตรวจว่าปีที่ระบุมีอยู่จริง **ก่อน** บันทึกไฟล์ — หลักการเดียวกับ "ตรวจคอลัมน์ก่อน
+    #    บันทึกไฟล์": ถ้าปีผิด ให้ล้มตั้งแต่ยังไม่มีไฟล์ตกค้างใน storage
+    if academic_year_id is not None:
+        async with pool.acquire() as conn:
+            year_ok = await conn.fetchval(
+                "SELECT 1 FROM academic_years WHERE id = $1 AND deleted_at IS NULL",
+                academic_year_id,
+            )
+        if not year_ok:
+            raise ValidationError("ไม่พบปีการศึกษาที่ระบุ — อาจถูกลบไปแล้ว")
+
     file_path = save_upload_file(content, original_filename)
 
     async with pool.acquire() as conn:
@@ -279,12 +302,13 @@ async def create_import_job(
             job_id = await conn.fetchval(
                 """
                 INSERT INTO student_import_jobs
-                    (file_name, file_path, status, total_rows, default_password, allowed_level, created_by)
-                VALUES ($1, $2, 'PENDING', $3, $4, $5, $6)
+                    (file_name, file_path, status, total_rows, default_password, allowed_level,
+                     academic_year_id, created_by)
+                VALUES ($1, $2, 'PENDING', $3, $4, $5, $6, $7)
                 RETURNING id
                 """,
                 original_filename, file_path, len(data_rows),
-                default_password or "1234", allowed_level, actor_user_id,
+                default_password or "1234", allowed_level, academic_year_id, actor_user_id,
             )
 
             # 🛡️ Audit log (กฎ: ทุก create ต้องบันทึกใน transaction เดียวกัน)
@@ -424,6 +448,10 @@ class _ImportCtx:
     def __init__(self) -> None:
         self.room_cache: dict = {}   # room_code -> room_id
         self.user_cache: dict = {}   # username -> user_id
+        # 🌟 year_be -> academic_year_id (None = ไม่พบในระบบ) — migration 028
+        #    ⚠️ cache ค่า None ไว้ด้วยโดยเจตนา: ปีที่ไม่มีจะไม่มีโผล่มาระหว่าง job
+        #       ⇒ ไม่ต้อง query ซ้ำทุกแถวที่มีปีผิด (ไฟล์ 2,000 แถวพิมพ์ปีผิด = 2,000 query)
+        self.year_cache: dict = {}
 
 
 def _get(r: tuple, col_index: dict, name: str):
@@ -453,6 +481,53 @@ def _to_int(value) -> int:
     return int(s) if s else 0
 
 
+async def _resolve_row_year(
+    conn: asyncpg.Connection,
+    r: tuple,
+    col_index: dict,
+    ctx: _ImportCtx,
+    job_year_id: Optional[int],
+) -> Tuple[Optional[int], Optional[str]]:
+    """ปีการศึกษาของแถวนี้ — คืน (year_id, error)
+
+    ลำดับการตัดสิน:
+      1. เซลล์ "ปีการศึกษา" กรอกมา → **ต้องเป็น พ.ศ. ที่มีอยู่ในระบบเท่านั้น**
+         🔴 **ห้ามสร้างปีจากเซลล์ Excel เงียบ ๆ** — ถ้าพิมพ์ 2571 ผิดเป็น 2751 แล้วระบบ
+            สร้างปีให้เอง จะได้ปีผีที่ลบยาก และเทสต์/invariant "ปีปัจจุบันมีได้ตัวเดียว"
+            จะพังแบบหาสาเหตุไม่เจอ ⇒ ปีที่ไม่มี = **error รายแถว** (ไม่ใช่ FAILED ทั้ง job
+            ตาม contract เดิมของ import: แถวผิด = ข้าม + บันทึก error_logs)
+      2. เซลล์ว่าง → ใช้ **ปีของ job** (ไม่ใช่ "ปีปัจจุบัน" — ถ้ากำลัง import ย้อนหลัง
+         ปีปัจจุบันจะผิดทันที) · job เก่าที่ไม่มีปี → ปีปัจจุบัน (พฤติกรรมเดิม)
+    """
+    raw = _cell_to_str(_get(r, col_index, "ปีการศึกษา"))
+
+    if not raw:
+        if job_year_id is not None:
+            return job_year_id, None
+        current = await year_service.fetch_current_year(conn)
+        return (current["id"] if current else None), None
+
+    # _cell_to_str แปลง float ที่ลงตัวเป็น "2569" แล้ว (ไม่ใช่ "2569.0") ⇒ int() ตรง ๆ ได้
+    try:
+        year_be = int(raw)
+    except (ValueError, TypeError):
+        return None, f"ปีการศึกษาต้องเป็นตัวเลข พ.ศ. (ได้ค่า: {raw!r})"
+
+    if year_be not in ctx.year_cache:
+        ctx.year_cache[year_be] = await conn.fetchval(
+            "SELECT id FROM academic_years WHERE year_be = $1 AND deleted_at IS NULL",
+            year_be,
+        )
+    found = ctx.year_cache[year_be]
+    if found is None:
+        return None, f"ไม่พบปีการศึกษา {year_be} ในระบบ — สร้างปีการศึกษาก่อนนำเข้า"
+    # ⚠️ ไม่ตรงกับปีของ job = error โดยเจตนา — กันไฟล์ที่ค้างมาจากปีก่อนถูกนำเข้าทับ
+    #    ลงปีใหม่เงียบ ๆ (ข้อมูลจะไปอยู่ผิดปีโดยที่ผู้ใช้อ่านหน้าจอไม่ออก)
+    if job_year_id is not None and found != job_year_id:
+        return None, "ปีการศึกษาในไฟล์ไม่ตรงกับปีของงานนำเข้านี้"
+    return found, None
+
+
 async def _process_single_row(
     conn: asyncpg.Connection,
     r: tuple,
@@ -461,6 +536,7 @@ async def _process_single_row(
     *,
     default_password: str,
     allowed_level: Optional[str],
+    job_year_id: Optional[int] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     ประมวลผล 1 แถว (สร้าง/อัปเดต users + rooms + students)
@@ -502,6 +578,16 @@ async def _process_single_row(
                 f"ตำแหน่ง '{role_label}' ({class_role}) สร้างได้เฉพาะผู้ดูแลทั้งโรงเรียน — "
                 f"ครูระดับชั้น ({allowed_level}) นำเข้าไม่ได้"
             )
+
+        # 🌟 0. ปีการศึกษา (migration 028) — ต้องรู้ก่อน INSERT เพราะ `academic_year_id`
+        #    เป็น NOT NULL และเป็นส่วนหนึ่งของ unique index ใหม่
+        row_year_id, year_err = await _resolve_row_year(conn, r, col_index, ctx, job_year_id)
+        if year_err:
+            return False, year_err
+        if row_year_id is None:
+            # เกิดไม่ได้ในทางปฏิบัติ (027 รับประกันว่ามีปีปัจจุบันเสมอ) — แต่ถ้าเกิด
+            # อย่าปล่อยให้ล้มด้วย NotNullViolation ที่อ่านไม่ออก ให้บอกตรง ๆ ว่าต้องทำอะไร
+            return False, "ยังไม่มีปีการศึกษาในระบบ — สร้างปีการศึกษาก่อนนำเข้า"
 
         # 🌟 1. Room — ครูสภา/แอดมิน (school-wide) ไม่ผูกห้องเฉพาะ; ระบุห้องได้แต่ไม่บังคับ
         school_wide = class_role in SCHOOL_WIDE_ROLES
@@ -559,15 +645,20 @@ async def _process_single_row(
 
         # 🌟 3. Student — upsert แบบ atomic กัน 2 worker/reimport ชนกันสร้างแถวซ้ำ
         if room_id is not None:
-            # แถวที่มีห้อง → ON CONFLICT (ต้องมี partial unique index (room_id, student_id) WHERE deleted_at IS NULL)
+            # แถวที่มีห้อง → ON CONFLICT ต้องตรงกับ partial unique index
+            # `uq_students_room_year_student (room_id, academic_year_id, student_id)` (migration 028)
+            # 🔴 **ห้ามถอยกลับไปใช้ `(room_id, student_id)`** — index นั้นถูก DROP ไปแล้ว
+            #    และถ้าใส่ arbiter ที่ไม่มี index รองรับ PostgreSQL จะโยน error ทันที
+            #    ("there is no unique or exclusion constraint matching the ON CONFLICT
+            #     specification") ⇒ **import พังทั้งงาน** ไม่ใช่แค่แถวเดียว
             await conn.execute(
                 """
                 INSERT INTO students
                     (room_id, user_id, student_id, student_no, prefix,
                      first_name, last_name, nickname, class_role, staff_level,
-                     is_admin, permissions)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                ON CONFLICT (room_id, student_id) WHERE deleted_at IS NULL
+                     is_admin, permissions, academic_year_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                ON CONFLICT (room_id, academic_year_id, student_id) WHERE deleted_at IS NULL
                 DO UPDATE SET
                     user_id = EXCLUDED.user_id,
                     student_no = EXCLUDED.student_no,
@@ -583,15 +674,38 @@ async def _process_single_row(
                 """,
                 room_id, user, student_id, student_no, prefix, first_name, last_name,
                 nickname, class_role, staff_level, role_is_admin, json.dumps(role_perms),
+                row_year_id,
+            )
+
+            # 🛡️ กัน "แถว active ซ้อนในปีเดียวกัน" — ถ้านักเรียนรหัสเดิมถูกนำเข้าซ้ำ
+            #    **คนละห้องในปีเดียวกัน** (แก้ห้องที่กรอกผิด / ย้ายห้องกลางปี) แถวใหม่ถูก
+            #    upsert ลงห้องใหม่ แต่ **แถวเดิมในห้องเก่ายัง active อยู่** ⇒ คนเดียวปรากฏ
+            #    สองห้อง · ยอด dashboard บวม · RBAC เห็นสิทธิ์จากห้องที่ไม่อยู่แล้ว
+            #    ⚠️ แตะเฉพาะ `status='active'` — ไม่ยุ่งกับ pending/suspended/history
+            #    ⚠️ แตะเฉพาะแถวที่มีห้อง (`room_id IS NOT NULL`) — แถว school-wide
+            #       (room_id NULL) เป็น "บทบาทระดับโรงเรียน" ไม่ใช่ "การย้ายห้อง"
+            #    ⚠️ รัน **หลัง** upsert แล้วจึงกัน `room_id <> $3` ได้ (แถวที่เพิ่งเขียน
+            #       อยู่ห้อง $3 ⇒ ไม่ถูกแตะ) — ถ้ารันก่อน จะ supersede แถวตัวเองทิ้ง
+            await conn.execute(
+                """
+                UPDATE students SET status = 'superseded', updated_at = NOW()
+                WHERE academic_year_id = $1 AND student_id = $2 AND deleted_at IS NULL
+                  AND status = 'active' AND room_id IS NOT NULL AND room_id <> $3
+                """,
+                row_year_id, student_id, room_id,
             )
         else:
             # school-wide (room_id NULL): NULL ไม่ชนกันใน unique index → ใช้ SELECT-แล้ว-INSERT/UPDATE ตามเดิม
+            # 🌟 เพิ่ม `academic_year_id = $2` (migration 028) — มิติปีต้องอยู่ในตัวค้นหาด้วย
+            #    ไม่งั้น SELECT จะเจอแถวของปีเก่า (room_id NULL ไม่ชนกันใน index ⇒ มีได้หลายปี)
+            #    แล้ว UPDATE ทับ ⇒ **ปลุกแถวปีเก่า** เหมือนบั๊กที่แก้ใน auth_service
             student = await conn.fetchval(
                 """
                 SELECT id FROM students
                 WHERE room_id IS NULL AND student_id = $1 AND deleted_at IS NULL
+                  AND academic_year_id = $2
                 """,
-                student_id,
+                student_id, row_year_id,
             )
             if student:
                 await conn.execute(
@@ -612,11 +726,12 @@ async def _process_single_row(
                     INSERT INTO students
                         (room_id, user_id, student_id, student_no, prefix,
                          first_name, last_name, nickname, class_role, staff_level,
-                         is_admin, permissions)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                         is_admin, permissions, academic_year_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                     """,
                     room_id, user, student_id, student_no, prefix, first_name, last_name,
                     nickname, class_role, staff_level, role_is_admin, json.dumps(role_perms),
+                    row_year_id,
                 )
 
         return True, None
@@ -751,6 +866,9 @@ async def process_import_job(pool: asyncpg.Pool, job_id: int) -> dict:
     default_password = job["default_password"] or "1234"
     allowed_level = job["allowed_level"]
     created_by = job["created_by"]
+    # 🌟 ปีของงานนี้ (migration 028) — ไฟล์ที่ไม่มีคอลัมน์ "ปีการศึกษา" จะตกมาอยู่ปีนี้
+    #    job เก่าที่ค้างอยู่ (คอลัมน์ยัง NULL) → worker จะถอยไปใช้ปีปัจจุบันให้เอง
+    job_year_id = job["academic_year_id"]
     imported = 0
     skipped = 0
     errors: List[str] = []
@@ -787,6 +905,7 @@ async def process_import_job(pool: asyncpg.Pool, job_id: int) -> dict:
                             ok, err = await _process_single_row(
                                 conn, r, col_index, ctx,
                                 default_password=default_password, allowed_level=allowed_level,
+                                job_year_id=job_year_id,
                             )
                             row_no = start + idx + 1
                             if ok:
@@ -801,6 +920,10 @@ async def process_import_job(pool: asyncpg.Pool, job_id: int) -> dict:
                     del errors[snapshot_errors_len:]
                     ctx.room_cache.clear()
                     ctx.user_cache.clear()
+                    # 🌟 year_cache ต้องเคลียร์ด้วยเหตุผลเดียวกัน — แต่จริง ๆ แล้วค่าปีไม่ผูกกับ
+                    #    transaction (อ่านจาก academic_years ซึ่งไม่ได้ถูก insert ในงานนี้)
+                    #    ⇒ เคลียร์เพื่อความสม่ำเสมอของสัญญา "cache ทั้งชุดถูกล้างพร้อมกัน"
+                    ctx.year_cache.clear()
                     logger.error(f"⚠️ batch job {job_id} พัง ({e}) — fallback ทีละแถว")
                     for idx, r in enumerate(chunk):
                         row_no = start + idx + 1
@@ -809,6 +932,7 @@ async def process_import_job(pool: asyncpg.Pool, job_id: int) -> dict:
                                 ok, err = await _process_single_row(
                                     conn, r, col_index, ctx,
                                     default_password=default_password, allowed_level=allowed_level,
+                                job_year_id=job_year_id,
                                 )
                         except Exception as row_err:
                             ok, err = False, f"ไม่สามารถบันทึกแถวนี้ได้ ({row_err})"

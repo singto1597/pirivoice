@@ -63,6 +63,10 @@ async def download_import_template(
 async def upload_student_excel(
     file: UploadFile = File(...),
     default_password: str = Query("1234"),
+    academic_year_id: int | None = Query(
+        None,
+        description='ปีการศึกษาของชุดที่นำเข้า — ไม่ระบุ = ผ่อนปรน (แถวไม่กรอกปี → ปีปัจจุบัน · กรอกปีใดก็ได้ที่มีในระบบ)',
+    ),
     user_ctx: dict = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db_pool),
 ):
@@ -71,6 +75,11 @@ async def upload_student_excel(
     - ตรวจคอลัมน์แบบเป๊ะ: ต้องมี รหัสนักเรียน | ห้องเรียน | เลขที่ (+ ไม่มีคอลัมน์เกิน/ซ้ำ)
     - บันทึกลง storage + สร้าง record (status=PENDING) — ยังไม่เริ่มทำงาน
     - เริ่มงานจริงต้องกด POST /api/start-import-job/{id} อีกครั้ง
+
+    🌟 `academic_year_id` (migration 028) — ระบุปีของชุดนี้ ⇒ แถวที่ไม่กรอกคอลัมน์
+       "ปีการศึกษา" ตกมาอยู่ปีนี้ และแถวที่กรอก **ต้องตรงกัน** ไม่งั้นเป็น error รายแถว
+       (กันไฟล์ที่ค้างมาจากปีก่อนถูกนำเข้าทับลงปีใหม่เงียบ ๆ · ปีที่ระบุต้องมีอยู่แล้ว
+        — ระบบ **ไม่สร้างปี** จากที่ผู้ใช้อัปโหลดมา)
     """
     uid = user_ctx.get("user_id")
     if not uid:
@@ -114,6 +123,7 @@ async def upload_student_excel(
             original_filename=file.filename,
             default_password=default_password,
             allowed_level=allowed_level,
+            academic_year_id=academic_year_id,
             actor_user_id=uid,
             client_source="web",
         )

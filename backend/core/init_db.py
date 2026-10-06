@@ -642,6 +642,10 @@ async def init_db(pool: asyncpg.Pool):
                     error_message TEXT,                   -- ข้อความ error ระดับ job (เช่น อ่านไฟล์ไม่ได้)
                     default_password TEXT,                -- รหัสเริ่มต้น (default = เลขรหัสนักเรียน)
                     allowed_level TEXT,                   -- ครูทั่วไปนำเข้าได้เฉพาะระดับชั้นนี้
+                    -- 🌟 ปีการศึกษาของชุดที่กำลังนำเข้า (migration 028) — ไฟล์ Excel ที่ไม่มี
+                    --   คอลัมน์ "ปีการศึกษา" จะตกมาอยู่ปีของ job นี้ · nullable โดยเจตนา:
+                    --   job เก่าที่ค้างในตารางยังอ่านได้ (fallback = ปีปัจจุบัน) — ไม่ต้อง backfill
+                    academic_year_id INTEGER REFERENCES academic_years(id),
                     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     started_at TIMESTAMP WITH TIME ZONE,
@@ -920,16 +924,18 @@ async def init_db(pool: asyncpg.Pool):
                 CREATE INDEX IF NOT EXISTS idx_students_year_room
                     ON students(academic_year_id, room_id)
                     WHERE deleted_at IS NULL;
-                -- กันสร้าง student ซ้ำ (room, เลขประจำตัว) — import แบบ ON CONFLICT ใช้ index นี้
-                --   ⚠️ หลังมีปีการศึกษา (migration 027) index นี้ **แคบเกินไป** — มันห้ามคนเดิม
-                --      มีสองแถวในห้องเดิม "คนละปี" ซึ่งเป็นสิ่งที่เราต้องการให้มีได้
-                --      ⇒ migration 028 จะ DROP ตัวนี้แล้วสร้าง `uq_students_room_year_student`
-                --      (room_id, academic_year_id, student_id) แทน
-                --   🔴 **ห้ามลบที่นี่ก่อนที่ 028 จะถูกเขียน** — fresh DB ต้องได้ index เดียวกับ
-                --      DB จริง ไม่งั้นเทสต์จะผ่านทั้งที่ production พัง (028 ไม่ additive:
-                --      image เก่าทำ `ON CONFLICT (room_id, student_id)` ไม่ได้อีก ⇒ ต้องออกพร้อมกัน)
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_students_room_student_active
-                    ON students(room_id, student_id)
+                -- กันสร้าง student ซ้ำ (ห้อง, ปี, เลขประจำตัว) — import แบบ ON CONFLICT ใช้ index นี้
+                --   🌟 **มีมิติปี** (migration 028 สลับมาจาก `uq_students_room_student_active`
+                --      ที่คีย์แค่ `(room_id, student_id)`) — ตัวเก่า **แคบเกินไป**: มันห้ามคนเดิม
+                --      มีสองแถวในห้องเดิม "คนละปี" ซึ่งคือสิ่งที่ต้องมีให้ได้หลังขึ้นปีใหม่
+                --      ⇒ ถ้าไม่สลับ `apply_rollover` (P4) จะ insert แถวปีใหม่ไม่ได้เลย
+                --   🔴 **ต้องตรงกับ migration 028 เสมอ** — บน DB จริง 028 เป็นคนสลับให้
+                --      ส่วนที่นี่ทำให้ **fresh DB ได้ index เดียวกัน** · ถ้าแก้ที่เดียว
+                --      เทสต์จะผ่าน (fresh DB) ทั้งที่ production พัง หรือกลับกัน
+                --   ⚠️ `run_migrations` รัน **ก่อน** บล็อกนี้ ⇒ บน DB จริง 028 DROP ตัวเก่าไปแล้ว
+                --      การ `IF NOT EXISTS` ที่นี่จึงเป็น no-op (ไม่ได้สร้างตัวเก่ากลับมา)
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_students_room_year_student
+                    ON students(room_id, academic_year_id, student_id)
                     WHERE deleted_at IS NULL;
 
                 -- --- D1 ระบบกิจกรรม (migration 025) ---
