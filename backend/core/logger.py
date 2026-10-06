@@ -51,19 +51,32 @@ class AuditLogger:
         self.service_name = service_name
 
     async def _resolve_room_id(self, conn: asyncpg.Connection, user_id: int) -> Optional[int]:
-        """หา room_id ของผู้กระทำ (นักเรียน/ครู → ห้องที่สังกัด ; หัวหน้าห้อง → ห้องที่เป็นเจ้าของ)"""
+        """หา room_id ของผู้กระทำ (นักเรียน/ครู → ห้องที่สังกัด ; หัวหน้าห้อง → ห้องที่เป็นเจ้าของ)
+
+        🌟 **`academic_year_id DESC` กัน log ห้องเก่า** (เพิ่มพร้อม migration 027):
+           หลังมีปี ผู้ใช้คนหนึ่งมีได้หลายแถว (ปีเก่า + ปีใหม่) ⇒ `ORDER BY prio` อย่างเดียว
+           จะหยิบแถวตามใจ planner ซึ่งมักเป็นแถวที่ insert ก่อน = **ปีเก่า** ⇒ audit log
+           บันทึกว่าเขาทำรายการจากห้องที่เขาไม่อยู่แล้ว
+           ⚠️ เป็นการ "เรียง" ไม่ใช่ "กรอง" โดยเจตนา — ไม่แตะพฤติกรรมของผู้ใช้ที่ยังไม่มีปี
+              (แถวเดียวต่อคน ⇒ ลำดับไม่มีผล) และไม่ตัดสินใจแทนว่าสถานะไหนควรมีห้อง
+        ⚠️ **สมมติฐานที่ต้องรู้: "id ของปี = ลำดับเวลา"** — เรียงด้วย `academic_year_id` คือเรียง
+           ตาม id ⇒ เชื่อว่า **ปีที่สร้างทีหลังคือปีที่ใหม่กว่า** ซึ่งจริงเสมอในเส้นทาง rollover
+           (ต่อท้ายปีใหม่) · ถ้าวันหนึ่งมีใครสร้างปีเก่าย้อนหลังแล้ว **มีข้อมูลในปีนั้น**
+           (เช่น backfill ประวัติ) การเรียงนี้จะหยิบผิด ⇒ เปลี่ยนไปเรียงด้วย `year_be`
+           ผ่าน JOIN `academic_years` แทน (เทสต์ `test_year_read_paths.py` ล็อกพฤติกรรมนี้ไว้)
+        """
         return await conn.fetchval(
             """
             SELECT room_id FROM (
-                SELECT s.room_id AS room_id, 1 AS prio
+                SELECT s.room_id AS room_id, 1 AS prio, s.academic_year_id AS year_id
                 FROM students s
                 WHERE s.user_id = $1 AND s.deleted_at IS NULL AND s.room_id IS NOT NULL
                 UNION ALL
-                SELECT r.id AS room_id, 2 AS prio
+                SELECT r.id AS room_id, 2 AS prio, NULL::int AS year_id
                 FROM rooms r
                 WHERE r.owner_id = $1 AND r.deleted_at IS NULL
             ) t
-            ORDER BY prio
+            ORDER BY prio, year_id DESC NULLS LAST
             LIMIT 1
             """,
             user_id

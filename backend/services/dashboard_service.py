@@ -8,6 +8,8 @@ from core.categories import (
 )
 from core.rbac import get_access_scope, require_permission_anywhere
 from core.exceptions import ForbiddenError
+# 🌟 ต้องรู้ "ปีปัจจุบัน" เพื่อไม่ให้นับคนซ้ำข้ามปี (migration 027)
+from services import year_service
 
 STATUS_LABELS = {
     "pending": "รอรับเรื่อง",
@@ -447,7 +449,16 @@ async def _count_people(conn: asyncpg.Connection, scope: dict) -> tuple:
     - scope='level' (ครูทั่วไป) → นับเฉพาะระดับชั้นตัวเอง
     - scope='super'/'all' (แอดมิน/ครูสภา/ประธานสภา) → นับทั้งโรงเรียน
     - scope อื่น (none/pyramid) → 0 (fail-closed — ไม่เห็นจำนวนทั้งโรงเรียน)
+
+    🌟 **นับเฉพาะปีปัจจุบัน** (migration 027) — ก่อนมีปี ตาราง `students` มีคนละ 1 แถว
+       ⇒ `COUNT(*)` = จำนวนคน · หลังมีปี คนหนึ่งมีได้หลายแถว (ปีเก่า + ปีใหม่)
+       ⇒ ถ้าไม่กรอง **ยอดจะบวมขึ้นทุกปี** โดยที่ตัวเลขยังดูสมเหตุสมผล (ไม่มีทางรู้ว่าผิด)
+       ⚠️ ตัวกรองระดับชั้น (`r.level`) ไม่มีผลกับคนที่ `room_id IS NULL` อยู่แล้ว (LEFT JOIN
+          + เงื่อนไขบน r) ⇒ ไม่ต้องแก้ตรรกะนั้น
     """
+    current_year = await year_service.fetch_current_year(conn)
+    year_id = current_year["id"] if current_year else None
+
     if scope["scope"] == "level" and scope.get("level"):
         level = scope["level"]
         total_students = await conn.fetchval(
@@ -455,8 +466,9 @@ async def _count_people(conn: asyncpg.Connection, scope: dict) -> tuple:
             SELECT COUNT(*) FROM students s
             LEFT JOIN rooms r ON r.id = s.room_id
             WHERE s.deleted_at IS NULL AND r.level = $1
+              AND s.academic_year_id = $2
             """,
-            level
+            level, year_id
         ) or 0
         total_rooms = await conn.fetchval(
             "SELECT COUNT(*) FROM rooms r WHERE r.deleted_at IS NULL AND r.level = $1",
@@ -464,7 +476,8 @@ async def _count_people(conn: asyncpg.Connection, scope: dict) -> tuple:
         ) or 0
     elif scope["scope"] in ("super", "all"):
         total_students = await conn.fetchval(
-            "SELECT COUNT(*) FROM students WHERE deleted_at IS NULL"
+            "SELECT COUNT(*) FROM students WHERE deleted_at IS NULL AND academic_year_id = $1",
+            year_id
         ) or 0
         total_rooms = await conn.fetchval(
             "SELECT COUNT(*) FROM rooms WHERE deleted_at IS NULL"

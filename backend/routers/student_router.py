@@ -5,8 +5,12 @@ import asyncpg
 
 from core.dependencies import get_db_pool, get_current_user
 from core.rbac import (
-    require_permission_anywhere, get_access_scope, get_user_grade_scope,
+    require_permission_anywhere,
     MANAGE_RANK,
+    # 🌟 ย้ายมาจากไฟล์นี้ (ชื่อเดิม `_manage_mode`) — ดูเหตุผลที่ `core/rbac.py`
+    # ⚠️ `get_access_scope` / `get_user_grade_scope` ถูกถอดออกจาก import แล้ว —
+    #    ทั้งคู่ถูกเรียกจาก `_manage_mode` ที่ย้ายไป ⇒ ถ้าปล่อยไว้จะเป็น import ที่ตาย
+    get_manage_mode,
 )
 from core.exceptions import NotFoundError, ForbiddenError, ValidationError, ConflictError
 from models.student_schemas import (
@@ -17,29 +21,6 @@ from services import student_service
 from services import audit_service
 
 router = APIRouter(tags=["Students"])
-
-
-async def _manage_mode(conn, actor_user_id: int) -> dict:
-    """
-    ความสามารถจัดการนักเรียนของ actor (หน้า User Management):
-      {"mode": "school"|"teacher"|"level"|"none", "grade": Optional[str], "manage_rank": Optional[int]}
-    - school : admin / ครูสภา / ประธานสภา / SUPER_ADMIN — จัดการได้ทุกคนทุกชั้น (bypass rank/grade)
-    - teacher: ครูทั่วไป — จัดการได้ทุก role ภายในระดับชั้นตัวเอง (staff_level)
-    - level  : ประธานระดับ / ผู้ช่วยหัวหน้าระดับ — จัดการได้เฉพาะ role rank ≤ manage_rank ในระดับชั้นตัวเอง
-    - none   : มี MANAGE_STUDENTS แต่หาขอบเขตไม่เจอ → ปฏิเสธ (fail-closed)
-    """
-    scope = await get_access_scope(conn, actor_user_id)
-    # SUPER_ADMIN / admin / ครูสภา / ประธานสภา (is_admin) → school-wide
-    if scope["scope"] in ("super", "all") and scope.get("is_admin"):
-        return {"mode": "school", "grade": None, "manage_rank": None}
-    # ครูทั่วไป: scope='level' + staff_level
-    if scope["scope"] == "level" and scope.get("level"):
-        return {"mode": "teacher", "grade": scope["level"], "manage_rank": None}
-    # ประธานระดับ / ผู้ช่วยหัวหน้าระดับ: grade scope (rooms.level) — rank 2
-    grade = await get_user_grade_scope(conn, actor_user_id)
-    if grade:
-        return {"mode": "level", "grade": grade, "manage_rank": MANAGE_RANK.get("level_vice_president", 2)}
-    return {"mode": "none", "grade": None, "manage_rank": None}
 
 
 async def _assert_manage_target(
@@ -54,7 +35,7 @@ async def _assert_manage_target(
     ตรวจ hierarchy + grade scope ว่าผู้จัดการ (actor) แก้ไข/สร้างเป้าหมายนี้ได้หรือไม่
     เรียก AFTER require_permission_anywhere(MANAGE_STUDENTS) ผ่านแล้วเท่านั้น
     """
-    mode = await _manage_mode(conn, actor_user_id)
+    mode = await get_manage_mode(conn, actor_user_id)
     if mode["mode"] == "school":
         return
     if mode["mode"] == "none":
@@ -143,12 +124,20 @@ async def list_students(
     room_id: int | None = Query(None),
     search: str | None = Query(None),
     role: str | None = Query(None, description="กรองตามตำแหน่ง (เช่น council_member)"),
+    year_id: int | None = Query(
+        None, description="ปีการศึกษาที่จะดู — ไม่ระบุ = ปีปัจจุบัน (ดูย้อนหลังได้)"
+    ),
     user_ctx: dict = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db_pool),
 ):
-    """รายชื่อนักเรียน/สมาชิก (filter ตามห้อง/ค้นหา/ตำแหน่ง) — ต้องมีสิทธิ์ MANAGE_STUDENTS
+    """รายชื่อนักเรียน/สมาชิก (filter ตามห้อง/ค้นหา/ตำแหน่ง/ปี) — ต้องมีสิทธิ์ MANAGE_STUDENTS
     ขอบเขต: admin/ครูสภา/ประธานสภา เห็นทุกคน; ครู/ประธานระดับ/ผู้ช่วย เห็นเฉพาะระดับชั้นตัวเอง
-    (ประธานระดับ/ผู้ช่วย เห็นเฉพาะ role ที่ต่ำกว่าหรือเท่ากับตัวเอง — กันดู role สูงกว่า)"""
+    (ประธานระดับ/ผู้ช่วย เห็นเฉพาะ role ที่ต่ำกว่าหรือเท่ากับตัวเอง — กันดู role สูงกว่า)
+
+    🌟 `year_id` (เพิ่มพร้อม migration 027) — ไม่ระบุ = ปีปัจจุบัน
+       ⇒ ถ้าไม่ส่ง รายชื่อจะ **ไม่บวมด้วยแถวของปีเก่า** (ซึ่งคือพฤติกรรมที่ต้องการ)
+       ⚠️ ขอบเขตระดับชั้น (`level`) ยังใช้กับปีที่ขอดูย้อนหลังด้วย — ครูยังเห็นได้แค่ระดับตัวเอง
+          แม้จะดูปีเก่า (ไม่ใช่ช่องทางข้ามสิทธิ์)"""
     if not user_ctx.get("user_id"):
         raise HTTPException(status_code=401, detail="ต้องเข้าสู่ระบบ")
 
@@ -158,13 +147,15 @@ async def list_students(
             await require_permission_anywhere(conn, user_ctx["user_id"], "MANAGE_STUDENTS")
         except ForbiddenError as e:
             raise HTTPException(status_code=403, detail=str(e))
-        mode = await _manage_mode(conn, user_ctx["user_id"])
+        mode = await get_manage_mode(conn, user_ctx["user_id"])
 
     if mode["mode"] == "none":
         raise HTTPException(status_code=403, detail="คุณไม่มีขอบเขตสิทธิ์ในการจัดการนักเรียน")
 
     level = mode["grade"] if mode["mode"] in ("teacher", "level") else None
-    students = await student_service.list_students(pool, room_id=room_id, search=search, level=level, role=role)
+    students = await student_service.list_students(
+        pool, room_id=room_id, search=search, level=level, role=role, year_id=year_id
+    )
     # ประธานระดับ/ผู้ช่วย: เห็นได้เฉพาะ role ที่จัดการได้ (rank ≤ ตัวเอง) ภายในระดับชั้น
     if mode["mode"] == "level":
         allowed = {r for r, rk in MANAGE_RANK.items() if rk <= mode["manage_rank"]}
