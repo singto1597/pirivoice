@@ -7,6 +7,9 @@ from jose import jwt
 from core.config import settings
 from core.rbac import get_role_permissions, get_role_is_admin
 from core.exceptions import ForbiddenError, NotFoundError, ValidationError, ConflictError
+# 🌟 ต้องรู้ "ปีปัจจุบัน" เพื่อไม่ให้ไป UPDATE ทับแถวปีเก่าตอนลงทะเบียน (migration 027)
+#    ⚠️ `year_service` พึ่งแค่ `core.*` ⇒ ไม่เกิด import วนกับ auth_service
+from services import year_service
 
 
 def hash_password(password: str) -> str:
@@ -237,22 +240,35 @@ async def register_user(
                 )
 
             # 3. หา/สร้าง student (ผูกกับ user_id)
+            #
+            # 🔴 **ต้องเจาะจง "ปีเดียวกัน" (migration 027) — ที่นี่ร้ายกว่าจุดอื่น เพราะสาขา
+            #    "เจอแถวเดิม" ไม่ได้ INSERT แต่ `UPDATE` ทับ** ⇒ ถ้าไม่กรองปี เด็กที่เลื่อนชั้น
+            #    แล้ว (มีแต่แถวปีเก่า `status='promoted'`) จะถูกจับมา **ปลุกเป็นสมาชิกปัจจุบัน
+            #    ของปีเก่า** — ได้สิทธิ์จากแถวปีเก่า และ **ไม่มีแถว active ในปีใหม่เลย**
+            #    ⇒ เพิ่มตัวกรองปี = กันบั๊ก resurrection ไม่ใช่แค่กัน duplicate
+            #    ⚠️ หาปีไม่เจอ → ไม่เจอแถวเดิม → INSERT แถวใหม่ (ได้ DEFAULT ของคอลัมน์)
+            #       ซึ่งเป็นทางที่ปลอดภัยกว่า "ไป UPDATE แถวปีเก่า" อย่างชัดเจน
+            current_year = await year_service.fetch_current_year(conn)
+            reg_year_id = current_year["id"] if current_year else None
+
             room_id = room["id"] if room else None
             if room_id is not None:
                 student = await conn.fetchrow(
                     """
                     SELECT id FROM students
                     WHERE room_id = $1 AND student_id = $2 AND deleted_at IS NULL
+                      AND academic_year_id = $3
                     """,
-                    room_id, student_id
+                    room_id, student_id, reg_year_id
                 )
             else:
                 student = await conn.fetchrow(
                     """
                     SELECT id FROM students
                     WHERE room_id IS NULL AND student_id = $1 AND deleted_at IS NULL
+                      AND academic_year_id = $2
                     """,
-                    student_id
+                    student_id, reg_year_id
                 )
             if student:
                 # อัปเดต user_id + ตำแหน่ง + permissions + staff_level + is_admin

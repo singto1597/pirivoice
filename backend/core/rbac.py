@@ -53,11 +53,23 @@ async def require_permission(conn: asyncpg.Connection, room_id: int, user_id: in
         return True
 
     # 2. Query ค่า is_admin + permissions จากตาราง students
+    #
+    # 🔴 **`ORDER BY` ที่นี่ไม่ใช่ของประดับ — ห้ามลบ** (เพิ่มพร้อม migration 027)
+    #    หลังมี "ปีการศึกษา" คนหนึ่งมีได้หลายแถว **ในห้องเดียวกัน**: แถวปีเก่า
+    #    (`status='promoted'`/`'graduated'`) + แถวปีใหม่ (`status='active'`)
+    #    ⇒ `fetchrow` ที่ไม่มี ORDER BY จะหยิบตามลำดับที่ planner คืน (มัก = แถวที่ insert ก่อน
+    #    = ปีเก่า) ⇒ **ผู้ใช้ที่ active จริงโดน 403** ด้วยข้อความ "บัญชีของคุณในระดับนี้ยังไม่ได้
+    #    รับการอนุมัติ หรือถูกระงับ" ทั้งที่แถว active ของเขาอยู่แถวถัดไป
+    #    ⇒ เรียงแถว `active` ขึ้นก่อนเสมอ แล้วใช้ `id DESC` (ใหม่สุด) เป็นตัวตัดสินรอง
+    #    ⚠️ `(status = 'active')` เป็น boolean ⇒ `DESC` = true มาก่อน · พอร์ตได้ทั้ง PG และอื่น
+    #    ⚠️ ข้อความ error ทั้งสองแบบ **คงเดิมโดยเจตนา** — ผู้ใช้ที่เจออยู่และเทสต์เดิมไม่เปลี่ยน
     row = await conn.fetchrow(
         """
         SELECT is_admin, permissions, status
         FROM students
         WHERE room_id = $1 AND user_id = $2 AND deleted_at IS NULL
+        ORDER BY (status = 'active') DESC, id DESC
+        LIMIT 1
         """,
         room_id, int(user_id)
     )
@@ -226,7 +238,7 @@ async def get_user_grade_scope(conn: asyncpg.Connection, user_id: int) -> Option
         WHERE user_id = $1 AND class_role = 'teacher'
           AND deleted_at IS NULL AND status = 'active'
           AND staff_level IS NOT NULL
-        ORDER BY id LIMIT 1
+        ORDER BY academic_year_id DESC, id DESC LIMIT 1
         """,
         int(user_id)
     )
@@ -242,7 +254,7 @@ async def get_user_grade_scope(conn: asyncpg.Connection, user_id: int) -> Option
           AND s.class_role IN ('level_president', 'level_vice_president')
           AND s.deleted_at IS NULL AND s.status = 'active'
           AND r.deleted_at IS NULL AND r.level IS NOT NULL
-        ORDER BY s.id LIMIT 1
+        ORDER BY s.academic_year_id DESC, s.id DESC LIMIT 1
         """,
         int(user_id)
     )
@@ -250,6 +262,37 @@ async def get_user_grade_scope(conn: asyncpg.Connection, user_id: int) -> Option
         return row["level"]
 
     return None
+
+
+async def get_manage_mode(conn: asyncpg.Connection, actor_user_id: int) -> dict:
+    """
+    ความสามารถจัดการนักเรียนของ actor (หน้า User Management):
+      {"mode": "school"|"teacher"|"level"|"none", "grade": Optional[str], "manage_rank": Optional[int]}
+    - school : admin / ครูสภา / ประธานสภา / SUPER_ADMIN — จัดการได้ทุกคนทุกชั้น (bypass rank/grade)
+    - teacher: ครูทั่วไป — จัดการได้ทุก role ภายในระดับชั้นตัวเอง (staff_level)
+    - level  : ประธานระดับ / ผู้ช่วยหัวหน้าระดับ — จัดการได้เฉพาะ role rank ≤ manage_rank ในระดับชั้นตัวเอง
+    - none   : มี MANAGE_STUDENTS แต่หาขอบเขตไม่เจอ → ปฏิเสธ (fail-closed)
+
+    ⚠️ **ย้ายมาจาก `routers/student_router.py`** (ชื่อเดิม `_manage_mode`) — ย้ายมาได้ฟรี
+       เพราะ `MANAGE_RANK` / `get_access_scope` / `get_user_grade_scope` อยู่ในไฟล์นี้แล้ว
+       เหตุผลที่ย้าย: **`rollover_router` (P4) ต้องใช้ `mode == "school"` เป็นด่านที่สอง**
+       นอกจาก `MANAGE_STUDENTS` ⇒ ถ้าปล่อยไว้ใน student_router จะต้อง import ข้าม router
+       ซึ่งผูกสอง router เข้าด้วยกันโดยไม่มีเหตุผลเชิงโดเมน
+    🔴 **`MANAGE_STUDENTS` อย่างเดียวไม่พอสำหรับงานระดับโรงเรียน** — ครูทั่วไป/ประธานระดับ
+       ก็มี `MANAGE_STUDENTS` เหมือนกัน แต่ต้อง **เลื่อนชั้นทั้งโรงเรียนไม่ได้**
+    """
+    scope = await get_access_scope(conn, actor_user_id)
+    # SUPER_ADMIN / admin / ครูสภา / ประธานสภา (is_admin) → school-wide
+    if scope["scope"] in ("super", "all") and scope.get("is_admin"):
+        return {"mode": "school", "grade": None, "manage_rank": None}
+    # ครูทั่วไป: scope='level' + staff_level
+    if scope["scope"] == "level" and scope.get("level"):
+        return {"mode": "teacher", "grade": scope["level"], "manage_rank": None}
+    # ประธานระดับ / ผู้ช่วยหัวหน้าระดับ: grade scope (rooms.level) — rank 2
+    grade = await get_user_grade_scope(conn, actor_user_id)
+    if grade:
+        return {"mode": "level", "grade": grade, "manage_rank": MANAGE_RANK.get("level_vice_president", 2)}
+    return {"mode": "none", "grade": None, "manage_rank": None}
 
 
 def _parse_permissions(raw_perms) -> list:

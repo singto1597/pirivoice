@@ -5,6 +5,9 @@ from typing import Optional
 from core.exceptions import NotFoundError, ValidationError, ConflictError
 from core.rbac import get_role_permissions, get_role_is_admin
 from services import auth_service
+# 🌟 ต้องรู้ "ปีปัจจุบัน" เพื่อกรองรายชื่อ (migration 027) — `year_service` พึ่งแค่ `core.*`
+#    ⇒ ไม่เกิด import วน (ตรวจแล้ว: ไม่มี service ไหนที่ year_service import กลับ)
+from services import year_service
 
 # 🧭 แผนที่ตำแหน่งภาษาไทย → role key (ตรงกับ config/roles.json)
 ROLE_MAP = {
@@ -124,7 +127,7 @@ async def create_room(pool: asyncpg.Pool, room_code: str, room_name: str, level:
             return room_id
 
 
-async def list_students(pool: asyncpg.Pool, room_id: Optional[int] = None, search: Optional[str] = None, level: Optional[str] = None, role: Optional[str] = None, limit: Optional[int] = None) -> list:
+async def list_students(pool: asyncpg.Pool, room_id: Optional[int] = None, search: Optional[str] = None, level: Optional[str] = None, role: Optional[str] = None, limit: Optional[int] = None, year_id: Optional[int] = None) -> list:
     """
     รายชื่อนักเรียน/สมาชิก
     - level: กรองเฉพาะระดับชั้น (เช่น 'ม.4') — ใช้กับ ครูทั่วไป/ประธานระดับ/ผู้ช่วย ที่เห็นได้แค่ระดับตัวเอง
@@ -134,10 +137,30 @@ async def list_students(pool: asyncpg.Pool, room_id: Optional[int] = None, searc
       ⚠️ default = None (ไม่ตัด) — หน้า User Management กรองเอง client-side (group/search)
       ต้องได้รายชื่อครบทั้งชุดในขอบเขตตัวเอง เดิม hardcode LIMIT 500 → หน้าเห็นแค่ 500 คนแรก
       (เรียงตาม room_code = ห้อง ม.1 ก่อน) ทั้งที่ทั้งโรงเรียนเกิน 500 คน
+    - year_id: ปีการศึกษาที่จะดู **ไม่ระบุ = ปีปัจจุบัน** (migration 027)
+
+    🌟 **ทำไมต้องกรองปี (เพิ่มพร้อม migration 027):**
+       ก่อนมีปี ตาราง `students` มีคนละ 1 แถว ⇒ ไม่กรองก็ได้คำตอบที่ถูก
+       หลังมีปี คนหนึ่งมี **หลายแถว** (แถวปีเก่า `promoted`/`graduated` + แถวปีใหม่ `active`)
+       ⇒ ถ้าไม่กรอง รายชื่อจะ **บวมเป็น N ปี** และมีชื่อเด็กที่จบไปแล้วปนอยู่
+       ⚠️ กรองด้วยปี **ไม่ใช่** `status='active'` โดยเจตนา — เพราะฟังก์ชันนี้ต้องคืน
+          แถว `pending`/`suspended` ด้วย (มี UI รออนุมัติผูกอยู่) · การกรองปีคุม "รุ่น"
+          ส่วนสถานะเป็นเรื่องแยก ⇒ ส่ง `year_id` ของปีเก่ามาก็ดูย้อนหลังได้
     """
     async with pool.acquire() as conn:
         where = ["s.deleted_at IS NULL"]
         params = []
+
+        # 🌟 ปีการศึกษา — อ่านด้วย connection นี้เลย ไม่เปิด acquire ซ้อน (กัน deadlock ของ pool)
+        # ⚠️ ถ้าหา "ปีปัจจุบัน" ไม่ได้ (เกิดไม่ได้หลัง 027 — ปีปัจจุบันลบไม่ได้) จะ **ไม่กรองปี**
+        #    แล้วถอยไปใช้พฤติกรรมเดิม แทนที่จะคืนลิสต์ว่างเงียบ ๆ ซึ่งอ่านไม่ออกว่าทำไมหาย
+        if year_id is None:
+            current_year = await year_service.fetch_current_year(conn)
+            year_id = current_year["id"] if current_year else None
+        if year_id is not None:
+            params.append(year_id)
+            where.append(f"s.academic_year_id = ${len(params)}")
+
         if level:
             params.append(level)
             where.append(f"r.level = ${len(params)}")
@@ -364,22 +387,35 @@ async def create_student(
             )
 
             # 4. ตรวจ student เดิมในห้องนั้น (student_id ซ้ำกันในห้อง) → Conflict
+            #
+            # 🌟 ต้องเจาะจง **"ปีเดียวกัน"** (migration 027) — ไม่งั้นเด็กที่เลื่อนชั้นแล้ว
+            #    (มีแถวปีเก่าค้างอยู่คนละแถว) จะถูกหาว่า "ซ้ำ" ทั้งที่คนละปี ⇒ สร้างไม่ได้เลย
+            #    ⚠️ ใช้ **ปีปัจจุบัน** ให้ตรงกับ DEFAULT ที่ INSERT ด้านล่างจะได้รับ
+            #       (ถ้าสองนี้ไม่ตรงกัน ด่านนี้จะเฝ้าผิดช่องแล้วปล่อยของซ้ำผ่าน)
+            #    ⚠️ หาปีไม่เจอ → `academic_year_id = NULL` ไม่มีทางเป็นจริง ⇒ ไม่เจอ dup
+            #       ซึ่งปลอดภัยเพราะยังมี unique index `uq_students_room_student_active`
+            #       เป็นด่านสุดท้ายอยู่ดี (ด่านนี้เป็น "ข้อความไทยที่อ่านรู้เรื่อง" ไม่ใช่ด่านจริง)
+            current_year = await year_service.fetch_current_year(conn)
+            dup_year_id = current_year["id"] if current_year else None
+
             room_id = room["id"] if room else None
             if room_id is not None:
                 dup_student = await conn.fetchval(
                     """
                     SELECT id FROM students
                     WHERE room_id = $1 AND student_id = $2 AND deleted_at IS NULL
+                      AND academic_year_id = $3
                     """,
-                    room_id, student_id
+                    room_id, student_id, dup_year_id
                 )
             else:
                 dup_student = await conn.fetchval(
                     """
                     SELECT id FROM students
                     WHERE room_id IS NULL AND student_id = $1 AND deleted_at IS NULL
+                      AND academic_year_id = $2
                     """,
-                    student_id
+                    student_id, dup_year_id
                 )
             if dup_student:
                 raise ConflictError(f"มีนักเรียนรหัส {student_id} ในระบบนี้อยู่แล้ว")
