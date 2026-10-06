@@ -3,9 +3,13 @@
 ชั้นนี้ทำแค่ HTTP: ดึง user จาก header → เรียก service → แปลง domain exception เป็น
 HTTPException (ตัวเช็คสิทธิ์อยู่ใน service แล้ว ตามแบบ audit_service / announcement_service)
 
-ปัจจุบัน 2 เรื่อง — **สิทธิ์ไม่เหมือนกัน อย่าเหมารวม**:
+ปัจจุบัน 3 เรื่อง — **สิทธิ์ไม่เหมือนกัน อย่าเหมารวม**:
 - **ภาคเรียน** (`/terms`) — ทุก endpoint (รวม GET) ต้องมีสิทธิ์ `MANAGE_SETTINGS`
   เพราะรายการภาคเรียนไม่ใช่ข้อมูลสาธารณะ
+- **ปีการศึกษา** (`/years`, migration 027) — ทุก endpoint ต้องมี `MANAGE_SETTINGS` เหมือน `/terms`
+  ⚠️ เป็น **คนละเรื่อง** กับภาคเรียน (ปี = สมาชิกอยู่ปีไหน · ภาค = กรองสถิติตามวันที่)
+  ⚠️ และ **ไม่ใช้ `MANAGE_STUDENTS`** โดยเจตนา — เปลี่ยนปีปัจจุบันกระทบทั้งโรงเรียน
+  ⇒ ครูระดับชั้น (ที่มี MANAGE_STUDENTS) ต้องแตะไม่ได้
 - **quiet hours** (`/quiet-hours`) — `GET` **เปิดให้ผู้ใช้ที่ล็อกอินทุกคน** · `PUT` ต้องมีสิทธิ์
   ⭐ โดยเจตนา: ค่านี้มีไว้ *อธิบาย* ให้นักเรียนเข้าใจว่าทำไมมือถือเงียบ ⇒ ปิดการอ่าน
   เท่ากับซ่อนคำอธิบายจากคนที่ได้รับผลกระทบ · และมันไม่มีข้อมูลอ่อนไหว (แค่ช่วงเวลา)
@@ -25,7 +29,13 @@ from models.settings_schemas import (
     QuietHoursOut,
     QuietHoursUpdateRequest,
 )
-from services import app_settings_service, term_service
+from models.year_schemas import (
+    AcademicYearCreateRequest,
+    AcademicYearUpdateRequest,
+    AcademicYearOut,
+    AcademicYearListOut,
+)
+from services import app_settings_service, term_service, year_service
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -172,6 +182,172 @@ async def restore_term(
         raise _err(e)
 
     return AcademicTermOut(**row)
+
+
+# ============================================================
+# 🎓 ปีการศึกษา (Academic Years) — migration 027
+# ============================================================
+# ⚠️ **คนละเรื่องกับ `/terms` ข้างบน — อย่าสลับ:**
+#    · `/terms` = ภาคเรียน → ใช้กรองสถิติตามช่วงวันที่
+#    · `/years` = ปีการศึกษา → สมาชิกผูกกับ "ปี" และใช้เป็นแกนของ "เลื่อนชั้นทั้งโรงเรียน"
+#    สิทธิ์เหมือนกัน (`MANAGE_SETTINGS`) แต่ความหมายต่างกันคนละชั้น
+
+@router.get("/years", response_model=AcademicYearListOut)
+async def list_years(
+    status: str = Query(
+        "active",
+        pattern="^(current|active|deleted|all)$",
+        description=(
+            "กรองสถานะ: current (ปีปัจจุบัน) / active (ยังไม่ถูกลบ) / "
+            "deleted (ถูกลบ) / all (ทั้งหมด)"
+        ),
+    ),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """รายการปีการศึกษา — ปีปัจจุบันขึ้นก่อน แล้วใหม่สุดก่อน · แต่ละแถวมี `member_count`"""
+    uid = _ensure_user(user_ctx)
+    try:
+        result = await year_service.list_years(
+            pool, uid, status=status, limit=limit, offset=offset
+        )
+    except (ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return AcademicYearListOut(
+        items=[AcademicYearOut(**i) for i in result["items"]],
+        total=result["total"],
+        page=result["page"],
+        page_size=result["page_size"],
+        pages=result["pages"],
+    )
+
+
+@router.get("/years/{year_id}", response_model=AcademicYearOut)
+async def get_year(
+    year_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ปีการศึกษารายตัว — ให้ **หน้าแก้ไขแบบเต็มหน้า** โหลดข้อมูลเองจาก URL ได้
+
+    ⚠️ คืนปีที่ถูกลบด้วย (`deleted_at` ไม่เป็น null) — ตัวด่านอยู่ที่ PATCH/DELETE
+       ⇒ ฝั่ง UI ต้องเช็ค `deleted_at` เองก่อนเปิดฟอร์มแก้ไข
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await year_service.get_year(pool, uid, year_id)
+    except (ForbiddenError, NotFoundError, ValidationError) as e:
+        raise _err(e)
+
+    return AcademicYearOut(**row)
+
+
+@router.post("/years", response_model=AcademicYearOut, status_code=201)
+async def create_year(
+    req: AcademicYearCreateRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """สร้างปีการศึกษา — `is_current: true` เพื่อตั้งเป็นปีปัจจุบันทันที
+
+    เว้น `name` ว่าง = ใช้ `"ปีการศึกษา {year_be}"` · `year_be` ซ้ำ = 400
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await year_service.create_year(
+            pool, uid,
+            year_be=req.year_be, name=req.name,
+            start_date=req.start_date, end_date=req.end_date,
+            is_current=req.is_current,
+        )
+    except (ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return AcademicYearOut(**row)
+
+
+@router.patch("/years/{year_id}", response_model=AcademicYearOut)
+async def update_year(
+    year_id: int,
+    req: AcademicYearUpdateRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """แก้ พ.ศ./ชื่อ/ช่วงวันที่ของปี — ส่งเฉพาะฟิลด์ที่จะแก้ (ไม่ส่ง = ไม่แตะ)
+
+    ⚠️ `start_date`/`end_date` ส่ง `null` ได้ = "ล้างวันที่" (ปีที่ยังไม่รู้วันเปิดเทอม)
+       แต่ `year_be`/`name` ส่ง `null` = 400 (คอลัมน์ NOT NULL และไม่มีการล้างค่าให้)
+
+    ไม่มี `is_current` ที่นี่ — ใช้ `POST /years/{id}/set-current`
+    """
+    uid = _ensure_user(user_ctx)
+    changes = req.model_dump(exclude_unset=True)
+    try:
+        row = await year_service.update_year(pool, uid, year_id, changes)
+    except (NotFoundError, ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return AcademicYearOut(**row)
+
+
+@router.post("/years/{year_id}/set-current", response_model=AcademicYearOut)
+async def set_current_year(
+    year_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ตั้งปีนี้เป็น "ปีปัจจุบัน" — ปลดปีปัจจุบันตัวเก่าให้อัตโนมัติ
+
+    ⚠️ **เปลี่ยน DEFAULT ของ `students.academic_year_id` ด้วย** ⇒ สมาชิกที่สร้างหลังจากนี้
+       (เช่น การลงทะเบียนใหม่) จะไปอยู่ปีนี้ทันที ไม่ใช่แค่เปลี่ยนป้ายชื่อ
+
+    ตั้งปีที่ยังไม่มีสมาชิกเป็นปัจจุบันไม่ได้ ถ้าปีอื่นยังมีสมาชิก active อยู่ (400)
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await year_service.set_current_year(pool, uid, year_id)
+    except (NotFoundError, ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return AcademicYearOut(**row)
+
+
+@router.delete("/years/{year_id}", response_model=AcademicYearOut)
+async def delete_year(
+    year_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ลบปีการศึกษา (soft delete) — **ลบปีปัจจุบันไม่ได้** และ **ลบปีที่ยังมีสมาชิกไม่ได้**
+
+    `delete` จึงหมายถึง "สร้างผิด ยังไม่เคยใช้" เท่านั้น — ทั้งสองกรณีตอบ 400 พร้อมทางออก
+    """
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await year_service.delete_year(pool, uid, year_id)
+    except (NotFoundError, ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return AcademicYearOut(**row)
+
+
+@router.post("/years/{year_id}/restore", response_model=AcademicYearOut)
+async def restore_year(
+    year_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """กู้คืนปีที่ถูกลบ — กลับมาเป็น **ปีธรรมดา** ต้องกดตั้งเป็นปัจจุบันเองอีกครั้ง"""
+    uid = _ensure_user(user_ctx)
+    try:
+        row = await year_service.restore_year(pool, uid, year_id)
+    except (NotFoundError, ForbiddenError, ValidationError) as e:
+        raise _err(e)
+
+    return AcademicYearOut(**row)
 
 
 # ============================================================

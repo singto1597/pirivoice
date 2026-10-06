@@ -59,6 +59,32 @@ async def init_db(pool: asyncpg.Pool):
                 );
                 """)
 
+                # --- 2.5 academic_years: ปีการศึกษา (migration 027) ---
+                #   ⚠️ **ต้องสร้างก่อน `students`** เพราะ students อ้าง FK มาที่ตารางนี้
+                #   - "ปี" แยกจาก "ภาคเรียน" (8.7): ภาคเรียนกรองสถิติ · ปีเก็บประวัติสมาชิก
+                #   - 1 แถวใน students = สมาชิกของคนหนึ่ง "ในปีหนึ่ง" ⇒ เลื่อนชั้น = สร้างแถวใหม่
+                #     ไม่ใช่ UPDATE ทับ ⇒ ประวัติไม่หาย
+                #   - ⚠️ **ไม่มี seed ปีที่นี่** โดยเจตนา — migration 027 เป็นเจ้าของการสร้าง
+                #     "ปีตั้งต้น" (คำนวณ พ.ศ. จากวันที่จริง + เงื่อนไข พ.ค.) ⇒ มีนิยามเดียว
+                #   - ⚠️ `students.academic_year_id` ที่นี่เป็น **nullable ไม่มี default**
+                #     ต่างจากสถานะสุดท้ายโดยเจตนา: `NOT NULL DEFAULT <id>` ต้องใช้ค่า literal
+                #     ที่รู้ตอน runtime ⇒ migration 027 เป็นคนใส่ให้หลัง backfill
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS academic_years (
+                    id SERIAL PRIMARY KEY,
+                    year_be INTEGER NOT NULL,          -- พ.ศ. เช่น 2569 (ไม่ใช่ ค.ศ.)
+                    name VARCHAR(50) NOT NULL,         -- "ปีการศึกษา 2569"
+                    start_date DATE,
+                    end_date DATE,
+                    is_current BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    deleted_at TIMESTAMP WITH TIME ZONE,
+                    CONSTRAINT chk_academic_years_range
+                        CHECK (end_date IS NULL OR start_date IS NULL OR end_date >= start_date)
+                );
+                """)
+
                 # --- 3. ตารางนักศึกษา/สมาชิก (students) — มีตำแหน่งในห้องเรียน ---
                 # ตำแหน่ง (class_role) เช่น 'class_president', 'vice_academic', ... 'student', 'teacher', 'teacher_council', 'admin'
                 # ระดับ (level) ที่ตำแหน่งทำงาน เช่น 'room' (ห้อง) / 'level' (ประธานระดับ) / 'council' (สภา)
@@ -80,6 +106,11 @@ async def init_db(pool: asyncpg.Pool):
                     permissions JSONB DEFAULT '[]'::jsonb,
                     responsibilities JSONB DEFAULT '[]'::jsonb,  -- หน้าที่รับผิดชอบ (ตรงกับ issues.category) — สภา/ผู้ช่วยหัวหน้าระดับ
                     status TEXT DEFAULT 'active',
+                    -- 🌟 ปีการศึกษาของสมาชิกแถวนี้ (migration 027) — 1 แถว = 1 คน ใน 1 ปี
+                    --   ⚠️ ที่นี่เป็น nullable ไม่มี default — สถานะสุดท้ายเป็น
+                    --      `NOT NULL DEFAULT <id ของปีปัจจุบัน>` ซึ่งเป็น **ค่า literal ที่รู้ตอน runtime**
+                    --      ⇒ migration 027 เป็นคนใส่ให้หลัง backfill แถวเดิมเข้าปีปัจจุบัน
+                    academic_year_id INTEGER REFERENCES academic_years(id) ON DELETE RESTRICT,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     deleted_at TIMESTAMP DEFAULT NULL
@@ -455,10 +486,38 @@ async def init_db(pool: asyncpg.Pool):
                     start_date DATE NOT NULL,
                     end_date DATE NOT NULL,
                     is_current BOOLEAN NOT NULL DEFAULT FALSE,
+                    -- 🌟 ปีการศึกษาที่ภาคนี้สังกัด (migration 027) — 1 ปีมี 2 ภาค
+                    --   nullable โดยเจตนา: ภาคที่สร้างก่อนมีฟีเจอร์นี้ยังใช้ได้ (ไม่ต้อง backfill)
+                    academic_year_id INTEGER REFERENCES academic_years(id),
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     deleted_at TIMESTAMP WITH TIME ZONE,
                     CONSTRAINT chk_academic_terms_range CHECK (end_date >= start_date)
+                );
+                """)
+
+                # --- 8.75 rollover_runs: ประวัติการเลื่อนชั้นทั้งโรงเรียน (migration 027) ---
+                #   เก็บผลของ preview/apply ไว้ตอบคำถาม "เลื่อนชั้นรอบล่าสุดทำอะไรไปบ้าง"
+                #   ⚠️ ไม่เข้า ARQ queue (ต่างจาก student_import_jobs) โดยเจตนา — apply เป็น
+                #      SQL ล้วน ไม่มี bcrypt/xlsx ⇒ 2-4 วิ · และ queue เป็น max_jobs=1
+                #      ⇒ ช่วงสัปดาห์ลงทะเบียน โรงเรียนจะต้องรอหลัง import 30 นาที
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS rollover_runs (
+                    id SERIAL PRIMARY KEY,
+                    from_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT,
+                    to_year_id   INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT,
+                    status TEXT NOT NULL DEFAULT 'PREVIEWED',   -- PREVIEWED / APPLIED / FAILED
+                    plan JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    promoted_count INTEGER NOT NULL DEFAULT 0,
+                    graduated_count INTEGER NOT NULL DEFAULT 0,
+                    staff_carried_count INTEGER NOT NULL DEFAULT 0,
+                    positions_reset_count INTEGER NOT NULL DEFAULT 0,
+                    unmapped_count INTEGER NOT NULL DEFAULT 0,
+                    error_message TEXT,
+                    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    applied_at TIMESTAMP WITH TIME ZONE,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
                 """)
 
@@ -795,6 +854,22 @@ async def init_db(pool: asyncpg.Pool):
                 -- คิวรีหลัก = "ภาคที่คลุมวันนี้" / "ภาคตามช่วงวันที่" ⇒ index บนช่วงวัน
                 CREATE INDEX IF NOT EXISTS idx_academic_terms_dates
                     ON academic_terms(start_date, end_date);
+                -- academic_years (migration 027) — ปีการศึกษา
+                --   ทริกเดียวกับ uq_academic_terms_single_current เป๊ะ: "ปีปัจจุบันมีตัวเดียว"
+                --   ⚠️ non-deferrable ⇒ set_current_year() ต้องล้างตัวเก่าก่อนตั้งตัวใหม่
+                --      (สลับลำดับ = UniqueViolationError) — ดู term_service._clear_current
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_academic_years_single_current
+                    ON academic_years(is_current) WHERE is_current AND deleted_at IS NULL;
+                -- หนึ่ง พ.ศ. มีได้หนึ่งปี · partial เพื่อให้ "ลบแล้วกู้คืน" ทำงาน
+                --   (ถ้าเป็น UNIQUE ตรง ๆ การกู้คืนปีที่ซ้ำกับแถวใหม่จะล้มเหลวถาวร)
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_academic_years_year_be
+                    ON academic_years(year_be) WHERE deleted_at IS NULL;
+                -- rollover_runs (migration 027) — คิวรีจริงคือ "ประวัติการเลื่อนชั้นของปีคู่นี้"
+                --   ⚠️ ต้องมี `IF NOT EXISTS` + ชื่อ index ตรงกับใน migration 027
+                --      ไม่งั้น fresh DB จะได้ index สองตัวคนละชื่อ (init_db สร้าง แล้ว migration
+                --      `CREATE INDEX IF NOT EXISTS` ด้วยชื่อเดิม = no-op ⇒ OK แต่ถ้าชื่อไม่ตรงจะซ้ำ)
+                CREATE INDEX IF NOT EXISTS idx_rollover_runs_from_to
+                    ON rollover_runs(from_year_id, to_year_id);
                 -- push_subscriptions / push_outbox (A3 / migration 018) — Web Push
                 --   ⚠️ unique บน `endpoint` เดี่ยว ๆ (ไม่ใช่คู่กับ user_id) — ดูเหตุผลยาวใน
                 --      migrations/018_*.py: endpoint คือ "เครื่องนี้" ซึ่งเปลี่ยนเจ้าของได้
@@ -838,7 +913,21 @@ async def init_db(pool: asyncpg.Pool):
                     WHERE deleted_at IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_students_responsibilities
                     ON students USING GIN (responsibilities);
+                -- คิวรีหลักหลังมีปีการศึกษา (migration 027) = "สมาชิกของปีนี้ ในห้องนี้"
+                --   ⇒ (year, room) พอ · partial ตาม deleted_at ให้ตรงกับที่ทุกคิวรีกรอง
+                --   ⚠️ คอลัมน์ `academic_year_id` เกิดจาก migration 027 **ที่รันไปแล้วด้านบน**
+                --      (run_migrations อยู่ก่อนบล็อก index นี้) ⇒ บน DB เก่าก็สร้างได้
+                CREATE INDEX IF NOT EXISTS idx_students_year_room
+                    ON students(academic_year_id, room_id)
+                    WHERE deleted_at IS NULL;
                 -- กันสร้าง student ซ้ำ (room, เลขประจำตัว) — import แบบ ON CONFLICT ใช้ index นี้
+                --   ⚠️ หลังมีปีการศึกษา (migration 027) index นี้ **แคบเกินไป** — มันห้ามคนเดิม
+                --      มีสองแถวในห้องเดิม "คนละปี" ซึ่งเป็นสิ่งที่เราต้องการให้มีได้
+                --      ⇒ migration 028 จะ DROP ตัวนี้แล้วสร้าง `uq_students_room_year_student`
+                --      (room_id, academic_year_id, student_id) แทน
+                --   🔴 **ห้ามลบที่นี่ก่อนที่ 028 จะถูกเขียน** — fresh DB ต้องได้ index เดียวกับ
+                --      DB จริง ไม่งั้นเทสต์จะผ่านทั้งที่ production พัง (028 ไม่ additive:
+                --      image เก่าทำ `ON CONFLICT (room_id, student_id)` ไม่ได้อีก ⇒ ต้องออกพร้อมกัน)
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_students_room_student_active
                     ON students(room_id, student_id)
                     WHERE deleted_at IS NULL;

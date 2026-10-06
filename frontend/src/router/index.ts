@@ -397,6 +397,45 @@ const router = createRouter({
           meta: { requiresAuth: true, requiresPermission: 'MANAGE_SETTINGS', navTab: 'more' },
         },
         {
+          // 🎓 ปีการศึกษา — แกนของ "เลื่อนชั้นทั้งโรงเรียน" (คนละเรื่องกับภาคเรียน)
+          // ⚠️ สิทธิ์เป็น MANAGE_SETTINGS **ไม่ใช่ MANAGE_STUDENTS** — ครูระดับชั้นต้องแตะไม่ได้
+          //    เพราะการเปลี่ยนปีปัจจุบันกระทบรายชื่อทั้งโรงเรียน (ดู services/year_service.py)
+          path: 'settings/years',
+          name: 'academic-years',
+          component: () => import('@/views/settings/AcademicYears.vue'),
+          meta: { requiresAuth: true, requiresPermission: 'MANAGE_SETTINGS', navTab: 'more' },
+        },
+        {
+          // ➕ สร้างปี — **ฟอร์มเป็นหน้าเต็ม** ไม่ใช่แผ่น (skills.md #16) ⇒ `navHidden`
+          //
+          // 🔴 **ต้องประกาศ «new» ก่อน «:id/edit» เสมอ** — เป็นกฎของ vue-router:
+          //    เส้นทางที่ประกาศก่อนชนะ ⇒ ถ้าสลับ `settings/years/new` จะถูก `:id/edit`
+          //    ดักไป (ที่นี่ segment ไม่ชนกันจริงเพราะจำนวน segment ต่างกัน — 2 vs 4 —
+          //    แต่คงลำดับไว้ตามแบบแผน เพราะเส้นทาง ':id' แบบ 3 segment จะชนทันที)
+          path: 'settings/years/new',
+          name: 'academic-year-new',
+          component: () => import('@/views/settings/AcademicYearForm.vue'),
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_SETTINGS',
+            navTab: 'more',
+            navHidden: true,
+            headerBack: { name: 'academic-years' },
+          },
+        },
+        {
+          path: 'settings/years/:id/edit',
+          name: 'academic-year-edit',
+          component: () => import('@/views/settings/AcademicYearForm.vue'),
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_SETTINGS',
+            navTab: 'more',
+            navHidden: true,
+            headerBack: { name: 'academic-years' },
+          },
+        },
+        {
           path: 'audit-logs',
           name: 'audit-logs',
           component: () => import('@/views/audit/AuditLogs.vue'),

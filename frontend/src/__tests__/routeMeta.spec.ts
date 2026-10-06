@@ -88,6 +88,13 @@ const GATES: Record<string, [boolean | undefined, string | undefined, boolean | 
   'import-students': [true, 'MANAGE_STUDENTS', undefined],
   announcements: [true, 'MANAGE_ANNOUNCEMENTS', undefined],
   'academic-terms': [true, 'MANAGE_SETTINGS', undefined],
+  // 🎓 ปีการศึกษา — ใช้ `MANAGE_SETTINGS` **ไม่ใช่ `MANAGE_STUDENTS`** โดยเจตนา:
+  //    "เปลี่ยนปีปัจจุบัน" เปลี่ยน DEFAULT ของ `students.academic_year_id` ⇒ สมาชิกที่
+  //    สร้างหลังจากนั้นไปอยู่ปีใหม่ทั้งหมด · ครูระดับชั้น (ที่มี `MANAGE_STUDENTS`)
+  //    ต้องแตะไม่ได้ — ตรงกับ `PERMISSION` ใน `services/year_service.py`
+  'academic-years': [true, 'MANAGE_SETTINGS', undefined],
+  'academic-year-new': [true, 'MANAGE_SETTINGS', undefined],
+  'academic-year-edit': [true, 'MANAGE_SETTINGS', undefined],
   'audit-logs': [true, 'VIEW_AUDIT_LOG', undefined],
 }
 
@@ -104,15 +111,19 @@ const NAV_HIDDEN = [
   'import-students',
   // ✍️ รอบ 4 — ฟอร์มเสนอไอเดีย (แทน `QuickSuggestionModal` ที่กดฉากหลังแล้วทิ้งข้อความ)
   'board-new',
+  // 🎓 ปีการศึกษา — ฟอร์มเป็น **หน้าเต็ม** ตาม skills.md #16 (ห้ามใส่ฟอร์มในแผ่นเลื่อน)
+  //    ⇒ ไม่มีแถบล่างไฮไลต์ ⇒ ต้อง `navHidden` (หน้ารายการ `academic-years` ยังเห็นแถบปกติ)
+  'academic-year-new',
+  'academic-year-edit',
 ]
 
 /** แท็บราก — ต้องมี `headerBack: false` ไม่งั้นได้ลูกศร ← ที่กดแล้วกลับหน้าเดิม */
 const TAB_ROOTS = ['home', 'more', 'my-issues', 'boards', 'events']
 
 describe('ประตูสิทธิ์ (snapshot)', () => {
-  it('ครบทั้ง 33 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
+  it('ครบทั้ง 36 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
     const children = appChildren()
-    expect(children).toHaveLength(33)
+    expect(children).toHaveLength(36)
 
     const actual: Record<string, [boolean | undefined, string | undefined, boolean | undefined]> =
       {}
