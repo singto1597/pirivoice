@@ -46,8 +46,22 @@ _TABLES = (
     "piri_board_reports", "piri_board_views", "notifications",
     "notification_preferences", "academic_terms", "announcements",
     "push_subscriptions", "push_outbox", "bookmarks", "app_settings",
-    "event_registrations", "events",
+    "event_registrations", "events", "academic_years", "rollover_runs",
 )
+
+# 🌟 ปีการศึกษาที่ `clean_database` ปลูกกลับหลัง TRUNCATE (migration 027)
+#
+# ⚠️ **ทำไมต้องปลูกกลับ — ไม่ใช่ของแถม:**
+#   `students.academic_year_id` เป็น `NOT NULL DEFAULT <id ของปีปัจจุบัน>` (literal)
+#   พอ `TRUNCATE` ลบแถวปีทิ้ง ค่า DEFAULT จะกลายเป็น id ที่ **ไม่มีอยู่จริง**
+#   ⇒ `INSERT INTO students` ทุกครั้งที่ไม่ระบุปี (ซึ่งคือ *ทุกเทสต์* — ทั้ง create_student,
+#      register_user และ import) จะล้มด้วย FK violation ทันที
+#   ⇒ การปลูกกลับจึงเป็นสิ่งที่ทำให้ **เทสต์ทั้งชุดยังรันได้** ไม่ใช่แค่เรื่องของเทสต์ปีการศึกษา
+#
+# ⚠️ ค่าคงที่ (ไม่ใช้สูตร พ.ศ. แบบ migration 027) โดยเจตนา — เทสต์ต้อง **เดาได้**
+#    ว่าแถวไหนคือปีปัจจุบัน · ใช้ id ที่ INSERT คืนมา **เขียน DEFAULT ทับ** ด้านล่าง
+#    (ไม่ hardcode id เพราะ sequence ไม่ได้ reset) ⇒ ตรงกับที่ `set_current_year` ทำจริง
+SEED_YEAR_BE = 2569
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -127,12 +141,43 @@ async def db_pool(test_db_url):
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def clean_database(db_pool):
-    """ล้างข้อมูลทุกตารางก่อนแต่ละ test (รายการมาจาก `_TABLES` — ดูคอมเมนต์ที่นั่น)"""
+    """ล้างข้อมูลทุกตารางก่อนแต่ละ test (รายการมาจาก `_TABLES` — ดูคอมเมนต์ที่นั่น)
+    แล้วปลูก "ปีการศึกษาปัจจุบัน" กลับ (ดู `SEED_YEAR_BE`)"""
     async with db_pool.acquire() as conn:
         # ⚠️ `TRUNCATE` รับได้แค่ชื่อตารางที่ **ไม่ใช่** ค่าที่ผูกเป็น parameter ($1)
         #    ⇒ ต้องประกอบสตริง · ปลอดภัยเพราะ `_TABLES` เป็นค่าคงที่ในไฟล์นี้ ไม่มีทางมาจากผู้ใช้
         await conn.execute(f"TRUNCATE TABLE {', '.join(_TABLES)} CASCADE")
+
+        # 🌟 ปลูกปีปัจจุบันกลับ + ชี้ DEFAULT ของ students มาที่แถวใหม่ (ดูเหตุผลที่ SEED_YEAR_BE)
+        #    เรียงสองบรรทัดนี้สำคัญ: INSERT ก่อน แล้วค่อย ALTER (ต้องรู้ id ก่อน)
+        year_id = await conn.fetchval(
+            """
+            INSERT INTO academic_years (year_be, name, is_current)
+            VALUES ($1, $2, TRUE)
+            RETURNING id
+            """,
+            SEED_YEAR_BE, f"ปีการศึกษา {SEED_YEAR_BE}",
+        )
+        assert year_id is not None
+        await conn.execute(
+            f"ALTER TABLE students ALTER COLUMN academic_year_id SET DEFAULT {int(year_id)}"
+        )
     yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def current_year(db_pool):
+    """แถวปีการศึกษาปัจจุบันที่ `clean_database` ปลูกไว้ — `{id, year_be, name}`
+
+    ใช้เมื่อเทสต์ต้องรู้ id ของปีปัจจุบัน (เช่น สร้างสมาชิกในปีนี้ หรือยืนยันว่า
+    `list_students` กรองปีถูก) — **ห้าม hardcode id** ตามกฎ testing.md
+    """
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, year_be, name FROM academic_years WHERE is_current AND deleted_at IS NULL"
+        )
+    assert row is not None, "clean_database ต้องปลูกปีปัจจุบันไว้เสมอ"
+    return dict(row)
 
 
 @pytest.fixture(scope="function")

@@ -196,6 +196,10 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'bi-buildings',
     items: [
       { key: 'announcements', label: 'จัดการประกาศ', icon: 'bi-megaphone', to: { name: 'announcements' }, permission: 'MANAGE_ANNOUNCEMENTS' },
+      // ⚠️ ลำดับ: ปีการศึกษามาก่อนภาคเรียน — **ใหญ่ → เล็ก** (1 ปีมี 2 ภาค) และตรงกับ
+      //    ลำดับที่ต้องทำจริงตอนขึ้นปีใหม่ (สร้างปี → นำเข้ารายชื่อ → ตั้งเป็นปัจจุบัน)
+      //    ⇒ สองแถวนี้อยู่ติดกันโดยเจตนา; ความหมายต่างกันคนละชั้น — ดู `docs/glossary.md` §1.1
+      { key: 'academic-years', label: 'ปีการศึกษา', icon: 'bi-mortarboard', to: { name: 'academic-years' }, permission: 'MANAGE_SETTINGS' },
       { key: 'academic-terms', label: 'ภาคเรียน', icon: 'bi-calendar3-range', to: { name: 'academic-terms' }, permission: 'MANAGE_SETTINGS' },
       // ⚠️ ไม่มีแถว "รายชื่อนักเรียน" ที่นี่ — ถูกรวมเข้าแถว "สมาชิก" ในกลุ่มผู้ดูแลแล้ว (R1)
       { key: 'audit-logs', label: 'บันทึกการใช้งาน', icon: 'bi-clock-history', to: { name: 'audit-logs' }, permission: 'VIEW_AUDIT_LOG' },
@@ -278,5 +282,10 @@ export const routeTitles: Record<string, string> = {
   'import-students': 'นำเข้านักเรียน',
   announcements: 'จัดการประกาศ',
   'academic-terms': 'ภาคเรียน',
+  'academic-years': 'ปีการศึกษา',
+  // ⚠️ สองอันนี้ `navHidden` (ไม่โชว์ในเมนู) แต่ **ต้องมี routeTitles** — ไม่งั้น `<h1>`
+  //    บนหัวหน้าจะว่าง แล้วผู้ใช้ไม่รู้ว่ากำลังทำอะไรอยู่
+  'academic-year-new': 'เพิ่มปีการศึกษา',
+  'academic-year-edit': 'แก้ไขปีการศึกษา',
   'audit-logs': 'บันทึกการใช้งาน',
 }
