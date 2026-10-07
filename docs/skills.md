@@ -3032,11 +3032,30 @@
   `IMPORT_RECOVERY_STALE_MINUTES` หรือตอน worker restart — **และ re-enqueue ลงคิวที่แข่งขันกันเดิม**
   ⇒ ไม่ใช่ทางแก้
 - **หลักฐาน (staging, 7 ต.ค. 2026):**
-  - `import_worker`: `18:27:48: job cron:process_push_outbox:..., function 'cron:process_push_outbox' not found` (ทุก 20 วิ ตรงกับ `second={0,20,40}`)
-  - `push_worker`: `job c6011799d8bc4b39b2a47e2c1f108aa7, function 'process_student_import' not found`
+  - 🧾 **ตัวเลขสรุปจากบรรทัดปิด container** (ชัดที่สุด ไม่ต้องเดาจาก log ยาว):
+    import_worker `shutdown on SIGTERM ◆ 6 jobs complete ◆ 1247 failed` ·
+    push_worker `547 jobs complete ◆ 0 failed` ⇒ งานที่ตกผิดฝั่งถูกทิ้ง **100%**
+    (ไม่ใช่ "บางครั้งพัง" — งานที่ไปถึงผิดตัวไม่มีทางสำเร็จเลย)
+  - ⏱️ `not found` ตัวสุดท้ายของ container เก่า = `14:56:40` แล้ว **`shutdown` ที่ `14:56:45`**
+    ⇒ บั๊กยังเป็นอยู่จนวินาทีที่ deploy ตัวซ่อม (ไม่ใช่ปัญหาที่หายเองไปแล้ว)
   - **การทดลองตัดสิน:** สเกล `push_worker=0` ⇒ job ที่ค้างอยู่จบใน **0–3 วินาที**
+  - ✅ **หลังซ่อม:** container ใหม่ `not found` = **0** · งาน import สำเร็จ **6/6** (0.03–0.40 วิ/งาน)
+    ยิง 6 รอบติดกันโดย**ไม่แตะ push_worker** ⇒ ถ้ายังพังอยู่โอกาสรอด 6 รอบ = ~1.6%
+  - ✅ Redis มี **สองคิวจริง**: `arq:queue:import:health-check` + `arq:queue:push:health-check`
+    (ไม่มี `arq:queue` เดี่ยว ๆ อีก)
   - `docker-compose.app.yml` + `backend/workers/` **ไม่เปลี่ยน** ระหว่าง `8c60b5d` กับ `bfa4d16`
     ⇒ ยืนยันว่าไม่ใช่ผลจากงานที่เพิ่งทำ (บั๊กมีมาก่อน)
+- **กับดักตอนอ่านหลักฐาน (ผมพลาดเองรอบแรก):** `docker service logs <svc>` คืน log ของ
+  **ทุก task ที่เคยรัน** ไม่ใช่แค่ตัวปัจจุบัน ⇒ ตอน grep เจอ `18:27:48: ... not found` แล้วอ่านว่า
+  "เพิ่งเกิด" ทั้งที่มันคือของ **1–2 ต.ค.** (คนละวัน — สังเกตจากบรรทัด `recording health: Oct-02 …`)
+  · **วิธีที่ถูก: ดึง task id ปัจจุบันก่อนแล้วกรอง**
+  ```bash
+  T=$(docker service ps <svc> --format '{{.ID}}' | head -1 | cut -c1-10)   # .Name ให้ 'svc.1' ไม่ใช่ id!
+  docker service logs <svc> --since 15m 2>&1 | grep "$T" | grep -c 'not found'
+  ```
+  · ⚠️ **นาฬิกาใน container เป็น UTC แต่โฮสต์เป็น CEST** ⇒ เวลาใน log กับ `date` ต่างกัน 2 ชม.
+  อย่าใช้เทียบกันตรง ๆ · ⚠️ `docker service logs --tail N` บนบริการที่มีประวัติยาว **ช้ามาก**
+  (เกิน 120 วิ) ให้ใส่ `--since` จำกัดช่วงแทน
 - **Correct Pattern/Solution:**
   - ชื่อคิวเป็น **"คู่ที่ต้องตรงกัน"** ⇒ เก็บที่แหล่งเดียว `core/queues.py` แล้วให้ทั้งสองฝั่ง import
     (service **ห้าม import worker** ตาม layering ⇒ วางไว้ `core/` ไม่ใช่ในไฟล์ worker)
