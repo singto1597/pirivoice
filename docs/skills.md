@@ -3017,3 +3017,59 @@
   - **เกณฑ์ปิดงาน:** พิสูจน์ให้ครบ *ทุกสภาพข้อมูล* — ยุบหมด / ผสม (บางบล็อกมีของ) / ไม่ยุบเลย
     (รอบนี้ใช้ `e2eadm` / `e2ecou` / `e2estu` ครบทั้งสาม)
 - **Date Added:** 2026-10-02
+
+### 📮 ARQ worker สองตัวที่ไม่ได้ตั้ง `queue_name` แชร์คิวเดียวกัน — งานหายครึ่งโดยที่ API ตอบ **200** และไม่มี error ที่ไหนเลย
+- **Context/Problem:** ระหว่างทดสอบ import บน staging พบว่า job ค้าง `QUEUED` ตลอดกาลเป็นบางครั้ง
+  (วัดได้ ~ครึ่งหนึ่ง) · `POST /api/start-import-job/{id}` ตอบ **200**, DB ขึ้น `QUEUED`,
+  ครูไม่เห็น error — **แต่งานถูกทิ้งถาวร** · อาการเดียวกันกระทบ push notification ด้วย
+  (คนละทิศ: cron ของ push ถูก import worker ทิ้งทุก 20 วินาที)
+- **Root Cause:** ARQ ใช้ `arq.constants.default_queue_name` (`'arq:queue'`) **เมื่อ `WorkerSettings`
+  ไม่ได้ตั้ง `queue_name`** · `import_worker` กับ `push_worker` ต่างไม่ตั้ง และใช้ `REDIS_URL`
+  ตัวเดียวกัน ⇒ ทั้งคู่ฟังคิวเดียวกัน · ARQ ดึงงานจาก Redis list แบบ **atomic** ⇒ งาน 1 ชิ้นไปถึง
+  worker **เพียงตัวเดียว** ตัวที่ไม่รู้จักฟังก์ชันนั้นจะ log `function ... not found` แล้ว **ทิ้งงาน**
+  · ⚠️ `enqueue_job` **คืน `None` ทั้งตอนสำเร็จและตอนลงคิวที่ไม่มีใครฟัง** ⇒ ความผิดพลาดชนิดนี้
+  เงียบสนิท ไม่มีสัญญาณเตือนใด ๆ · `recover_stuck_jobs` ช่วยได้แค่หลัง
+  `IMPORT_RECOVERY_STALE_MINUTES` หรือตอน worker restart — **และ re-enqueue ลงคิวที่แข่งขันกันเดิม**
+  ⇒ ไม่ใช่ทางแก้
+- **หลักฐาน (staging, 7 ต.ค. 2026):**
+  - 🧾 **ตัวเลขสรุปจากบรรทัดปิด container** (ชัดที่สุด ไม่ต้องเดาจาก log ยาว):
+    import_worker `shutdown on SIGTERM ◆ 6 jobs complete ◆ 1247 failed` ·
+    push_worker `547 jobs complete ◆ 0 failed` ⇒ งานที่ตกผิดฝั่งถูกทิ้ง **100%**
+    (ไม่ใช่ "บางครั้งพัง" — งานที่ไปถึงผิดตัวไม่มีทางสำเร็จเลย)
+  - ⏱️ `not found` ตัวสุดท้ายของ container เก่า = `14:56:40` แล้ว **`shutdown` ที่ `14:56:45`**
+    ⇒ บั๊กยังเป็นอยู่จนวินาทีที่ deploy ตัวซ่อม (ไม่ใช่ปัญหาที่หายเองไปแล้ว)
+  - **การทดลองตัดสิน:** สเกล `push_worker=0` ⇒ job ที่ค้างอยู่จบใน **0–3 วินาที**
+  - ✅ **หลังซ่อม:** container ใหม่ `not found` = **0** · งาน import สำเร็จ **6/6** (0.03–0.40 วิ/งาน)
+    ยิง 6 รอบติดกันโดย**ไม่แตะ push_worker** ⇒ ถ้ายังพังอยู่โอกาสรอด 6 รอบ = ~1.6%
+  - ✅ Redis มี **สองคิวจริง**: `arq:queue:import:health-check` + `arq:queue:push:health-check`
+    (ไม่มี `arq:queue` เดี่ยว ๆ อีก)
+  - `docker-compose.app.yml` + `backend/workers/` **ไม่เปลี่ยน** ระหว่าง `8c60b5d` กับ `bfa4d16`
+    ⇒ ยืนยันว่าไม่ใช่ผลจากงานที่เพิ่งทำ (บั๊กมีมาก่อน)
+- **กับดักตอนอ่านหลักฐาน (ผมพลาดเองรอบแรก):** `docker service logs <svc>` คืน log ของ
+  **ทุก task ที่เคยรัน** ไม่ใช่แค่ตัวปัจจุบัน ⇒ ตอน grep เจอ `18:27:48: ... not found` แล้วอ่านว่า
+  "เพิ่งเกิด" ทั้งที่มันคือของ **1–2 ต.ค.** (คนละวัน — สังเกตจากบรรทัด `recording health: Oct-02 …`)
+  · **วิธีที่ถูก: ดึง task id ปัจจุบันก่อนแล้วกรอง**
+  ```bash
+  T=$(docker service ps <svc> --format '{{.ID}}' | head -1 | cut -c1-10)   # .Name ให้ 'svc.1' ไม่ใช่ id!
+  docker service logs <svc> --since 15m 2>&1 | grep "$T" | grep -c 'not found'
+  ```
+  · ⚠️ **นาฬิกาใน container เป็น UTC แต่โฮสต์เป็น CEST** ⇒ เวลาใน log กับ `date` ต่างกัน 2 ชม.
+  อย่าใช้เทียบกันตรง ๆ · ⚠️ `docker service logs --tail N` บนบริการที่มีประวัติยาว **ช้ามาก**
+  (เกิน 120 วิ) ให้ใส่ `--since` จำกัดช่วงแทน
+- **Correct Pattern/Solution:**
+  - ชื่อคิวเป็น **"คู่ที่ต้องตรงกัน"** ⇒ เก็บที่แหล่งเดียว `core/queues.py` แล้วให้ทั้งสองฝั่ง import
+    (service **ห้าม import worker** ตาม layering ⇒ วางไว้ `core/` ไม่ใช่ในไฟล์ worker)
+  - ตั้ง `queue_name` ที่ `WorkerSettings` **ทั้งสองตัว** + ผู้ส่งต้องระบุ `_queue_name=` ด้วย
+    (`enqueue_job("process_student_import", job_id, _queue_name=IMPORT_QUEUE)`)
+  - ℹ️ cron **ไม่ต้อง**ระบุคิวเอง — ARQ ยัดเข้าคิวของ worker ตัวนั้นตาม `queue_name` อยู่แล้ว
+  - 🧪 **เทสต์ต้องผูกสองฝั่ง ไม่ใช่เทสต์แค่ว่า "ค่าต่างกัน"** — ผ่านเฉพาะเมื่อผู้ส่งยิงเข้าคิวเดียวกับ
+    ที่ผู้รับฟัง (`monkeypatch` `create_arq_redis` เป็น fake ที่ดัก `_queue_name`)
+    · ใช้ `getattr(WorkerSettings, "queue_name", default_queue_name)` — เพราะ "ไม่มี attribute"
+    กับ "มีแต่ค่าเป็น default" **ให้ผลเหมือนกันเป๊ะในรันไทม์** (ARQ ถอยไปใช้ default เงียบ ๆ)
+    ⇒ ถ้าเขียน `Settings.queue_name` ตรง ๆ เทสต์จะพังเป็น `AttributeError` ที่อ่านไม่ออก
+  - ✅ **พิสูจน์ว่าเทสต์จับบั๊กได้จริง** — `git stash` เฉพาะไฟล์ที่ซ่อม (ไม่ stash เทสต์) แล้วรันซ้ำ
+    ต้องเห็น fail 4 ข้อด้วยข้อความ `assert 'arq:queue' != 'arq:queue'` · **เทสต์ที่ผ่านทั้งโค้ดพัง
+    และโค้ดดีไม่มีค่า** — อย่าข้ามขั้นนี้
+  - 📌 **บทเรียนทั่วไป:** ผู้บริโภคตั้งแต่ 2 ตัวขึ้นไปที่แชร์คิวเดียว = งานถูกทิ้งแบบสุ่ม
+    ถ้าเพิ่ม worker ใหม่ **ต้องตั้ง `queue_name` เสมอ** ไม่ใช่ปล่อย default
+- **Date Added:** 2026-10-07

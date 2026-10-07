@@ -28,6 +28,7 @@ from core.exceptions import (
     NotFoundError, ForbiddenError, ValidationError, ConflictError, ServiceUnavailableError,
 )
 from core.logger import AuditLogger
+from core.queues import IMPORT_QUEUE
 from core.rbac import get_role_permissions, get_role_is_admin
 from models.import_schemas import (
     IMPORT_STATUS_PENDING,
@@ -241,9 +242,13 @@ async def enqueue_import_job(job_id: int) -> None:
     """ยิง job_id เข้า Redis queue เพื่อให้ ARQ Worker รับไปทำงาน"""
     redis = await create_arq_redis()
     try:
-        # ชื่อฟังก์ชันต้องตรงกับ __qualname__ ของ task ใน WorkerSettings (process_student_import)
-        await redis.enqueue_job("process_student_import", job_id)
-        logger.info(f"✅ Enqueued import job {job_id} → Redis")
+        # ⚠️ ต้องตรงกับ WorkerSettings ของ import_worker **สองอย่าง**:
+        #    1. ชื่อฟังก์ชัน = __qualname__ ของ task ('process_student_import')
+        #    2. ชื่อคิว     = IMPORT_QUEUE
+        #    พลาดข้อ 2 = งานลงคิว `arq:queue` ที่ทั้งสอง worker ไม่ฟัง ⇒ หายเงียบ
+        #    (enqueue_job คืน None ตอนลงคิวสำเร็จปกติ จึงไม่มีสัญญาณเตือนใด ๆ)
+        await redis.enqueue_job("process_student_import", job_id, _queue_name=IMPORT_QUEUE)
+        logger.info(f"✅ Enqueued import job {job_id} → Redis ({IMPORT_QUEUE})")
     finally:
         await redis.aclose()
 
