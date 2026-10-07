@@ -3073,3 +3073,38 @@
   - 📌 **บทเรียนทั่วไป:** ผู้บริโภคตั้งแต่ 2 ตัวขึ้นไปที่แชร์คิวเดียว = งานถูกทิ้งแบบสุ่ม
     ถ้าเพิ่ม worker ใหม่ **ต้องตั้ง `queue_name` เสมอ** ไม่ใช่ปล่อย default
 - **Date Added:** 2026-10-07
+
+### 💀 `arq:queue:<ชื่อ>:health-check` หายหลัง deploy — **ไม่ใช่**สัญญาณว่า worker พังหรือตั้งคิวผิด
+
+- **Context/Problem:** หลัง deploy ตัวซ่อมคิว ARQ ขึ้น staging แล้ว พบว่า
+  `arq:queue:import:health-check` **มี** แต่ `arq:queue:push:health-check` **หายไป**
+  (`TTL=-2`) ทั้งที่ worker รันปกติ 1/1 และกิน cron `process_push_outbox` ทุก 20 วิ สำเร็จทุกครั้ง
+  ⇒ อ่านเผิน ๆ แล้วสรุปได้ว่า "push_worker ไม่ได้ตั้ง `queue_name`" ซึ่ง **ผิด**
+- **Root Cause:** ARQ 0.28.0 `arq/worker.py` มีสองบรรทัดที่ประกอบกันเป็นกับดัก:
+  - `record_health()` (บรรทัด 775) **early-return** ถ้า `now_ts - self._last_health_check < health_check_interval`
+    (default **3600 วิ**) ⇒ worker ใหม่เขียน key **ครั้งเดียวตอนสตาร์ท** แล้วเงียบไปอีก 1 ชม.
+    (`self._last_health_check = 0` ตั้งแต่ `__init__` ⇒ ครั้งแรกเขียนแน่นอน)
+  - `close()` (บรรทัด 874) `await self.pool.delete(self.health_check_key)` ⇒ **ลบทิ้งตอนปิดอย่างสุภาพ**
+
+  ⇒ ระหว่าง **rolling update** (worker เก่ากับใหม่ทับกันช่วงสั้น ๆ) ถ้า `close()` ของตัวเก่ามากลบ
+  **หลัง** การเขียนครั้งเดียวของตัวใหม่ → key หายไป **นานถึง 1 ชั่วโมง** โดย worker ทำงานปกติ 100%
+  อธิบายได้ด้วยเหตุนี้ว่าทำไม worker ตัวหนึ่งมี key อีกตัวไม่มี **ทั้งที่เป็นโค้ดเดียวกัน** (แข่งกันที่จังหวะ)
+- **หลักฐานที่ยืนยัน:** `docker service scale ..._push_worker=0` → รอ container หมดจริง (ให้ตัวเก่า
+  `close()` จบก่อน ไม่มีใครมาลบทับ) → `scale =1` ⇒ **key โผล่ทันที** TTL 3585
+  ⇒ ไม่มีอะไรผิดที่คอนฟิก เป็น race ล้วน ๆ
+- **Correct Pattern/Solution:**
+  - **อย่าใช้ health-check key เป็นหลักฐานหลัก** ว่า worker อยู่คิวไหน มันเป็นเรื่อง *การเฝ้าติดตาม*
+    ไม่ใช่ *การตั้งค่า* · อาการ "key หาย" **ไม่มีความหมายเชิงหน้าที่** (worker ยังทำงานครบ)
+  - หลักฐานที่เชื่อได้จริง เรียงจากตรงที่สุด:
+    1. **อ่านจากคอนเทนเนอร์ที่รันอยู่** (ผู้รับ — ground truth):
+       `docker exec <ctr> python -c "from workers.push_worker import WorkerSettings as S; print(S.queue_name)"`
+    2. **ผู้ส่ง:** `grep _queue_name /app/services/import_service.py`
+    3. **คิว default ต้องไม่มี:** `redis-cli EXISTS arq:queue` → ต้องเป็น `0`
+    4. **พิสูจน์เชิงหน้าที่** (แข็งสุด): ยิงงานจริงแล้วเห็นมันจบ — push = cron ทุก 20 วิ,
+       import = นำเข้า Excel แล้วได้ `COMPLETED`
+  - ℹ️ `docker exec` **ไม่ส่ง stdin** ถ้าไม่ใส่ `-i` ⇒ `docker exec X python - <<'PY'` จะ **เงียบ ไม่มี output
+    และไม่มี error** ⇒ ใช้ `docker cp` + `python /tmp/x.py` แต่ต้อง `-e PYTHONPATH=/app` ด้วย
+    (ไม่งั้น `ModuleNotFoundError: No module named 'core'`)
+  - ⚠️ กับดักการอ่าน log ซ้ำ: ARQ log **สองบรรทัดต่อหนึ่งเหตุการณ์** (formatter ของตัวเอง +
+    stdlib) ⇒ `grep -c 'Starting worker'` ได้ **2** ทั้งที่สตาร์ทครั้งเดียว **อย่าอ่านเป็นรีสตาร์ท**
+- **Date Added:** 2026-10-07
