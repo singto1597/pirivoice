@@ -43,6 +43,7 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from core.config import settings
+from core.queues import PUSH_QUEUE
 from core.request_context import audit_scope
 from services import push_service
 
@@ -177,6 +178,12 @@ class WorkerSettings:
     on_shutdown = shutdown
     # ถ้า REDIS_URL ว่าง (dev เครื่อง) ใช้ localhost กัน import พัง — production ตั้งค่าเสมอ
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL or "redis://localhost:6379/0")
+
+    # 🚧 คิวแยกจาก import_worker เด็ดขาด — ถ้าไม่ตั้ง ARQ จะใช้ `arq:queue` ร่วมกัน
+    #    แล้ว import worker จะรับ cron ของที่นี่ไปทิ้ง ("function ... not found" ทุก 20 วิ)
+    #    และกลับกันงาน import ก็ตกมาที่นี่แล้วหายถาวร ⇒ ดู core/queues.py
+    #    ℹ️ cron ไม่ต้องระบุคิวเอง — ARQ ยัดเข้าคิวของ worker ตัวนี้ตาม `queue_name` อยู่แล้ว
+    queue_name = PUSH_QUEUE
 
     # ⚙️ max_jobs=2 (ไม่ใช่ 1) — ปลอดภัยเพราะ claim ใช้ `FOR UPDATE SKIP LOCKED`
     #    ⇒ สอง job พร้อมกันหยิบคนละแถว ไม่มีทางส่งซ้ำ

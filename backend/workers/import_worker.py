@@ -12,6 +12,7 @@ import asyncpg
 from arq.connections import RedisSettings
 
 from core.config import settings
+from core.queues import IMPORT_QUEUE
 from core.request_context import audit_scope
 from services import import_service
 
@@ -38,8 +39,9 @@ async def process_student_import(ctx: dict, job_id: int) -> dict:
     """
     ARQ task: รับ job_id จากคิว → ส่งต่อให้ service (ทุก business logic อยู่ที่ service)
 
-    ⚠️ __qualname__ ของฟังก์ชันนี้ = 'process_student_import'
-       ต้องตรงกับที่ `import_service.enqueue_import_job` ใช้ (enqueue_job("process_student_import", job_id))
+    ⚠️ ต้องตรงกับ `import_service.enqueue_import_job` **สองอย่าง**:
+       1. ชื่อฟังก์ชัน = __qualname__ ของฟังก์ชันนี้ ('process_student_import')
+       2. ชื่อคิว     = IMPORT_QUEUE (ดู core/queues.py) — พลาดข้อนี้ = งานหายเงียบ ไม่มี error
     """
     # 📡 ครอบ audit_scope: ทุก audit log ของงานนี้ได้ trace_id เดียวกัน + วัด execution_time_ms ได้
     with audit_scope(endpoint=f"arq:process_student_import job_id={job_id}"):
@@ -52,6 +54,10 @@ class WorkerSettings:
     on_shutdown = shutdown
     # ถ้า REDIS_URL ว่าง (dev เครื่อง) ใช้ localhost กัน import พัง — production/container ตั้งค่าเสมอ
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL or "redis://localhost:6379/0")
+
+    # 🚧 คิวแยกจาก push_worker เด็ดขาด — ถ้าไม่ตั้ง ARQ จะใช้ `arq:queue` ร่วมกัน
+    #    แล้วดึงงานแบบ atomic ⇒ งาน import ตกไปฝั่ง push_worker = หายเงียบ (ดู core/queues.py)
+    queue_name = IMPORT_QUEUE
 
     # 🔒 max_jobs=1 → worker ประมวลผลทีละ 1 งาน
     #    (กัน 2 งานพร้อมกันชนกันสร้าง users/students ซ้ำ — unique constraint)
