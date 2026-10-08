@@ -93,6 +93,12 @@ const GATES: Record<string, [boolean | undefined, string | undefined, boolean | 
   //    สร้างหลังจากนั้นไปอยู่ปีใหม่ทั้งหมด · ครูระดับชั้น (ที่มี `MANAGE_STUDENTS`)
   //    ต้องแตะไม่ได้ — ตรงกับ `PERMISSION` ใน `services/year_service.py`
   'academic-years': [true, 'MANAGE_SETTINGS', undefined],
+  // 🔄 เลื่อนชั้นทั้งโรงเรียน — **สองประตูคู่กัน ไม่ใช่ของซ้ำ**:
+  //    `MANAGE_STUDENTS` เดี่ยว → ครู/ประธานระดับเห็นแถวแล้ว 403 (backend บังคับโหมด
+  //    จัดการระดับโรงเรียน = ต้องมี `is_admin`) · `requiresCouncil` เดี่ยว →
+  //    `council_member` เห็นแล้วก็ 403 (ไม่มี MANAGE_STUDENTS)
+  //    ⇒ คู่กันให้ผลตรงกับ `rollover_service._gate` ทุกบทบาท
+  'promote-students': [true, 'MANAGE_STUDENTS', true],
   'academic-year-new': [true, 'MANAGE_SETTINGS', undefined],
   'academic-year-edit': [true, 'MANAGE_SETTINGS', undefined],
   'audit-logs': [true, 'VIEW_AUDIT_LOG', undefined],
@@ -121,9 +127,9 @@ const NAV_HIDDEN = [
 const TAB_ROOTS = ['home', 'more', 'my-issues', 'boards', 'events']
 
 describe('ประตูสิทธิ์ (snapshot)', () => {
-  it('ครบทั้ง 36 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
+  it('ครบทั้ง 37 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
     const children = appChildren()
-    expect(children).toHaveLength(36)
+    expect(children).toHaveLength(37)
 
     const actual: Record<string, [boolean | undefined, string | undefined, boolean | undefined]> =
       {}

@@ -22,6 +22,7 @@ from routers import boards
 from routers import notification_router
 from routers import announcement_router
 from routers import settings_router
+from routers import rollover_router
 from routers import bookmark_router, me_router
 from routers import event_router
 from routers import home_router
@@ -162,6 +163,7 @@ app.include_router(boards.router, prefix="/api")
 app.include_router(notification_router.router, prefix="/api")
 app.include_router(announcement_router.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
+app.include_router(rollover_router.router, prefix="/api")
 app.include_router(me_router.router, prefix="/api")
 app.include_router(bookmark_router.router, prefix="/api")
 app.include_router(event_router.router, prefix="/api")

@@ -200,6 +200,22 @@ export const NAV_GROUPS: NavGroup[] = [
       //    ลำดับที่ต้องทำจริงตอนขึ้นปีใหม่ (สร้างปี → นำเข้ารายชื่อ → ตั้งเป็นปัจจุบัน)
       //    ⇒ สองแถวนี้อยู่ติดกันโดยเจตนา; ความหมายต่างกันคนละชั้น — ดู `docs/glossary.md` §1.1
       { key: 'academic-years', label: 'ปีการศึกษา', icon: 'bi-mortarboard', to: { name: 'academic-years' }, permission: 'MANAGE_SETTINGS' },
+      {
+        // 🔄 อยู่ติดกับ "ปีการศึกษา" โดยเจตนา — เป็นขั้นถัดไปของงานเดียวกัน
+        //    (สร้างปีใหม่ → เลื่อนชั้น → นำเข้ารายชื่อ → ตั้งตำแหน่ง) ไม่ใช่เรื่องของ "สมาชิก"
+        //    ⚠️ สิทธิ์เป็น **`councilOnly` + `MANAGE_STUDENTS` คู่กัน** ซึ่งต่างจากแถวอื่นในแอป:
+        //       · `MANAGE_STUDENTS` เดี่ยว → ครู/ประธานระดับเห็นแถว แล้ว **403** จาก backend
+        //         (`rollover_service._gate` บังคับโหมดจัดการระดับโรงเรียน ⇒ ต้องมี `is_admin`)
+        //       · `councilOnly` เดี่ยว → `council_member` เห็นแถว แล้วก็ **403** (ไม่มี MANAGE_STUDENTS)
+        //       ⇒ ประกาศคู่กันจึงได้ผลตรงกับประตูจริงทุกบทบาทพอดี (ดู `__tests__/navRegistry.spec.ts`
+        //         gate แบบ `{ council: true, permission: … }`) — อย่าถอดตัวใดตัวหนึ่งออก
+        key: 'promote-students',
+        label: 'เลื่อนชั้นนักเรียน',
+        icon: 'bi-arrow-up-circle',
+        to: { name: 'promote-students' },
+        councilOnly: true,
+        permission: 'MANAGE_STUDENTS',
+      },
       { key: 'academic-terms', label: 'ภาคเรียน', icon: 'bi-calendar3-range', to: { name: 'academic-terms' }, permission: 'MANAGE_SETTINGS' },
       // ⚠️ ไม่มีแถว "รายชื่อนักเรียน" ที่นี่ — ถูกรวมเข้าแถว "สมาชิก" ในกลุ่มผู้ดูแลแล้ว (R1)
       { key: 'audit-logs', label: 'บันทึกการใช้งาน', icon: 'bi-clock-history', to: { name: 'audit-logs' }, permission: 'VIEW_AUDIT_LOG' },
@@ -283,6 +299,9 @@ export const routeTitles: Record<string, string> = {
   announcements: 'จัดการประกาศ',
   'academic-terms': 'ภาคเรียน',
   'academic-years': 'ปีการศึกษา',
+  // ⚠️ ต้องตรงกับ `label` ของแถวเมนู — ปลายทางเดียวมีสองชื่อทำให้ผู้ใช้คิดว่าคนละหน้า
+  //    (บทเรียนเดียวกับ `board-reports` ที่เคยเป็น "ตรวจรายงาน" บนเมนู / "จัดการรายงาน" บนหัวแถบ)
+  'promote-students': 'เลื่อนชั้นนักเรียน',
   // ⚠️ สองอันนี้ `navHidden` (ไม่โชว์ในเมนู) แต่ **ต้องมี routeTitles** — ไม่งั้น `<h1>`
   //    บนหัวหน้าจะว่าง แล้วผู้ใช้ไม่รู้ว่ากำลังทำอะไรอยู่
   'academic-year-new': 'เพิ่มปีการศึกษา',
