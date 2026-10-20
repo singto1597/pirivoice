@@ -8,9 +8,14 @@ import {
   missingOverrideRooms,
   overridesDirty,
   personName,
+  reconcilePickerError,
+  reconciliationScreenState,
+  reconciliationSummaryText,
+  defaultReconcilePair,
   rolloverScreenState,
   roomOptions,
   sortRoomCodes,
+  type Reconciliation,
   type RolloverApplyResult,
   type RolloverLevelGroup,
   type RolloverPlan,
@@ -434,5 +439,99 @@ describe('RolloverPreview', () => {
     const preview: RolloverPreview = { ...makePlan(), run_id: 3 }
     expect(preview.run_id).toBe(3)
     expect(preview.can_apply).toBe(true)
+  })
+})
+
+// ============================================================
+// 11. P6 — รายงานกระทบยอดรายชื่อระหว่างสองปี
+// ============================================================
+
+describe('reconciliationScreenState', () => {
+  it('ยังไม่กด → idle (แยกจาก "โหลดไม่เสร็จ")', () => {
+    expect(
+      reconciliationScreenState({ isLoading: false, hasError: false, hasResult: false }),
+    ).toBe('idle')
+  })
+
+  it('กำลังโหลด → loading', () => {
+    expect(reconciliationScreenState({ isLoading: true, hasError: false, hasResult: false })).toBe(
+      'loading',
+    )
+  })
+
+  it('🔴 error ต้องชนะ loading — โหลดรอบสองที่ล้มต้องโชว์ error ไม่ใช่ค้าง skeleton', () => {
+    expect(reconciliationScreenState({ isLoading: true, hasError: true, hasResult: false })).toBe(
+      'error',
+    )
+  })
+
+  it('ได้ผลแล้ว → result', () => {
+    expect(
+      reconciliationScreenState({ isLoading: false, hasError: false, hasResult: true }),
+    ).toBe('result')
+  })
+})
+
+describe('reconcilePickerError', () => {
+  it('ยังไม่มีปีเลย → บอกเหตุผล', () => {
+    expect(reconcilePickerError(0)).toContain('ยังไม่มีปีการศึกษา')
+  })
+
+  it('มีปีเดียว → เทียบไม่ได้ ต้องบอกว่าต้องมี 2 ปี', () => {
+    expect(reconcilePickerError(1)).toContain('2 ปี')
+  })
+
+  it('มีตั้งแต่ 2 ปี → ใช้ได้ (null)', () => {
+    expect(reconcilePickerError(2)).toBeNull()
+    expect(reconcilePickerError(9)).toBeNull()
+  })
+})
+
+describe('defaultReconcilePair', () => {
+  it('มีปีปัจจุบัน → from = ปีอื่น, to = ปีปัจจุบัน', () => {
+    expect(
+      defaultReconcilePair([
+        { id: 1, is_current: false },
+        { id: 2, is_current: true },
+      ]),
+    ).toEqual({ from: 1, to: 2 })
+  })
+
+  it('ยังไม่มีปีปัจจุบัน → fall back สองปีแรก (ใหม่ → เก่า)', () => {
+    expect(
+      defaultReconcilePair([
+        { id: 5, is_current: false },
+        { id: 6, is_current: false },
+      ]),
+    ).toEqual({ from: 6, to: 5 })
+  })
+
+  it('ไม่ให้ from กับ to เป็นปีเดียวกัน แม้ปีปัจจุบันเป็นตัวแรก', () => {
+    const pair = defaultReconcilePair([
+      { id: 3, is_current: true },
+      { id: 4, is_current: false },
+    ])
+    expect(pair.from).not.toBe(pair.to)
+    expect(pair.to).toBe(3)
+  })
+
+  it('ปีว่าง → คืนค่าว่างทั้งคู่ (ปุ่มต้องถูกปิด ไม่ใช่ยิง request)', () => {
+    expect(defaultReconcilePair([])).toEqual({ from: '', to: '' })
+  })
+})
+
+describe('reconciliationSummaryText', () => {
+  it('บอกทั้งสองฝั่งเสมอ แม้ยอดเป็น 0', () => {
+    const r: Reconciliation = {
+      from_year_id: 1,
+      to_year_id: 2,
+      missing_count: 3,
+      added_count: 0,
+      missing: [],
+      added: [],
+    }
+    const text = reconciliationSummaryText(r)
+    expect(text).toContain('3')
+    expect(text).toContain('0')
   })
 })

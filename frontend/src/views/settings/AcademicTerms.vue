@@ -12,7 +12,9 @@ import {
   restoreTerm,
 } from '@/services/settings'
 import type { AcademicTerm, AcademicTermUpdatePayload } from '@/types/academicTerm'
-import { TERM_STATUS_TABS } from '@/types/academicTerm'
+import { TERM_STATUS_TABS, termYearLabel } from '@/types/academicTerm'
+import { listYears } from '@/services/year'
+import type { AcademicYear } from '@/types/academicYear'
 import PaginationBar from '@/components/PaginationBar.vue'
 
 const PAGE_SIZE = 20
@@ -21,6 +23,26 @@ const items = ref<AcademicTerm[]>([])
 const total = ref(0)
 const page = ref(1)
 const statusFilter = ref('active')
+/** ปีทั้งหมด (สำหรับตัวเลือกในฟอร์ม/ตัวกรอง) — โหลดครั้งเดียวตอนเข้าหน้า */
+const years = ref<AcademicYear[]>([])
+/** ตัวกรองปีของรายการ · '' = ทุกปี (พฤติกรรมเดิม) */
+const yearFilter = ref<number | ''>('')
+
+const yearNameById = computed(() => {
+  const m = new Map<number, string>()
+  for (const y of years.value) m.set(y.id, y.name || `ปีการศึกษา ${y.year_be}`)
+  return m
+})
+
+async function loadYears() {
+  try {
+    const res = await listYears({ status: 'all', limit: 200 })
+    years.value = res.items
+  } catch {
+    // ไม่ใช่ error ที่ควรขวางหน้า — ฟอร์มยังใช้ได้ (จะโชว์ "ปี #id" แทนชื่อ)
+    years.value = []
+  }
+}
 const isLoading = ref(true)
 const hasError = ref(false)
 /** มีข้อมูลค้างอยู่ในลิสต์แล้วหรือยัง — ใช้เลือกแสดง skeleton vs จางรายการเดิมตอนโหลดหน้าใหม่ */
@@ -34,6 +56,7 @@ async function load() {
       status: statusFilter.value,
       limit: PAGE_SIZE,
       offset: (page.value - 1) * PAGE_SIZE,
+      year_id: yearFilter.value === '' ? undefined : yearFilter.value,
     })
     items.value = res.items
     total.value = res.total
@@ -46,7 +69,10 @@ async function load() {
     isLoading.value = false
   }
 }
-onMounted(load)
+onMounted(() => {
+  loadYears()
+  load()
+})
 
 function errorText(e: unknown): string {
   if (typeof e === 'string') return e
@@ -57,6 +83,11 @@ function errorText(e: unknown): string {
 function changeStatus(next: string) {
   if (statusFilter.value === next) return
   statusFilter.value = next
+  page.value = 1
+  load()
+}
+
+function changeYearFilter() {
   page.value = 1
   load()
 }
@@ -113,7 +144,14 @@ const editingId = ref<number | null>(null)
 const saving = ref(false)
 const saveError = ref('')
 
-const form = ref({ name: '', start_date: '', end_date: '', is_current: false })
+// `academic_year_id: ''` = ไม่ผูกปี (ส่ง `null` ให้ backend)
+const form = ref({
+  name: '',
+  start_date: '',
+  end_date: '',
+  is_current: false,
+  academic_year_id: '' as number | '',
+})
 
 /** ตรวจฝั่ง client เพื่อให้กดไม่ได้ตั้งแต่แรก — backend ตรวจซ้ำและคืน 400 อยู่ดี */
 const formError = computed(() => {
@@ -127,7 +165,13 @@ const formError = computed(() => {
 function openAdd() {
   modalMode.value = 'add'
   editingId.value = null
-  form.value = { name: '', start_date: '', end_date: '', is_current: false }
+  form.value = {
+    name: '',
+    start_date: '',
+    end_date: '',
+    is_current: false,
+    academic_year_id: '',
+  }
   saveError.value = ''
   modalOpen.value = true
 }
@@ -140,6 +184,7 @@ function openEdit(t: AcademicTerm) {
     start_date: t.start_date,
     end_date: t.end_date,
     is_current: t.is_current,
+    academic_year_id: t.academic_year_id ?? '',
   }
   saveError.value = ''
   modalOpen.value = true
@@ -160,6 +205,8 @@ async function save() {
         start_date: form.value.start_date,
         end_date: form.value.end_date,
         is_current: form.value.is_current,
+        academic_year_id:
+          form.value.academic_year_id === '' ? null : form.value.academic_year_id,
       })
     } else if (editingId.value !== null) {
       // PATCH ส่งเฉพาะฟิลด์ที่แก้จริง — ⚠️ ไม่ส่ง is_current (backend ไม่รับผ่านทางนี้)
@@ -172,6 +219,12 @@ async function save() {
       }
       if (!before || form.value.end_date !== before.end_date) {
         payload.end_date = form.value.end_date
+      }
+      const nextYearId =
+        form.value.academic_year_id === '' ? null : form.value.academic_year_id
+      if (!before || nextYearId !== before.academic_year_id) {
+        // null = สั่งล้างการผูกปี (backend ยอมรับเฉพาะฟิลด์นี้)
+        payload.academic_year_id = nextYearId
       }
       if (Object.keys(payload).length === 0) {
         modalOpen.value = false
@@ -330,6 +383,18 @@ function coversToday(t: AcademicTerm): boolean {
       >
         {{ t.label }}
       </button>
+      <!-- 🌟 P6 — กรองตามปีการศึกษา ('' = ทุกปี = พฤติกรรมเดิม) -->
+      <select
+        v-model="yearFilter"
+        @change="changeYearFilter"
+        aria-label="กรองตามปีการศึกษา"
+        class="rounded-full bg-white px-3 min-h-11 py-1.5 text-[13px] font-semibold text-stone-600 ring-1 ring-stone-200 outline-none focus:ring-2 focus:ring-brand/20"
+      >
+        <option value="">ทุกปี</option>
+        <option v-for="y in years" :key="y.id" :value="y.id">
+          {{ y.name || `ปีการศึกษา ${y.year_be}` }}
+        </option>
+      </select>
       <span v-if="!isLoading" class="ml-1 text-[13px] text-ink-3">
         {{ total }} ภาคเรียน
       </span>
@@ -398,6 +463,13 @@ function coversToday(t: AcademicTerm): boolean {
                 class="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-bold text-brand"
               >
                 <span class="h-1.5 w-1.5 rounded-full bg-brand"></span> กำลังใช้อยู่
+              </span>
+              <span
+                v-if="t.academic_year_id !== null"
+                class="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-bold text-stone-600"
+              >
+                <i class="bi bi-mortarboard" aria-hidden="true"></i>
+                {{ termYearLabel(t, yearNameById) }}
               </span>
               <span
                 v-if="t.deleted_at"
@@ -527,6 +599,27 @@ function coversToday(t: AcademicTerm): boolean {
                   placeholder="เช่น ภาคเรียนที่ 1/2569"
                   class="w-full rounded-xl border border-stone-200 px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
                 />
+              </div>
+
+              <!-- 🌟 P6 — ผูกภาคเรียนเข้าปีการศึกษา -->
+              <div>
+                <label class="mb-1 block text-xs font-semibold text-stone-500" for="term-year">
+                  ปีการศึกษา
+                </label>
+                <select
+                  id="term-year"
+                  v-model="form.academic_year_id"
+                  class="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm text-stone-800 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/10"
+                >
+                  <option value="">ไม่ผูกปี</option>
+                  <option v-for="y in years" :key="y.id" :value="y.id">
+                    {{ y.name || `ปีการศึกษา ${y.year_be}` }}
+                  </option>
+                </select>
+                <p class="mt-1 text-[11px] text-ink-3">
+                  <i class="bi bi-info-circle mr-1"></i>ใช้แบ่งภาคเรียนตามปี — ปีที่มีคนอยู่แล้ว
+                  เท่านั้นที่ควรตั้งเป็นภาคปัจจุบัน
+                </p>
               </div>
 
               <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">

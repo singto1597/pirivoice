@@ -249,6 +249,12 @@ const MENU_TODAY: Fixture[] = [
     from: 'P5 · กลุ่ม "โรงเรียน" ต่อจากเลื่อนชั้น (ขั้นสุดท้ายของงานขึ้นปีใหม่)',
   },
   {
+    name: 'year-reconciliation',
+    reach: 'menu',
+    gate: { council: true, permission: 'MANAGE_STUDENTS' },
+    from: 'P6 · กลุ่ม "โรงเรียน" ต่อจากเลื่อนชั้น (กระทบยอดรายชื่อสองปี)',
+  },
+  {
     name: 'audit-logs',
     reach: 'menu',
     gate: { permission: 'VIEW_AUDIT_LOG' },

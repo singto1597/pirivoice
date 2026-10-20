@@ -21,6 +21,11 @@ export async function listStudents(params?: {
   role?: string
   /** ไม่ระบุ = ปีปัจจุบัน (backend กรองปีให้ — ดู `list_students`) */
   year_id?: number
+  /**
+   * 🌟 P6 — ค้นข้ามทุกปี (เด็กจบ/ย้ายออกยังเจอ)
+   * ⚠️ backend **บังคับให้มี `search`** ไม่งั้น 400 (กันดัมป์รายชื่อทุกปีทั้งโรงเรียน)
+   */
+  all_years?: boolean
 }): Promise<Student[]> {
   return (await api.get('/api/students', { params })) as Student[]
 }
@@ -33,7 +38,16 @@ export async function addStudent(payload: StudentCreatePayload): Promise<{ stude
 // ===================== Import นักเรียนจาก Excel (Queue) =====================
 // Flow: upload (PENDING) → start (QUEUED → worker ประมวลผล) → poll progress
 
-export async function uploadStudentExcel(file: File, defaultPassword = '1234'): Promise<ImportJob> {
+/**
+ * อัปโหลดไฟล์ Excel เข้าคิว
+ * @param academicYearId 🌟 P6 — ปีที่ import เข้า · ไม่ส่ง = backend ใช้ปีปัจจุบันของโรงเรียน
+ *   (เซลล์ "ปีการศึกษา" ในไฟล์ถ้ามี จะต้องตรงกับค่านี้ ไม่งั้นแถวนั้นเป็น row error)
+ */
+export async function uploadStudentExcel(
+  file: File,
+  defaultPassword = '1234',
+  academicYearId?: number,
+): Promise<ImportJob> {
   // 1. สร้างกล่อง Form สำหรับใส่ไฟล์เท่านั้น
   const form = new FormData()
   form.append('file', file)
@@ -44,9 +58,10 @@ export async function uploadStudentExcel(file: File, defaultPassword = '1234'): 
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    // แนบ default_password ไปใน URL Query
+    // แนบ default_password (และปีการศึกษา ถ้าเลือก) ไปใน URL Query
     params: {
       default_password: defaultPassword,
+      academic_year_id: academicYearId,
     },
   })) as ImportJob
 }

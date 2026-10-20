@@ -6,6 +6,7 @@ import Swal from 'sweetalert2'
 import { BRAND, WARN } from '@/constants/brand'
 import { fmtDateShort } from '@/datetime'
 import AppButton from '@/components/ui/AppButton.vue'
+import AppCard from '@/components/ui/AppCard.vue'
 import AppChip from '@/components/ui/AppChip.vue'
 import AppEmptyState from '@/components/ui/AppEmptyState.vue'
 import { listYears, setCurrentYear, deleteYear, restoreYear } from '@/services/year'
@@ -237,6 +238,57 @@ async function doRestore(y: AcademicYear) {
         เพิ่มปีการศึกษา
       </AppButton>
     </div>
+
+    <!-- 📌 P6 — "ขั้นต่อไปของการขึ้นปีใหม่" (ลำดับที่ต้องทำจริงตอนขึ้นปี)
+         ⚠️ ไม่ใช่ปุ่มที่แทนกันได้ — ขั้น 2 ต้องกดจากปีใหม่ที่สร้าง/ตั้งเป็นปัจจุบันแล้ว
+            ⇒ การ์ดนี้ทำหน้าที่เตือนว่ามีขั้นอะไรเหลือ ไม่ได้บังคับลำดับด้วยโค้ด -->
+    <AppCard class="mb-5">
+      <h2 class="text-sm font-bold text-ink-1">
+        <i class="bi bi-signpost-split mr-1 text-brand" aria-hidden="true"></i>
+        ขั้นต่อไปของการขึ้นปีใหม่
+      </h2>
+      <p class="mt-1 text-[12px] text-ink-3">
+        ทำตามลำดับนี้เมื่อขึ้นปีการศึกษาใหม่ — ข้ามขั้น 2 ได้ถ้าใช้ไฟล์ Excel ชุดใหม่แทน
+      </p>
+      <ol class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <li>
+          <AppButton variant="secondary" size="sm" :to="{ name: 'academic-year-new' }" block>
+            <template #icon><i class="bi bi-1-circle" aria-hidden="true" /></template>
+            สร้างปีการศึกษาใหม่
+          </AppButton>
+        </li>
+        <li>
+          <AppButton variant="secondary" size="sm" :to="{ name: 'promote-students' }" block>
+            <template #icon><i class="bi bi-2-circle" aria-hidden="true" /></template>
+            เลื่อนชั้นนักเรียนทั้งโรงเรียน
+          </AppButton>
+        </li>
+        <li>
+          <AppButton variant="secondary" size="sm" :to="{ name: 'import-students' }" block>
+            <template #icon><i class="bi bi-3-circle" aria-hidden="true" /></template>
+            นำเข้ารายชื่อด้วย Excel
+          </AppButton>
+        </li>
+        <li>
+          <AppButton variant="secondary" size="sm" :to="{ name: 'year-reconciliation' }" block>
+            <template #icon><i class="bi bi-4-circle" aria-hidden="true" /></template>
+            ตรวจกระทบยอดรายชื่อ
+          </AppButton>
+        </li>
+        <li>
+          <AppButton variant="secondary" size="sm" :to="{ name: 'academic-terms' }" block>
+            <template #icon><i class="bi bi-5-circle" aria-hidden="true" /></template>
+            ตั้งภาคเรียนของปีใหม่
+          </AppButton>
+        </li>
+        <li>
+          <AppButton variant="secondary" size="sm" :to="{ name: 'orphaned-assignments' }" block>
+            <template #icon><i class="bi bi-6-circle" aria-hidden="true" /></template>
+            มอบหมายเรื่องที่ผู้รับหมดวาระ
+          </AppButton>
+        </li>
+      </ol>
+    </AppCard>
 
     <!-- แท็บกรองสถานะ -->
     <div class="mb-4 flex flex-wrap items-center gap-2">

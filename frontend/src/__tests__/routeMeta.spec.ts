@@ -105,6 +105,9 @@ const GATES: Record<string, [boolean | undefined, string | undefined, boolean | 
   // 🧯 เรื่องค้างที่ผู้รับหมดวาระ — ประตูคู่เดียวกับ `promote-students` เพราะ backend
   //    ใช้ `_gate` ตัวเดียวกัน (`MANAGE_STUDENTS` + โหมดจัดการระดับโรงเรียน)
   'orphaned-assignments': [true, 'MANAGE_STUDENTS', true],
+  // 📊 กระทบยอดรายชื่อสองปี (P6) — ประตูคู่เดียวกับ `promote-students`
+  //    เพราะ backend `/api/rollover/reconciliation` ใช้ `_gate` ตัวเดียวกัน
+  'year-reconciliation': [true, 'MANAGE_STUDENTS', true],
   'academic-year-new': [true, 'MANAGE_SETTINGS', undefined],
   'academic-year-edit': [true, 'MANAGE_SETTINGS', undefined],
   'audit-logs': [true, 'VIEW_AUDIT_LOG', undefined],
@@ -133,9 +136,9 @@ const NAV_HIDDEN = [
 const TAB_ROOTS = ['home', 'more', 'my-issues', 'boards', 'events']
 
 describe('ประตูสิทธิ์ (snapshot)', () => {
-  it('ครบทั้ง 39 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
+  it('ครบทั้ง 40 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
     const children = appChildren()
-    expect(children).toHaveLength(39)
+    expect(children).toHaveLength(40)
 
     const actual: Record<string, [boolean | undefined, string | undefined, boolean | undefined]> =
       {}

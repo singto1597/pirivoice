@@ -27,6 +27,9 @@ class AcademicTermCreateRequest(BaseModel):
     start_date: date
     end_date: date = Field(..., description="รวมวันสุดท้าย (inclusive)")
     is_current: bool = Field(False, description="ตั้งเป็นภาคปัจจุบันทันที (ปลดตัวเก่าให้ในทรานแซกชันเดียว)")
+    # 🌟 P6 — ผูกภาคเรียนเข้าปีการศึกษา (คอลัมน์มีตั้งแต่ migration 027 · nullable โดยเจตนา:
+    #    ภาคที่สร้างก่อนมีฟีเจอร์นี้ยังใช้ได้ และ PATCH `null` = "ไม่ผูกปี")
+    academic_year_id: Optional[int] = Field(None, description="ปีการศึกษาที่ภาคนี้สังกัด")
 
     @field_validator("name")
     @classmethod
@@ -47,6 +50,8 @@ class AcademicTermUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=50)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    # ⚠️ `null` ที่นี่ **มีความหมาย** (ต่างจาก 3 ฟิลด์บน) = สั่งล้างการผูกปี
+    academic_year_id: Optional[int] = None
 
     @field_validator("name")
     @classmethod
@@ -66,6 +71,7 @@ class AcademicTermOut(BaseModel):
     start_date: date
     end_date: date
     is_current: bool
+    academic_year_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime] = None

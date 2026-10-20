@@ -8,6 +8,8 @@ export interface AcademicTerm {
   start_date: string // YYYY-MM-DD
   end_date: string // YYYY-MM-DD — ★ รวมวันสุดท้าย (inclusive)
   is_current: boolean
+  /** 🌟 P6 — ปีการศึกษาที่ภาคนี้สังกัด · null = ยังไม่ผูกปี (ภาคเก่าก่อนมีฟีเจอร์นี้) */
+  academic_year_id: number | null
   created_at: string
   updated_at: string
   deleted_at: string | null // null = ยังไม่ถูกลบ
@@ -26,6 +28,7 @@ export interface AcademicTermCreatePayload {
   start_date: string
   end_date: string
   is_current?: boolean
+  academic_year_id?: number | null
 }
 
 // PATCH — ส่งเฉพาะฟิลด์ที่จะแก้ (ไม่ส่ง = ไม่แตะ)
@@ -35,6 +38,14 @@ export interface AcademicTermUpdatePayload {
   name?: string
   start_date?: string
   end_date?: string
+  /** `null` = สั่ง **ล้างการผูกปี** (ความหมายเดียวที่ `null` ถูกต้องใน PATCH นี้) */
+  academic_year_id?: number | null
+}
+
+/** ป้ายปีของภาคเรียน — `null` ต้องอ่านรู้เรื่อง ไม่ใช่โชว์ "null" (docs/rules/frontend.md §4) */
+export function termYearLabel(term: Pick<AcademicTerm, 'academic_year_id'>, yearNameById: Map<number, string>): string {
+  if (term.academic_year_id === null) return 'ไม่ผูกปี'
+  return yearNameById.get(term.academic_year_id) ?? `ปี #${term.academic_year_id}`
 }
 
 // แท็บกรองสถานะ — ตรงกับ pattern `status` ของ GET /api/settings/terms

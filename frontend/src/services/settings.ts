@@ -19,12 +19,15 @@ export async function listTerms(params: {
   status?: string
   limit?: number
   offset?: number
+  /** 🌟 P6 — กรองเฉพาะภาคของปีการศึกษา · ไม่ระบุ = ทุกปี */
+  year_id?: number
 } = {}): Promise<AcademicTermListResponse> {
   return (await api.get('/api/settings/terms', {
     params: {
       status: params.status || undefined,
       limit: params.limit ?? 50,
       offset: params.offset ?? 0,
+      year_id: params.year_id,
     },
   })) as AcademicTermListResponse
 }

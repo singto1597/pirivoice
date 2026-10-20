@@ -46,6 +46,8 @@ class ImportJobOut(BaseModel):
     error_message: Optional[str] = None
     progress_percent: int = 0
     created_by: Optional[int] = None
+    # 🌟 P6 — ปีที่ job นี้ import เข้า (NULL = ใช้ปีปัจจุบันของโรงเรียน ณ ตอนประมวลผล)
+    academic_year_id: Optional[int] = None
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -73,6 +75,7 @@ class ImportJobOut(BaseModel):
             error_message=data.get("error_message"),
             progress_percent=compute_progress_percent(data["total_rows"], data["processed_rows"]),
             created_by=data.get("created_by"),
+            academic_year_id=data.get("academic_year_id"),
             created_at=data["created_at"],
             started_at=data.get("started_at"),
             completed_at=data.get("completed_at"),

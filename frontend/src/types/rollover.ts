@@ -311,3 +311,50 @@ export function personName(p: ReconciliationPerson): string {
   const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim()
   return name || `(ไม่มีชื่อในระบบ · รหัส ${p.student_id ?? '-'})`
 }
+
+// ============================================================
+// 📊 P6 — หน้ารายงานกระทบยอดรายชื่อ (reconciliation)
+// ============================================================
+
+export type ReconciliationScreenState = 'idle' | 'loading' | 'error' | 'result'
+
+/**
+ * สถานะหน้าจอ — ต้องแยก "ยังไม่กด", "กำลังโหลด", "พัง", "ได้ผล" ออกจากกันชัดเจน
+ * (ตาม frontend.md §4 — "ว่าง ≠ พัง ≠ ยังโหลดไม่เสร็จ")
+ * ⚠️ error มาก่อน loading: การโหลดรอบหลังที่ล้ม ต้องโชว์ error ไม่ใช่ค้างที่ skeleton
+ */
+export function reconciliationScreenState(opts: {
+  isLoading: boolean
+  hasError: boolean
+  hasResult: boolean
+}): ReconciliationScreenState {
+  if (opts.hasError) return 'error'
+  if (opts.isLoading) return 'loading'
+  if (opts.hasResult) return 'result'
+  return 'idle'
+}
+
+/**
+ * ตัวเลือกปีในหน้ากระทบยอด — **ต้องมีอย่างน้อย 2 ปี** ถึงจะเทียบได้
+ * คืนข้อความบอกเหตุผลเมื่อใช้ไม่ได้ (`null` = พร้อมใช้) เพื่อไม่ให้ templates ต้องเดา
+ */
+export function reconcilePickerError(yearCount: number): string | null {
+  if (yearCount === 0) return 'ยังไม่มีปีการศึกษาในระบบ'
+  if (yearCount === 1) return 'ต้องมีอย่างน้อย 2 ปีการศึกษาจึงจะเทียบรายชื่อได้'
+  return null
+}
+
+/** ปีเริ่มต้นที่แนะนำ: ปีก่อน → ปีปัจจุบัน (ถ้าเลือกไม่ได้ให้ fall back สองปีใหม่สุด) */
+export function defaultReconcilePair(
+  years: Array<{ id: number; is_current: boolean }>,
+): { from: number | ''; to: number | '' } {
+  const current = years.find((y) => y.is_current)
+  if (!current) return { from: years[1]?.id ?? '', to: years[0]?.id ?? '' }
+  const other = years.find((y) => y.id !== current.id)
+  return { from: other?.id ?? '', to: current.id }
+}
+
+/** สรุปบรรทัดเดียวของผลกระทบยอด */
+export function reconciliationSummaryText(r: Reconciliation): string {
+  return `หายจากปีใหม่ ${r.missing_count} คน · เพิ่มเข้ามา ${r.added_count} คน`
+}

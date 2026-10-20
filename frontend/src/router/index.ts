@@ -482,6 +482,20 @@ const router = createRouter({
           },
         },
         {
+          // 📊 P6 — กระทบยอดรายชื่อสองปี (read-only)
+          // ⚠️ ประตูคู่เหมือน promote-students: backend `_gate` บังคับ MANAGE_STUDENTS + โหมดส่วนกลาง
+          path: 'students/reconciliation',
+          name: 'year-reconciliation',
+          component: () => import('@/views/students/Reconciliation.vue'),
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_STUDENTS',
+            requiresCouncil: true,
+            navTab: 'more',
+            headerBack: { name: 'students' },
+          },
+        },
+        {
           path: 'settings/years/:id/edit',
           name: 'academic-year-edit',
           component: () => import('@/views/settings/AcademicYearForm.vue'),

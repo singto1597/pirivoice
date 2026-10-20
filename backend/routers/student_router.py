@@ -128,6 +128,10 @@ async def list_students(
     year_id: int | None = Query(
         None, description="ปีการศึกษาที่จะดู — ไม่ระบุ = ปีปัจจุบัน (ดูย้อนหลังได้)"
     ),
+    all_years: bool = Query(
+        False,
+        description="ค้นข้ามทุกปี (P6) — **ต้องมี `search`** ไม่งั้น 400 (ดูข้อตัดสินใจ #8)",
+    ),
     user_ctx: dict = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db_pool),
 ):
@@ -138,7 +142,10 @@ async def list_students(
     🌟 `year_id` (เพิ่มพร้อม migration 027) — ไม่ระบุ = ปีปัจจุบัน
        ⇒ ถ้าไม่ส่ง รายชื่อจะ **ไม่บวมด้วยแถวของปีเก่า** (ซึ่งคือพฤติกรรมที่ต้องการ)
        ⚠️ ขอบเขตระดับชั้น (`level`) ยังใช้กับปีที่ขอดูย้อนหลังด้วย — ครูยังเห็นได้แค่ระดับตัวเอง
-          แม้จะดูปีเก่า (ไม่ใช่ช่องทางข้ามสิทธิ์)"""
+          แม้จะดูปีเก่า (ไม่ใช่ช่องทางข้ามสิทธิ์)
+
+    🌟 `all_years=true` (P6) — ค้นข้ามทุกปี (เด็กจบ/ย้ายออกยังค้นเจอ) **ต้องส่ง `search` ด้วย**
+       (ไม่มีคำค้น = 400) · ขอบเขตระดับชั้นยังบังคับเหมือนเดิม"""
     if not user_ctx.get("user_id"):
         raise HTTPException(status_code=401, detail="ต้องเข้าสู่ระบบ")
 
@@ -154,9 +161,13 @@ async def list_students(
         raise HTTPException(status_code=403, detail="คุณไม่มีขอบเขตสิทธิ์ในการจัดการนักเรียน")
 
     level = mode["grade"] if mode["mode"] in ("teacher", "level") else None
-    students = await student_service.list_students(
-        pool, room_id=room_id, search=search, level=level, role=role, year_id=year_id
-    )
+    try:
+        students = await student_service.list_students(
+            pool, room_id=room_id, search=search, level=level, role=role,
+            year_id=year_id, all_years=all_years,
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     # ประธานระดับ/ผู้ช่วย: เห็นได้เฉพาะ role ที่จัดการได้ (rank ≤ ตัวเอง) ภายในระดับชั้น
     if mode["mode"] == "level":
         allowed = {r for r, rk in MANAGE_RANK.items() if rk <= mode["manage_rank"]}

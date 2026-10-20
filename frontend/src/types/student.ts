@@ -60,6 +60,8 @@ export interface ImportJob {
   error_message: string | null
   progress_percent: number // 0-100 (backend คำนวณให้แล้ว)
   created_by: number | null
+  /** 🌟 P6 — ปีที่ import เข้า · null = ใช้ปีปัจจุบันตอนประมวลผล */
+  academic_year_id: number | null
   created_at: string
   started_at: string | null
   completed_at: string | null
