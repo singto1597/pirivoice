@@ -521,6 +521,31 @@ async def init_db(pool: asyncpg.Pool):
                 );
                 """)
 
+                # --- 8.79 student_moves: ประวัติการย้ายห้องภายในปี (migration 029) ---
+                #   ⚠️ เก็บเฉพาะการย้าย *ภายในปีเดียวกัน* — การเลื่อนชั้นอ่านได้จากแถว
+                #      `students` ของปีเก่า/ใหม่เองอยู่แล้ว (ห้ามเก็บซ้ำ จะขัดกันเอง)
+                #   FK เป็น ON DELETE SET NULL ทุกตัว — ประวัติต้องอยู่ต่อแม้ลบห้อง/ผู้ใช้
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS student_moves (
+                    id SERIAL PRIMARY KEY,
+                    student_row_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+                    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    student_id VARCHAR(10),
+                    from_room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
+                    to_room_id   INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
+                    academic_year_id INTEGER REFERENCES academic_years(id),
+                    note TEXT,
+                    moved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    moved_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+                """)
+                await conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_student_moves_user ON student_moves(user_id, moved_at DESC);"
+                )
+                await conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_student_moves_year ON student_moves(academic_year_id, moved_at DESC);"
+                )
+
                 # --- 8.8 announcements: ประกาศสาธารณะบน Landing Page ---
                 #   - priority: normal / high / urgent (urgent = พื้นหลังแดงเข้มบนหน้า Landing)
                 #   - link: ลิงก์ปลายทาง (optional) เมื่อคลิกประกาศ

@@ -224,18 +224,24 @@ def _student_to_dict(row) -> dict:
     }
 
 
-async def update_student(pool: asyncpg.Pool, student_id: int, *, class_role: Optional[str] = None, status: Optional[str] = None, is_admin: Optional[bool] = None, staff_level: Optional[str] = None, responsibilities: Optional[list] = None, actor_user_id: Optional[int] = None, client_source: str = "web") -> None:
+async def update_student(pool: asyncpg.Pool, student_id: int, *, class_role: Optional[str] = None, status: Optional[str] = None, is_admin: Optional[bool] = None, staff_level: Optional[str] = None, responsibilities: Optional[list] = None, prefix: Optional[str] = None, first_name: Optional[str] = None, last_name: Optional[str] = None, nickname: Optional[str] = None, student_no: Optional[int] = None, student_code: Optional[str] = None, actor_user_id: Optional[int] = None, client_source: str = "web") -> None:
     """
     แก้ไขนักเรียน/สมาชิก
     - เมื่อเปลี่ยน class_role → permissions + is_admin จะถูก recompute จาก config/roles.json เสมอ
     - responsibilities (หน้าที่): เฉพาะ council_member / level_vice_president; role อื่นถูกบังคับให้ว่าง
     - ครูทั่วไป (teacher) ต้องมี staff_level (ระดับชั้นที่ดูแล) — ถ้าไม่ระบุ ดึงจากระดับชั้นของห้อง
+    - 🌟 P5: แก้ข้อมูลตัวตนได้ด้วย (prefix/first_name/last_name/nickname/student_no/student_code)
+      ⚠️ `student_code` → `students.student_id` **ไม่แตะ `users.username`** โดยเจตนา
+         (username เป็นกุญแจล็อกอิน — แก้ตามจะทำให้เด็กเข้าไม่ได้ · ดู schema docstring)
     - บันทึก audit_logs ใน transaction เดียวกัน
     """
     async with pool.acquire() as conn:
         async with conn.transaction():
             current = await conn.fetchrow(
-                "SELECT id, room_id, class_role, status, is_admin, staff_level, responsibilities FROM students WHERE id = $1 AND deleted_at IS NULL",
+                """SELECT id, user_id, room_id, academic_year_id, class_role, status, is_admin,
+                          staff_level, responsibilities, prefix, first_name, last_name,
+                          nickname, student_no, student_id
+                   FROM students WHERE id = $1 AND deleted_at IS NULL""",
                 student_id
             )
             if not current:
@@ -246,6 +252,28 @@ async def update_student(pool: asyncpg.Pool, student_id: int, *, class_role: Opt
             new_admin = is_admin if is_admin is not None else current["is_admin"]
             new_staff_level = staff_level if staff_level is not None else current["staff_level"]
             old_resp = _parse_json_list(current["responsibilities"])
+
+            # --- ข้อมูลตัวตน: ไม่ส่ง = ไม่แก้ (PATCH) --------------------------------
+            new_prefix = prefix if prefix is not None else current["prefix"]
+            new_first = first_name if first_name is not None else current["first_name"]
+            new_last = last_name if last_name is not None else current["last_name"]
+            new_nick = nickname if nickname is not None else current["nickname"]
+            new_no = student_no if student_no is not None else current["student_no"]
+            new_code = student_code if student_code is not None else current["student_id"]
+
+            # รหัสนักเรียนซ้ำในห้อง+ปีเดียวกัน → unique index (028) จะโยน UniqueViolation
+            # ⇒ ตรวจก่อนเพื่อให้ผู้ใช้เห็นข้อความที่อ่านรู้เรื่อง ไม่ใช่ 500
+            if student_code is not None and student_code != current["student_id"]:
+                dup = await conn.fetchval(
+                    """SELECT 1 FROM students
+                       WHERE room_id = $1 AND academic_year_id = $2 AND student_id = $3
+                         AND deleted_at IS NULL AND id <> $4""",
+                    current["room_id"], current["academic_year_id"], student_code, student_id,
+                )
+                if dup:
+                    raise ValidationError(
+                        f"รหัสนักเรียน {student_code} มีอยู่ในห้องนี้แล้ว (ปีเดียวกัน)"
+                    )
 
             # เมื่อ role เปลี่ยน → permissions + is_admin ตาม config/roles.json เสมอ
             role_perms = get_role_permissions(new_role)
@@ -271,11 +299,15 @@ async def update_student(pool: asyncpg.Pool, student_id: int, *, class_role: Opt
                 """
                 UPDATE students
                 SET class_role = $1, status = $2, is_admin = $3, staff_level = $4,
-                    permissions = $5, responsibilities = $6, updated_at = NOW()
-                WHERE id = $7
+                    permissions = $5, responsibilities = $6, updated_at = NOW(),
+                    prefix = $7, first_name = $8, last_name = $9, nickname = $10,
+                    student_no = $11, student_id = $12
+                WHERE id = $13
                 """,
                 new_role, new_status, new_admin, new_staff_level,
-                json.dumps(role_perms), json.dumps(new_resp), student_id
+                json.dumps(role_perms), json.dumps(new_resp),
+                new_prefix, new_first, new_last, new_nick, new_no, new_code,
+                student_id
             )
 
             # 🛡️ Audit log (กฎ: ทุก UPDATE ต้องบันทึกใน transaction เดียวกัน)
@@ -294,6 +326,12 @@ async def update_student(pool: asyncpg.Pool, student_id: int, *, class_role: Opt
                     "is_admin": current["is_admin"],
                     "staff_level": current["staff_level"],
                     "responsibilities": old_resp,
+                    "prefix": current["prefix"],
+                    "first_name": current["first_name"],
+                    "last_name": current["last_name"],
+                    "nickname": current["nickname"],
+                    "student_no": current["student_no"],
+                    "student_id": current["student_id"],
                 },
                 new_values={
                     "class_role": new_role,
@@ -301,6 +339,12 @@ async def update_student(pool: asyncpg.Pool, student_id: int, *, class_role: Opt
                     "is_admin": new_admin,
                     "staff_level": new_staff_level,
                     "responsibilities": new_resp,
+                    "prefix": new_prefix,
+                    "first_name": new_first,
+                    "last_name": new_last,
+                    "nickname": new_nick,
+                    "student_no": new_no,
+                    "student_id": new_code,
                 },
             )
 
@@ -567,3 +611,217 @@ async def update_my_profile(pool: asyncpg.Pool, user_id: int, *, prefix=None, fi
                 endpoint_or_command="PATCH /students/me/profile",
             )
 
+
+
+# ============================================================
+# 🔀 ย้ายห้องเป็นกลุ่ม (P5) — เขียน `student_moves` + audit ใน transaction เดียว
+# ============================================================
+async def bulk_move_students(
+    pool: asyncpg.Pool,
+    *,
+    actor_user_id: int,
+    student_ids: list[int],
+    to_room_code: str,
+    note: Optional[str] = None,
+    manage_mode: Optional[dict] = None,
+    client_source: str = "web",
+) -> dict:
+    """ย้ายแถวสมาชิกหลายคนเข้าห้องเดียว **ภายในปีปัจจุบันเท่านั้น**
+
+    `manage_mode` = ผลของ `get_manage_mode()` (router คำนวณมาให้ — service ไม่ควรถือ
+    logic สิทธิ์ซ้ำ) · `mode == 'school'` ย้ายได้ทุกห้อง · ครู/ประธานระดับย้ายได้เฉพาะ
+    ระดับชั้นของตัวเอง **ทั้งห้องต้นทางและปลายทาง**
+
+    🛡️ **กันแถว active ซ้อน** (บทเรียนเดียวกับ `import_service`): ถ้ามีแถวอื่นของ
+    นักเรียนคนเดียวกันในปีเดียวกันที่ยัง active อยู่ห้องอื่น → ตั้ง `superseded`
+    (ทำ *หลัง* ย้ายแล้ว จึงไม่แตะแถวที่เพิ่งย้าย) · กรณีที่ห้องปลายทางมีแถวของคนนี้อยู่แล้ว
+    จะชน unique index (028) ⇒ แถวนั้นชนะ แถวที่เลือกมาถูก `superseded` แทน
+    (ประวัติการย้ายยังถูกบันทึกครบ)
+    """
+    if not student_ids:
+        raise ValidationError("ต้องเลือกนักเรียนอย่างน้อย 1 คน")
+
+    from core.logger import AuditLogger
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            current_year = await year_service.fetch_current_year(conn)
+            if not current_year:
+                raise ValidationError("ยังไม่มีปีการศึกษาปัจจุบัน — ตั้งปีก่อนย้ายห้อง")
+
+            target = await conn.fetchrow(
+                "SELECT id, room_code, level FROM rooms WHERE room_code = $1 AND deleted_at IS NULL",
+                to_room_code,
+            )
+            if not target:
+                raise NotFoundError(f"ไม่พบห้อง {to_room_code}")
+
+            rows = await conn.fetch(
+                """SELECT s.id, s.user_id, s.room_id, s.student_id, s.student_no,
+                          s.academic_year_id, s.class_role, r.level
+                   FROM students s
+                   LEFT JOIN rooms r ON r.id = s.room_id
+                   WHERE s.id = ANY($1::int[]) AND s.deleted_at IS NULL
+                   FOR UPDATE OF s""",
+                list(student_ids),
+            )
+            found = {r["id"] for r in rows}
+            missing = [sid for sid in student_ids if sid not in found]
+            if missing:
+                raise NotFoundError(f"ไม่พบแถวสมาชิก id: {missing}")
+
+            # --- ขอบเขตปี: ย้ายข้ามปี = เลื่อนชั้น/ย้อนหลัง ไม่ใช่ "ย้ายห้อง" ---
+            wrong_year = [r["id"] for r in rows if r["academic_year_id"] != current_year["id"]]
+            if wrong_year:
+                raise ValidationError(
+                    "ย้ายได้เฉพาะสมาชิกของปีปัจจุบัน (แถว id: "
+                    + ", ".join(str(i) for i in wrong_year)
+                    + ")"
+                )
+
+            # --- ขอบเขตสิทธิ์: ครู/ประธานระดับได้เฉพาะระดับของตัวเอง ---
+            mode = (manage_mode or {}).get("mode")
+            grade = (manage_mode or {}).get("grade")
+            if mode != "school":
+                if not grade:
+                    raise ValidationError("คุณไม่มีขอบเขตระดับชั้น — ย้ายห้องไม่ได้")
+                if target["level"] != grade:
+                    raise ValidationError(f"คุณย้ายได้เฉพาะห้องในระดับ {grade}")
+                bad = [r["id"] for r in rows if r["level"] != grade]
+                if bad:
+                    raise ValidationError(
+                        f"มีนักเรียนนอกระดับ {grade} อยู่ในรายการ (แถว id: "
+                        + ", ".join(str(i) for i in bad)
+                        + ")"
+                    )
+
+            moved: list[dict] = []
+            skipped: list[dict] = []
+            superseded: list[int] = []
+
+            for r in rows:
+                if r["room_id"] == target["id"]:
+                    skipped.append({"id": r["id"], "student_id": r["student_id"], "reason": "อยู่ในห้องนี้แล้ว"})
+                    continue
+
+                # ห้องปลายทางมีแถวของนักเรียนคนนี้ในปีเดียวกันอยู่แล้ว → แถวนั้นชนะ
+                # (หลีกเลี่ยง UniqueViolation ของ index 028 — ประวัติการย้ายยังบันทึก)
+                exists_target = await conn.fetchval(
+                    """SELECT 1 FROM students
+                       WHERE room_id = $1 AND academic_year_id = $2 AND student_id = $3
+                         AND deleted_at IS NULL AND id <> $4""",
+                    target["id"], r["academic_year_id"], r["student_id"], r["id"],
+                )
+                if exists_target:
+                    await conn.execute(
+                        "UPDATE students SET status = 'superseded', updated_at = NOW() WHERE id = $1",
+                        r["id"],
+                    )
+                    superseded.append(r["id"])
+                else:
+                    await conn.execute(
+                        "UPDATE students SET room_id = $1, updated_at = NOW() WHERE id = $2",
+                        target["id"], r["id"],
+                    )
+
+                # 🛡️ กัน active ซ้อน — แตะเฉพาะแถวห้องอื่นของคนเดียวกันในปีเดียวกัน
+                #    (แถวที่เพิ่งย้ายอยู่ใน target แล้ว จึงไม่ถูกแตะ)
+                dup_ids = await conn.fetch(
+                    """UPDATE students SET status = 'superseded', updated_at = NOW()
+                       WHERE academic_year_id = $1 AND student_id = $2 AND deleted_at IS NULL
+                         AND status = 'active' AND room_id IS NOT NULL AND room_id <> $3
+                       RETURNING id""",
+                    r["academic_year_id"], r["student_id"], target["id"],
+                )
+                superseded.extend(d["id"] for d in dup_ids)
+
+                await conn.execute(
+                    """INSERT INTO student_moves
+                           (student_row_id, user_id, student_id, from_room_id, to_room_id,
+                            academic_year_id, note, moved_by)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+                    r["id"], r["user_id"], r["student_id"], r["room_id"], target["id"],
+                    r["academic_year_id"], note, actor_user_id,
+                )
+                moved.append({
+                    "id": r["id"],
+                    "student_id": r["student_id"],
+                    "from_room_id": r["room_id"],
+                    "to_room_id": target["id"],
+                })
+
+            await AuditLogger("student_service").log(
+                conn=conn,
+                action="MOVE_STUDENTS",
+                actor_identifier=str(actor_user_id),
+                client_source=client_source,
+                user_id=actor_user_id,
+                entity_type="student",
+                entity_id=None,
+                old_values={"moved": moved, "to_room_code": to_room_code},
+                new_values={"note": note, "superseded_ids": superseded},
+                endpoint_or_command="POST /students/bulk-move",
+            )
+
+            return {
+                "moved": moved,
+                "skipped": skipped,
+                "superseded_ids": superseded,
+                "to_room": {"id": target["id"], "room_code": target["room_code"]},
+            }
+
+
+# ============================================================
+# 🧾 ประวัติรายคน (P5) — timeline จาก 2 แหล่ง: ข้ามปี (students) + ย้ายในปี (student_moves)
+# ============================================================
+async def get_student_history(pool: asyncpg.Pool, student_row_id: int) -> dict:
+    """ประวัติของสมาชิก `student_row_id` — ผูกด้วย `user_id` จึงเห็นทุกปี
+
+    ⚠️ ไม่กรอง `status` — ประวัตินี้ต้องเห็น `promoted`/`graduated` ด้วย ซึ่งเป็น
+       หัวใจของข้อตัดสินใจ "เด็กจบต้องค้นชื่อเจอ" (P6 จะต่อ UI เข้ากับฟังก์ชันนี้)
+    """
+    async with pool.acquire() as conn:
+        root = await conn.fetchrow(
+            """SELECT s.id, s.user_id, s.student_id, u.full_name
+               FROM students s LEFT JOIN users u ON u.id = s.user_id
+               WHERE s.id = $1 AND s.deleted_at IS NULL""",
+            student_row_id,
+        )
+        if not root:
+            raise NotFoundError("ไม่พบนักเรียน")
+        if root["user_id"] is None:
+            raise ValidationError("แถวนี้ไม่ผูกกับผู้ใช้ — ดูประวัติข้ามปีไม่ได้")
+
+        years = await conn.fetch(
+            """SELECT s.id AS student_row_id, s.academic_year_id, y.year_be,
+                      s.room_id, r.room_code, r.level, s.student_no,
+                      s.class_role, s.status
+               FROM students s
+               LEFT JOIN academic_years y ON y.id = s.academic_year_id
+               LEFT JOIN rooms r ON r.id = s.room_id
+               WHERE s.user_id = $1 AND s.deleted_at IS NULL
+               ORDER BY y.year_be DESC NULLS LAST, s.id DESC""",
+            root["user_id"],
+        )
+        moves = await conn.fetch(
+            """SELECT m.id, m.from_room_id, fr.room_code AS from_room_code,
+                      m.to_room_id, tr.room_code AS to_room_code,
+                      m.academic_year_id, y.year_be, m.note, m.moved_by,
+                      u.full_name AS moved_by_name, m.moved_at
+               FROM student_moves m
+               LEFT JOIN rooms fr ON fr.id = m.from_room_id
+               LEFT JOIN rooms tr ON tr.id = m.to_room_id
+               LEFT JOIN academic_years y ON y.id = m.academic_year_id
+               LEFT JOIN users u ON u.id = m.moved_by
+               WHERE m.user_id = $1
+               ORDER BY m.moved_at DESC, m.id DESC""",
+            root["user_id"],
+        )
+
+    return {
+        "user_id": root["user_id"],
+        "student_id": root["student_id"],
+        "full_name": root["full_name"],
+        "years": [dict(r) for r in years],
+        "moves": [dict(r) for r in moves],
+    }

@@ -2049,3 +2049,212 @@ def _comment_to_dict(row) -> dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+# ============================================================
+# 🔁 เรื่องค้างที่ผู้รับ "หมดวาระ" (P5) — ผลข้างเคียงของการขึ้นปีใหม่
+# ============================================================
+# ปัญหา: `issues.current_assignee_id` = users.id (คนไม่ถูก duplicate ข้ามปี) แต่หลัง
+# rollover คนนั้นไม่มีแถว `status='active'` ในปีนี้แล้ว ⇒ เรื่องติดค้างโดยโครงสร้าง:
+# ทำอะไรไม่ได้ (ไม่ใช่ผู้รับปัจจุบัน) และ `accept_issue` ก็ปฏิเสธเพราะ "มีผู้รับอยู่แล้ว"
+# ⇒ เครื่องมือนี้คือทางออก — ไม่ auto-reassign ตอน rollover เพราะตอนนั้น **ยังไม่รู้ว่า
+#    ใครจะถูกแต่งตั้ง** (ตำแหน่งเลือกตั้งหลังรู้รายชื่อ)
+
+OPEN_STATUSES = ("pending", "in_progress", "escalated")
+# ตำแหน่งที่ผูกกับห้อง — ใช้กรองผู้รับแนะนำให้อยู่ในห้องเดียวกัน
+ROOM_SCOPED_ROLES = {
+    "class_president", "vice_academic", "vice_discipline", "vice_activity", "vice_reception",
+}
+
+
+async def list_orphaned_assignments(pool: asyncpg.Pool, *, year_id: Optional[int] = None) -> dict:
+    """เรื่องที่ยังเปิดอยู่แต่ผู้รับไม่มีแถว active ในปีที่ระบุ (default = ปีปัจจุบัน)
+
+    คืน `items` พร้อม `candidates` ของแต่ละเรื่อง = ผู้ที่ดำรงตำแหน่งเดียวกัน
+    ในปีนั้น (ถ้าเป็นตำแหน่งระดับห้อง → เฉพาะห้องเดียวกัน) เพื่อให้กด "มอบหมายต่อ" ได้ทันที
+    """
+    from services import year_service
+
+    async with pool.acquire() as conn:
+        if year_id is None:
+            current = await year_service.fetch_current_year(conn)
+            if not current:
+                raise ValidationError("ยังไม่มีปีการศึกษาปัจจุบัน")
+            year_id = current["id"]
+
+        rows = await conn.fetch(
+            """
+            SELECT i.id, i.title, i.status, i.current_level, i.room_id,
+                   i.current_assignee_id, i.current_assignee_role,
+                   i.reporter_id, i.created_at,
+                   r.room_code,
+                   u.full_name AS assignee_name,
+                   s_old.room_id AS assignee_old_room_id,
+                   ro.room_code AS assignee_old_room_code
+            FROM issues i
+            LEFT JOIN rooms r ON r.id = i.room_id
+            LEFT JOIN users u ON u.id = i.current_assignee_id
+            LEFT JOIN LATERAL (
+                SELECT st.room_id
+                FROM students st
+                WHERE st.user_id = i.current_assignee_id
+                  AND st.deleted_at IS NULL
+                ORDER BY st.academic_year_id DESC, st.id DESC
+                LIMIT 1
+            ) s_old ON TRUE
+            LEFT JOIN rooms ro ON ro.id = s_old.room_id
+            WHERE i.deleted_at IS NULL
+              AND i.status = ANY($1::text[])
+              AND i.current_assignee_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM students s
+                  WHERE s.user_id = i.current_assignee_id
+                    AND s.academic_year_id = $2
+                    AND s.deleted_at IS NULL
+                    AND s.status = 'active'
+              )
+            ORDER BY i.updated_at ASC NULLS FIRST, i.id
+            """,
+            list(OPEN_STATUSES), year_id,
+        )
+
+        items = []
+        for row in rows:
+            room_filter = row["room_id"] if row["current_assignee_role"] in ROOM_SCOPED_ROLES else None
+            candidates = await conn.fetch(
+                """
+                SELECT DISTINCT ON (s.user_id)
+                       s.user_id, u.full_name, s.class_role, r.room_code
+                FROM students s
+                JOIN users u ON u.id = s.user_id
+                LEFT JOIN rooms r ON r.id = s.room_id
+                WHERE s.deleted_at IS NULL AND s.status = 'active'
+                  AND s.academic_year_id = $1
+                  AND s.class_role = $2
+                  AND ($3::int IS NULL OR s.room_id = $3)
+                ORDER BY s.user_id, u.full_name
+                """,
+                year_id, row["current_assignee_role"], room_filter,
+            )
+            items.append({
+                "id": row["id"],
+                "title": row["title"],
+                "status": row["status"],
+                "current_level": row["current_level"],
+                "room_id": row["room_id"],
+                "room_code": row["room_code"],
+                "assignee_id": row["current_assignee_id"],
+                "assignee_name": row["assignee_name"],
+                "assignee_role": row["current_assignee_role"],
+                "assignee_old_room_code": row["assignee_old_room_code"],
+                "reporter_id": row["reporter_id"],
+                "created_at": row["created_at"],
+                "candidates": [dict(c) for c in candidates],
+            })
+
+    return {"year_id": year_id, "items": items, "total": len(items)}
+
+
+async def reassign_issue(
+    pool: asyncpg.Pool,
+    *,
+    user_id: int,
+    issue_id: int,
+    to_user_id: int,
+    note: Optional[str] = None,
+) -> dict:
+    """มอบหมายเรื่องค้างให้ผู้รับคนใหม่ (ในปีปัจจุบัน)
+
+    - ผู้รับใหม่ **ต้องมีแถว active ในปีปัจจุบัน** — ไม่งั้นมอบหมายให้คนที่หมดวาระอีกรอบ
+    - เขียน `issue_status_history` + แจ้งเตือนผู้รับใหม่/ผู้แจ้ง + audit ใน transaction เดียว
+    - **ไม่แตะ countdown เดิม** — กำหนดเวลาใหม่เป็นงานของผู้รับ (กด "รับเรื่อง" ไม่ได้แล้ว
+      เพราะมี assignee) ⇒ ตั้ง deadline ใหม่ให้อัตโนมัติจาก `estimated_days` เดิมถ้ามี
+    """
+    from services import year_service
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            current_year = await year_service.fetch_current_year(conn)
+            if not current_year:
+                raise ValidationError("ยังไม่มีปีการศึกษาปัจจุบัน")
+
+            issue = await conn.fetchrow(
+                """SELECT id, title, status, room_id, reporter_id,
+                          current_assignee_id, current_assignee_role
+                   FROM issues
+                   WHERE id = $1 AND deleted_at IS NULL
+                   FOR UPDATE""",
+                issue_id,
+            )
+            if not issue:
+                raise NotFoundError("ไม่พบเรื่อง")
+            if issue["status"] not in OPEN_STATUSES:
+                raise ValidationError("เรื่องนี้ปิดแล้ว — มอบหมายต่อไม่ได้")
+
+            new_assignee = await conn.fetchrow(
+                """SELECT s.user_id, s.class_role, u.full_name
+                   FROM students s JOIN users u ON u.id = s.user_id
+                   WHERE s.user_id = $1 AND s.academic_year_id = $2
+                     AND s.deleted_at IS NULL AND s.status = 'active'
+                   ORDER BY s.id DESC LIMIT 1""",
+                to_user_id, current_year["id"],
+            )
+            if not new_assignee:
+                raise ValidationError("ผู้รับใหม่ไม่มีสมาชิกภาพในปีปัจจุบัน (หมดวาระ/ย้ายออกแล้ว)")
+
+            new_role = new_assignee["class_role"] or "teacher"
+            old_assignee = issue["current_assignee_id"]
+
+            await conn.execute(
+                """UPDATE issues
+                   SET current_assignee_id = $1, current_assignee_role = $2,
+                       status = 'in_progress', updated_at = NOW()
+                   WHERE id = $3""",
+                to_user_id, new_role, issue_id,
+            )
+            await conn.execute(
+                """INSERT INTO issue_status_history (issue_id, status, changed_by, note)
+                   VALUES ($1, 'in_progress', $2, $3)""",
+                issue_id, user_id,
+                note or f"มอบหมายต่อให้ {new_assignee['full_name'] or 'ผู้รับใหม่'}",
+            )
+
+            from core.logger import AuditLogger
+            await AuditLogger("issue_service").log(
+                conn=conn, action="REASSIGN_ISSUE",
+                actor_identifier=str(user_id), client_source="web",
+                room_id=issue["room_id"], user_id=user_id,
+                entity_type="issue", entity_id=issue_id,
+                old_values={
+                    "current_assignee_id": old_assignee,
+                    "current_assignee_role": issue["current_assignee_role"],
+                    "status": issue["status"],
+                },
+                new_values={
+                    "current_assignee_id": to_user_id,
+                    "current_assignee_role": new_role,
+                    "status": "in_progress",
+                    "note": note,
+                },
+            )
+
+            # 🔔 แจ้งผู้รับใหม่ + ผู้แจ้ง
+            await notify(
+                conn, user_id=to_user_id,
+                group_type="issue_received", type="issue_update",
+                title="มีเรื่องที่ต้องดำเนินการต่อ",
+                body=f'เรื่อง "{issue["title"]}" ถูกมอบหมายให้คุณดำเนินการต่อ',
+                entity_type="issue", entity_id=issue_id,
+                actor_id=user_id,
+            )
+            if issue["reporter_id"]:
+                await notify(
+                    conn, user_id=issue["reporter_id"],
+                    group_type="issue_mine", type="issue_update",
+                    title="อัปเดตสถานะเรื่อง",
+                    body=f'เรื่อง "{issue["title"]}" ถูกส่งต่อให้ผู้รับผิดชอบคนใหม่แล้ว',
+                    entity_type="issue", entity_id=issue_id,
+                    actor_id=user_id,
+                )
+
+    return {"status": "ok", "issue_id": issue_id, "to_user_id": to_user_id, "role": new_role}

@@ -2,13 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 import asyncpg
 
 from core.dependencies import get_db_pool, get_current_user
+from core.rbac import require_permission_anywhere, get_manage_mode
 from core.exceptions import NotFoundError, ForbiddenError, ValidationError, ConflictError
 from core.categories import all_main_category_codes
 from models.issue_schemas import (
     IssueCreateRequest, IssueUpdateRequest, IssueOut, IssueStepOut, IssueCountdownOut,
     StepCreateRequest, CountdownSetRequest, ChangeDestinationRequest, EscalateRequest,
     ApproveToPublicRequest, CommentCreateRequest, CommentOut, IssueListOut,
-    MyIssueSummaryOut,
+    MyIssueSummaryOut, ReassignRequest, OrphanedAssignmentsOut,
 )
 from services import issue_service
 from services import audit_service
@@ -113,6 +114,63 @@ async def my_issue_summary(
         pool, uid, "READ_ISSUES", "issue", endpoint="GET /api/issues/summary"
     )
     return MyIssueSummaryOut(**result)
+
+
+@router.get("/orphaned-assignments", response_model=OrphanedAssignmentsOut)
+async def list_orphaned_assignments(
+    year_id: int | None = Query(None, description="ไม่ระบุ = ปีปัจจุบัน"),
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """🔁 เรื่องที่ยังเปิดอยู่แต่ผู้รับไม่มีสมาชิกภาพในปีนี้ (ผลจาก rollover)
+
+    ⚠️ **ประกาศก่อน `GET /{issue_id}` โดยเจตนา** — ถ้าอยู่หลัง เส้นทางนี้จะถูกจับด้วย
+       `{issue_id}` (แปลงเป็น int ไม่ได้ → 422) ไม่ใช่ 404 ที่อ่านรู้เรื่อง
+
+    ประตู: `MANAGE_STUDENTS` **และ** โหมดจัดการระดับโรงเรียน — การมอบหมายข้ามห้อง/ข้ามระดับ
+    เป็นเรื่องส่วนกลาง (ครูระดับชั้นย้ายเรื่องข้ามระดับไม่ได้)
+    """
+    uid = _ensure_user(user_ctx)
+    async with pool.acquire() as conn:
+        try:
+            await require_permission_anywhere(conn, uid, "MANAGE_STUDENTS")
+            mode = await get_manage_mode(conn, uid)
+            if mode["mode"] != "school":
+                raise ForbiddenError("เฉพาะผู้ดูแลระดับโรงเรียนเท่านั้น")
+        except ForbiddenError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    try:
+        return await issue_service.list_orphaned_assignments(pool, year_id=year_id)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{issue_id}/reassign", response_model=dict)
+async def reassign_issue(
+    issue_id: int,
+    req: ReassignRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """มอบหมายเรื่องค้างให้ผู้รับคนใหม่ (ต้อง active ในปีปัจจุบัน) — เขียน history + แจ้งเตือน + audit"""
+    uid = _ensure_user(user_ctx)
+    async with pool.acquire() as conn:
+        try:
+            await require_permission_anywhere(conn, uid, "MANAGE_STUDENTS")
+            mode = await get_manage_mode(conn, uid)
+            if mode["mode"] != "school":
+                raise ForbiddenError("เฉพาะผู้ดูแลระดับโรงเรียนเท่านั้น")
+        except ForbiddenError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    try:
+        return await issue_service.reassign_issue(
+            pool, user_id=uid, issue_id=issue_id,
+            to_user_id=req.to_user_id, note=req.note,
+        )
+    except (NotFoundError, ForbiddenError, ValidationError, ConflictError) as e:
+        raise _err(e)
 
 
 @router.get("/{issue_id}", response_model=IssueOut)
