@@ -3108,3 +3108,98 @@
   - ⚠️ กับดักการอ่าน log ซ้ำ: ARQ log **สองบรรทัดต่อหนึ่งเหตุการณ์** (formatter ของตัวเอง +
     stdlib) ⇒ `grep -c 'Starting worker'` ได้ **2** ทั้งที่สตาร์ทครั้งเดียว **อย่าอ่านเป็นรีสตาร์ท**
 - **Date Added:** 2026-10-07
+
+### 🔐 `require_permission` ที่ไม่กรองสถานะ — พอมีแถวปีเก่าในห้องเดิม จะ **403 กับคนที่ active จริง**
+
+- **Context/Problem:** หลังเพิ่มมิติปีการศึกษา (migration 027) คนหนึ่งมีได้หลายแถว `students`
+  (ปีเก่า `promoted` + ปีนี้ `active`) ทั้งที่ **อยู่ในห้องเดียวกัน** ⇒ `require_permission`
+  ที่เดิมใช้ `fetchrow("... WHERE user_id=$1 AND room_id=$2")` **ไม่มี `ORDER BY`** จึงหยิบแถวไหน
+  ก็ได้ตามใจ planner — ถ้าได้แถวปีเก่า ผู้ใช้ที่ควรผ่านจะเจอ **403 เงียบ ๆ** (ไม่มีข้อความบอกเหตุ)
+- **Root Cause:** query เลือกแถวโดยไม่ระบุ "แถวที่ควรชนะ" ⇒ ลำดับผลลัพธ์ไม่ใช่สัญญา
+  (และบนข้อมูลชุดเล็ก ๆ จะ *ดูเหมือน* ถูก เพราะ planner คืนแถวตาม `id` พอดี)
+- **Correct Pattern/Solution:**
+  - `... ORDER BY (status='active') DESC, id DESC LIMIT 1` ทุกจุดที่ "หยิบแถวสมาชิกของคนหนึ่ง"
+  - เขียน **regression test ที่จะแดงถ้าถอด `ORDER BY`** — สร้างคนที่มีทั้งแถว `promoted`
+    และ `active` ในห้องเดียวกัน แล้วยืนยันว่าเขายังผ่านด่านได้ (ไม่ใช่แค่ "เทสต์ยังเขียว")
+  - 📌 บทเรียนทั่วไป: ทุก `fetchrow` ที่ "ตัวตนขึ้นกับแถวไหน" ต้องประกาศผู้ชนะไว้ใน `ORDER BY`
+    ไม่ใช่พึ่งดวงของ planner
+- **Date Added:** 2026-10-20
+
+### 🧨 Partial unique index เปลี่ยนคีย์ ⇒ `ON CONFLICT (คีย์เก่า)` ของ **image เก่า** ไม่มี arbiter แล้ว (ไม่ error ตอน migrate)
+
+- **Context/Problem:** P3 ต้องเปลี่ยน arbiter จาก `(room_id, student_id)` เป็น
+  `(room_id, academic_year_id, student_id)` เพื่อให้อยู่ได้หลายปี ⇒ DROP index เก่า + CREATE ใหม่
+  **migration ผ่านฉลุย** แต่ระหว่างช่วง rolling deploy image เก่ายังรันอยู่ และมันเขียน
+  `INSERT ... ON CONFLICT (room_id, student_id) WHERE deleted_at IS NULL DO UPDATE`
+  ซึ่ง Postgres ตอบ `there is no unique or exclusion constraint matching the ON CONFLICT
+  specification` ⇒ **เส้นทาง import ของ image เก่าพังทันที** ทั้งที่ไม่มี error ตอน migrate เลย
+- **Root Cause:** `ON CONFLICT` ผูกกับ **ข้อความคีย์** ไม่ใช่กับ "เจตนากันซ้ำ" ⇒ เปลี่ยน index
+  = เปลี่ยนสัญญา แต่ compiler/migration ไม่มีใครรู้
+- **Correct Pattern/Solution:**
+  - migration ที่เปลี่ยน index **ต้องแยกไฟล์/แยก deploy ออกจาก migration ที่ additive** และ
+    **ออกพร้อมโค้ดที่ใช้คีย์ใหม่เท่านั้น** (027 additive ก่อน → 028 คู่กับโค้ด import ใหม่)
+  - plan rollback = **restore dump** ไม่ใช่ reverse migration (เพราะ index ใหม่ถูกลบได้ก็ต่อเมื่อ
+    ยังไม่มีแถวปีที่สองในห้องเดียวกัน — ซึ่งครูสร้างได้ภายในไม่กี่นาที)
+  - `grep -rn "ON CONFLICT"` ก่อนเปลี่ยน index ทุกครั้ง แล้วนับว่ามีกี่จุดที่ใช้คีย์นั้น
+- **Date Added:** 2026-10-20
+
+### ♻️ `status='superseded'` **ไม่ปลดล็อก** unique index — index ไม่ได้กรองด้วย status
+
+- **Context/Problem:** `bulk_move_students` ย้ายเด็กเข้าห้องที่ **มีแถวของคนเดิมอยู่แล้ว**
+  (กรณี import สร้างแถวซ้ำมาก่อน) ⇒ ถ้าทำ `UPDATE room_id` ตรง ๆ จะชน
+  `uq_students_room_year_student` — และการ "ตั้งแถวเก่าเป็น `superseded` ก่อน" ก็ **ไม่ช่วย**
+  เพราะ index มีเงื่อนไขแค่ `WHERE deleted_at IS NULL` ไม่ได้ดู `status`
+- **Root Cause:** partial index ของตารางนี้เป็น *ตัวตนเชิงเวลา* (`room_id, academic_year_id,
+  student_id`) ไม่ใช่ *สถานะ* — คนที่ยังไม่ถูกลบย่อมมีแถวเดียวต่อห้องต่อปี **ไม่ว่า status อะไร**
+- **Correct Pattern/Solution:** แยกสองเส้นทางก่อน UPDATE:
+  1. ห้องปลายทาง **ไม่มี** แถวของคนนี้ → `UPDATE room_id` แล้วค่อย supersede แถว active
+     ที่เหลือในห้องอื่น (`WHERE room_id <> $target`) — ไม่ชน index
+  2. ห้องปลายทาง **มี** แถวอยู่แล้ว → **ไม่ย้าย** ให้ supersede *แถวต้นทาง* แล้วถือว่าแถวปลายทาง
+     ชนะ (และยังเขียน `student_moves` ให้ครบ — ผู้ใช้ต้องเห็นว่าเกิดอะไรขึ้น)
+  - ⚠️ `superseded` ≠ `promoted`: ตัวแรกแปลว่า "แถวนี้เป็นตัวซ้ำ", ตัวหลังแปลว่า "เลื่อนชั้นแล้ว"
+    ห้ามใช้แทนกัน (#2 ของแถว `students` เหล่านี้จะถูก *นับ* ใน dashboard ถ้ากรองผิดสถานะ)
+- **Date Added:** 2026-10-20
+
+### 🚪 ประตู route/nav ต้องสะท้อน backend **ทั้งสองด่าน** — `MANAGE_STUDENTS` เดี่ยวไม่พอสำหรับงานระดับโรงเรียน
+
+- **Context/Problem:** `promote-students` และ `orphaned-assignments` ใช้ `_gate` ที่ต้องผ่าน
+  **ทั้ง** `MANAGE_STUDENTS` **และ** `get_manage_mode() == "school"` (คือมี `is_admin`) ⇒ ถ้า frontend
+  ประกาศแค่ `permission: 'MANAGE_STUDENTS'` ครูระดับชั้นจะ **เห็นแถวเมนูแล้วกดเข้าไปเจอ 403**
+  แต่ถ้าประกาศแค่ `councilOnly` สมาชิกสภาฯ (ไม่มี `MANAGE_STUDENTS`) ก็เจอ 403 เหมือนกัน
+- **Correct Pattern/Solution:** ใช้ **ประตูคู่** `{ council: true, permission: 'MANAGE_STUDENTS' }`
+  ในทั้งสามที่ให้ตรงกันเสมอ: `route.meta` (`requiresCouncil` + `requiresPermission`),
+  แถว `NAV_GROUPS` (`councilOnly` + `permission`) และ snapshot ใน
+  `__tests__/routeMeta.spec.ts` / `__tests__/navRegistry.spec.ts`
+  - 🔴 **และกลับกันด้วย:** งานที่ครูทำได้จริง เช่น `student-moves` (ย้ายได้เฉพาะระดับของตัวเอง)
+    **ห้าม** ใส่ `requiresCouncil` — จะทำให้คนที่กดได้จริงมองไม่เห็นเมนู
+  - เกณฑ์ตัดสิน: *"backend ผ่านด่านอะไร"* ไม่ใช่ *"งานนี้ดูใหญ่แค่ไหน"*
+- **Date Added:** 2026-10-20
+
+### 👁 Preview ของการกระทำอันตราย ต้องรับ **knob เดียวกัน** กับตัว action — ไม่งั้นคำเตือนมาถึงผู้ใช้สายเกินไป
+
+- **Context/Problem:** `apply_rollover` รับ `room_overrides` (เลือกห้องปลายทางของห้องที่แมปไม่ได้)
+  แต่ `preview_rollover` รุ่นแรกไม่รับ ⇒ หน้าจอ preview บอก `can_apply=false` ตลอดกาล
+  หรือแย่กว่านั้น: ผู้ใช้เลือก override ครบทุกห้องแล้ว แต่ **ปัญหาใหม่ที่เกิดจาก override**
+  (เช่นเลขที่ซ้ำเพราะยุบสองห้องเป็นห้องเดียว) จะโผล่ **ครั้งแรกตอนกดปุ่มที่เขียนทั้งโรงเรียน**
+- **Root Cause:** preview ถูกมองเป็น "อ่านอย่างเดียว" ⇒ ลืมไปว่า *อินพุต* ของการตัดสินใจ
+  เป็นส่วนหนึ่งของสัญญา ไม่ใช่แค่ผลลัพธ์
+- **Correct Pattern/Solution:** ให้ preview กับ apply ใช้ request model เดียวกันและคำนวณ
+  จากอินพุตชุดเดียวกัน (ต่างกันแค่ "เขียน/ไม่เขียน") + มีเทสต์ว่า override เปลี่ยนผลของ preview
+  - 📌 ถ้าฟังก์ชันตรวจความถูกต้อง (เช่น `_check_duplicate_numbers`) ถูกเรียกเฉพาะใน apply
+    และ "ทำงานได้เฉพาะเมื่อมี override" ⇒ นั่นคือสัญญาณว่า preview ขาดอินพุตนั้น
+- **Date Added:** 2026-10-20
+
+### 🔒 Advisory lock ต้องเป็น **คำสั่งแรก** ของ transaction ก่อนแตะตารางที่ action จะ `ALTER`
+
+- **Context/Problem:** `apply_rollover` กันสองคำขอพร้อมกันด้วย `pg_advisory_xact_lock` แต่รุ่นแรก
+  เรียก `_gate` (อ่าน `students`) **ก่อน** lock ⇒ เกิด `DeadlockDetectedError` = 500
+  แทนที่จะเป็น 409 "รอบนี้ถูกใช้ไปแล้ว" ตอนเทสต์ยิงสองคำขอพร้อมกัน
+- **Root Cause:** ขั้นที่ 5 ทำ `ALTER TABLE students ... SET DEFAULT` ⇒ ต้องได้ **ACCESS EXCLUSIVE**
+  บน `students` · คำขอที่สองถือ **ACCESS SHARE** (จากการอ่านของ `_gate`) ไว้แล้ว และไปรอแถว
+  ใน `rollover_runs` ที่คำขอแรกถือ ⇒ วงจร: หนึ่งรอ EXCLUSIVE ที่ติดล็อกอ่านของอีกฝ่าย
+  ขณะที่อีกฝ่ายรอแถวของฝ่ายแรก
+- **Correct Pattern/Solution:** advisory lock **เป็นคำสั่งแรกใน `conn.transaction()`** — ก่อน
+  `_gate` และก่อนทุก `SELECT`; ล็อกจะคืนเองตอน commit/rollback (`xact` variant)
+  - ยืนยันด้วยเทสต์ยิงพร้อมกัน 2 คำขอ ⇒ สำเร็จ 1 · อีกอันได้ **409** (ไม่ใช่ 500)
+  - 📌 กฎทั่วไป: ล็อกแบบ "เข้าคิวตั้งแต่ยังไม่ถืออะไร" เท่านั้นที่กัน deadlock ได้จริง
+- **Date Added:** 2026-10-20
