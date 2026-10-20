@@ -2,8 +2,10 @@
 import { ref, onMounted } from 'vue';
 import Swal from 'sweetalert2';
 import { listStudents, listRooms, updateStudent } from '@/services/student'
+import { listYears } from '@/services/year'
 import { roleLabel, STUDENT_ROLE_OPTIONS } from '@/constants/roles';
 import type { Student, Room } from '@/types/student';
+import type { AcademicYear } from '@/types/academicYear';
 import AppCard from '@/components/ui/AppCard.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppEmptyState from '@/components/ui/AppEmptyState.vue';
@@ -14,15 +16,44 @@ const isLoading = ref(true);
 const hasError = ref(false);
 const roomFilter = ref<number | ''>('');
 const search = ref('');
+/** 🌟 P6 — '' = ปีปัจจุบัน · 'all' = ค้นข้ามทุกปี · ตัวเลข = ปีนั้น */
+const yearFilter = ref<number | 'all' | ''>('');
+const years = ref<AcademicYear[]>([]);
 
-;
+async function loadYears() {
+  try {
+    const res = await listYears({ status: 'active', limit: 200 });
+    years.value = res.items;
+  } catch {
+    years.value = []; // ไม่ขวางรายชื่อ — ยังค้นปีปัจจุบันได้เหมือนเดิม
+  }
+}
 
 async function load() {
+  // ⚠️ backend บังคับ: all_years ต้องมีคำค้น (ไม่งั้น 400) — ดักที่หน้าจอเพื่อบอกให้ชัด
+  if (yearFilter.value === 'all' && !search.value.trim()) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'ต้องพิมพ์คำค้นก่อน',
+      text: 'การค้นข้ามทุกปีต้องระบุชื่อ นามสกุล หรือรหัสนักเรียน',
+    });
+    return;
+  }
   isLoading.value = true;
   hasError.value = false;
   try {
+    const yearParams =
+      yearFilter.value === 'all'
+        ? { all_years: true }
+        : yearFilter.value === ''
+          ? {}
+          : { year_id: yearFilter.value };
     [students.value, rooms.value] = await Promise.all([
-      listStudents({ room_id: roomFilter.value || undefined, search: search.value || undefined }),
+      listStudents({
+        room_id: roomFilter.value || undefined,
+        search: search.value || undefined,
+        ...yearParams,
+      }),
       listRooms(),
     ]);
   } catch (e) {
@@ -33,7 +64,10 @@ async function load() {
     isLoading.value = false;
   }
 }
-onMounted(load);
+onMounted(() => {
+  loadYears();
+  load();
+});
 
 async function changeRole(student: Student) {
   const { value } = await Swal.fire({
@@ -67,6 +101,15 @@ async function changeRole(student: Student) {
       <select v-model="roomFilter" @change="load" class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm sm:w-auto">
         <option value="">ทุกห้อง</option>
         <option v-for="r in rooms" :key="r.id" :value="r.id">{{ r.room_code }}</option>
+      </select>
+      <!-- 🌟 P6 — ดูย้อนหลังรายปี / ค้นข้ามปี (เด็กจบยังค้นเจอ) -->
+      <select v-model="yearFilter" @change="load" aria-label="ปีการศึกษา"
+        class="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm sm:w-auto">
+        <option value="">ปีปัจจุบัน</option>
+        <option value="all">ทุกปี (ค้นข้ามปี)</option>
+        <option v-for="y in years" :key="y.id" :value="y.id">
+          {{ y.name || `ปีการศึกษา ${y.year_be}` }}
+        </option>
       </select>
       <input v-model="search" @keyup.enter="load" type="text" placeholder="ค้นหา รหัสนักเรียน/ชื่อ..."
         class="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm sm:flex-1" />

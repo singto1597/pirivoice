@@ -227,6 +227,17 @@ export const NAV_GROUPS: NavGroup[] = [
         councilOnly: true,
         permission: 'MANAGE_STUDENTS',
       },
+      {
+        // 📊 P6 — กระทบยอดรายชื่อสองปี (ขั้นถัดจาก "เลื่อนชั้น")
+        //    ⚠️ ประตูคู่เหมือน `promote-students` — backend ใช้ `_gate` เดียวกัน
+        //       (MANAGE_STUDENTS **และ** โหมดจัดการระดับโรงเรียน)
+        key: 'year-reconciliation',
+        label: 'กระทบยอดรายชื่อ',
+        icon: 'bi-clipboard-data',
+        to: { name: 'year-reconciliation' },
+        councilOnly: true,
+        permission: 'MANAGE_STUDENTS',
+      },
       { key: 'academic-terms', label: 'ภาคเรียน', icon: 'bi-calendar3-range', to: { name: 'academic-terms' }, permission: 'MANAGE_SETTINGS' },
       {
         // 🧯 เรื่องค้างที่ผู้รับหมดวาระ — ขั้นสุดท้ายของงานขึ้นปีใหม่ (ข้อตัดสินใจ #4:
@@ -325,6 +336,7 @@ export const routeTitles: Record<string, string> = {
   // ⚠️ ต้องตรงกับ `label` ของแถวเมนู — ปลายทางเดียวมีสองชื่อทำให้ผู้ใช้คิดว่าคนละหน้า
   //    (บทเรียนเดียวกับ `board-reports` ที่เคยเป็น "ตรวจรายงาน" บนเมนู / "จัดการรายงาน" บนหัวแถบ)
   'promote-students': 'เลื่อนชั้นนักเรียน',
+  'year-reconciliation': 'กระทบยอดรายชื่อระหว่างปี',
   'student-moves': 'ย้ายห้องนักเรียน',
   'orphaned-assignments': 'เรื่องที่ผู้รับหมดวาระ',
   // ⚠️ สองอันนี้ `navHidden` (ไม่โชว์ในเมนู) แต่ **ต้องมี routeTitles** — ไม่งั้น `<h1>`

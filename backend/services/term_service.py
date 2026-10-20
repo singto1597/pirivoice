@@ -41,7 +41,11 @@ PERMISSION = "MANAGE_SETTINGS"
 # คอลัมน์ที่ยอมให้แก้ผ่าน PATCH — allowlist เพราะชื่อคอลัมน์ถูก interpolate ลง SQL
 # ⚠️ **ไม่รวม `is_current`** — การเปลี่ยนภาคปัจจุบันต้องผ่าน set_current_term() เท่านั้น
 #    เพราะต้องล้างตัวเก่าก่อน (ข้อ 1 ด้านบน) ถ้าปล่อยให้ PATCH มันได้ จะมีสองทางที่ทำแล้วไม่เหมือนกัน
-_EDITABLE_COLUMNS = ("name", "start_date", "end_date")
+_EDITABLE_COLUMNS = ("name", "start_date", "end_date", "academic_year_id")
+
+# คอลัมน์ NOT NULL — `null` ใน PATCH = ผิด (ต่างจาก `academic_year_id` ที่ nullable
+# และ `null` มีความหมายว่า "ไม่ผูกปี")
+_NOT_NULL_COLUMNS = ("name", "start_date", "end_date")
 
 # เงื่อนไขกรองสถานะ — dict นี้คือ **จุดเดียวที่นิยามคำว่าสถานะ**
 # ใช้ทั้ง COUNT(*) และคิวรีหลัก ⇒ total กับ items ตรงกันเสมอ
@@ -56,9 +60,18 @@ _STATUS_CONDITIONS = {
 _ORDER_BY = "ORDER BY t.is_current DESC, t.start_date DESC, t.id DESC"
 
 _SELECT_COLUMNS = """
-    t.id, t.name, t.start_date, t.end_date, t.is_current,
+    t.id, t.name, t.start_date, t.end_date, t.is_current, t.academic_year_id,
     t.created_at, t.updated_at, t.deleted_at
 """
+
+
+async def _assert_year_exists(conn: asyncpg.Connection, year_id: int) -> None:
+    """ปีที่ผูกต้องมีจริงและยังไม่ถูกลบ — กัน FK ผ่านแต่ชี้ปีที่หายไปจาก UI"""
+    exists = await conn.fetchval(
+        "SELECT 1 FROM academic_years WHERE id = $1 AND deleted_at IS NULL", year_id
+    )
+    if not exists:
+        raise ValidationError("ไม่พบปีการศึกษานี้ (อาจถูกลบไปแล้ว)")
 
 
 async def _fetch_one(conn: asyncpg.Connection, term_id: int) -> dict:
@@ -116,8 +129,12 @@ async def list_terms(
     status: str = "active",
     limit: int = 50,
     offset: int = 0,
+    year_id: Optional[int] = None,
 ) -> dict:
-    """รายการภาคเรียน — envelope {items,total,page,page_size,pages} เหมือน /api/audit-logs"""
+    """รายการภาคเรียน — envelope {items,total,page,page_size,pages} เหมือน /api/audit-logs
+
+    `year_id` — กรองเฉพาะภาคของปีการศึกษานั้น (P6) · ไม่ระบุ = ทุกปี
+    """
     if status not in _STATUS_CONDITIONS:
         raise ValidationError("สถานะที่กรองไม่ถูกต้อง")
 
@@ -125,20 +142,27 @@ async def list_terms(
         await require_permission_anywhere(conn, user_id, PERMISSION)
 
         where_sql = _STATUS_CONDITIONS[status]
+        params: list = []
+        if year_id is not None:
+            params.append(year_id)
+            where_sql += f" AND t.academic_year_id = ${len(params)}"
 
         # นับ total แยกจากคิวรีหลัก — ห้ามใช้ COUNT(*) OVER() (offset เลยหน้าสุดท้ายแล้วจะได้ 0)
         total = await conn.fetchval(
-            f"SELECT COUNT(*) FROM academic_terms t WHERE {where_sql}"
+            f"SELECT COUNT(*) FROM academic_terms t WHERE {where_sql}", *params
         )
 
+        # LIMIT/OFFSET ต่อท้ายพารามิเตอร์กรอง — เลข placeholder จึงขึ้นกับ len(params)
+        limit_idx, offset_idx = len(params) + 1, len(params) + 2
         rows = await conn.fetch(
             f"""
             SELECT {_SELECT_COLUMNS}
             FROM academic_terms t
             WHERE {where_sql}
             {_ORDER_BY}
-            LIMIT $1 OFFSET $2
+            LIMIT ${limit_idx} OFFSET ${offset_idx}
             """,
+            *params,
             limit,
             offset,
         )
@@ -165,6 +189,7 @@ async def create_term(
     start_date: date,
     end_date: date,
     is_current: bool = False,
+    academic_year_id: Optional[int] = None,
 ) -> dict:
     """สร้างภาคเรียน + audit — ถ้า `is_current` จะปลดภาคปัจจุบันตัวเก่าให้ในทรานแซกชันเดียวกัน
 
@@ -178,16 +203,20 @@ async def create_term(
         async with conn.transaction():
             await require_permission_anywhere(conn, user_id, PERMISSION)
 
+            if academic_year_id is not None:
+                await _assert_year_exists(conn, academic_year_id)
+
             if is_current:
                 await _clear_current(conn)
 
             new_id = await conn.fetchval(
                 """
-                INSERT INTO academic_terms (name, start_date, end_date, is_current)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO academic_terms
+                    (name, start_date, end_date, is_current, academic_year_id)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING id
                 """,
-                name, start_date, end_date, is_current,
+                name, start_date, end_date, is_current, academic_year_id,
             )
 
             await AuditLogger("term_service").log(
@@ -203,6 +232,7 @@ async def create_term(
                     "start_date": str(start_date),
                     "end_date": str(end_date),
                     "is_current": is_current,
+                    "academic_year_id": academic_year_id,
                 },
             )
 
@@ -229,7 +259,8 @@ async def update_term(
         เพราะคอลัมน์นั้น nullable — ที่นี่ไม่มีการล้างค่าให้)
        ⇒ **ปฏิเสธด้วย 400 ไม่ใช่เงียบ ๆ ทิ้ง** เพราะถ้าทิ้ง ผู้เรียกจะได้ 200 แล้วเข้าใจว่าบันทึกแล้ว
     """
-    nulls = sorted(k for k, v in changes.items() if k in _EDITABLE_COLUMNS and v is None)
+    # ⚠️ เฉพาะคอลัมน์ NOT NULL — `academic_year_id` เป็น nullable และ `null` = "ไม่ผูกปี" (ถูกต้อง)
+    nulls = sorted(k for k, v in changes.items() if k in _NOT_NULL_COLUMNS and v is None)
     if nulls:
         raise ValidationError(
             f"ห้ามส่งค่า null ในฟิลด์ {', '.join(nulls)} — ถ้าไม่ต้องการแก้ฟิลด์นั้น ให้ไม่ส่งมาที่เลย"
@@ -245,7 +276,7 @@ async def update_term(
 
             before = await conn.fetchrow(
                 """
-                SELECT name, start_date, end_date
+                SELECT name, start_date, end_date, academic_year_id
                 FROM academic_terms
                 WHERE id = $1 AND deleted_at IS NULL
                 FOR UPDATE
@@ -254,6 +285,10 @@ async def update_term(
             )
             if not before:
                 raise NotFoundError("ไม่พบภาคเรียนนี้ (อาจถูกลบไปแล้ว)")
+
+            # ผูกปีใหม่ต้องมีจริง — `None` (สั่งล้างการผูก) ไม่ต้องตรวจ
+            if safe.get("academic_year_id") is not None:
+                await _assert_year_exists(conn, safe["academic_year_id"])
 
             # PATCH ส่งมาอาจเป็นวันเดียว ⇒ เทียบกับค่าที่เก็บอยู่จริง ไม่ใช่กับ None
             new_start = safe.get("start_date", before["start_date"])

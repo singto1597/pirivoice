@@ -8,6 +8,8 @@ import {
   downloadImportTemplate,
 } from '@/services/student';
 import type { ImportJob, ImportJobStatus } from '@/types/student';
+import { listYears } from '@/services/year';
+import type { AcademicYear } from '@/types/academicYear';
 import { fmtDateTime } from '@/datetime';
 import {
   IMPORT_STATUS_LABELS,
@@ -22,6 +24,34 @@ const POLL_INTERVAL_MS = 2500;
 
 const file = ref<File | null>(null);
 const isUploading = ref(false);
+
+// 🌟 P6 — ปีที่ import เข้า · '' = ไม่ระบุ (backend ใช้ปีปัจจุบันตอนประมวลผล)
+const years = ref<AcademicYear[]>([]);
+const yearId = ref<number | ''>('');
+const isYearsLoading = ref(true);
+
+async function loadYears() {
+  isYearsLoading.value = true;
+  try {
+    const res = await listYears({ status: 'active', limit: 200 });
+    years.value = res.items;
+    // ค่าเริ่มต้น = ปีปัจจุบัน (พฤติกรรมเดิมของโรงเรียนคือ import เข้าปีที่กำลังใช้)
+    const current = res.items.find((y) => y.is_current)
+    yearId.value = current ? current.id : ''
+  } catch {
+    // โหลดปีไม่ได้ไม่ควรขวางการ import — ให้ผู้ใช้ import แบบเดิม (ปีปัจจุบัน) ได้
+    years.value = []
+    yearId.value = ''
+  } finally {
+    isYearsLoading.value = false;
+  }
+}
+
+function yearLabel(id: number | null): string {
+  if (id === null) return 'ปีปัจจุบัน'
+  const y = years.value.find((item) => item.id === id)
+  return y ? y.name || `ปีการศึกษา ${y.year_be}` : `ปี #${id}`
+}
 const isDownloadingTemplate = ref(false);
 const isStartingJobId = ref<number | null>(null);
 const isRefreshing = ref(false);
@@ -121,7 +151,11 @@ async function handleUpload() {
 
   isUploading.value = true;
   try {
-    const job = await uploadStudentExcel(file.value);
+    const job = await uploadStudentExcel(
+      file.value,
+      '1234',
+      yearId.value === '' ? undefined : yearId.value,
+    );
     file.value = null;
     await refreshJobs();
     Swal.fire({
@@ -215,7 +249,10 @@ function stopPolling() {
   }
 }
 
-onMounted(refreshJobs);
+onMounted(() => {
+  loadYears()
+  refreshJobs()
+});
 onBeforeUnmount(stopPolling);
 </script>
 
@@ -299,6 +336,29 @@ onBeforeUnmount(stopPolling);
 
     <!-- ขั้นตอนที่ 1: อัปโหลดเข้า Queue -->
     <div class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
+      <!-- 🌟 P6 — เลือกปีการศึกษาที่จะ import เข้า -->
+      <div>
+        <label class="mb-2 block text-sm font-semibold text-stone-700" for="import-year">
+          ปีการศึกษาที่นำเข้า
+        </label>
+        <select
+          id="import-year"
+          v-model="yearId"
+          :disabled="isYearsLoading"
+          class="w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10 disabled:opacity-50 sm:max-w-xs"
+        >
+          <option value="">ใช้ปีปัจจุบัน (ไม่ระบุ)</option>
+          <option v-for="y in years" :key="y.id" :value="y.id">
+            {{ y.name || `ปีการศึกษา ${y.year_be}` }}{{ y.is_current ? ' — ปีปัจจุบัน' : '' }}
+          </option>
+        </select>
+        <p class="mt-1 text-xs text-ink-3">
+          <i class="bi bi-info-circle mr-1"></i>
+          ถ้าไฟล์มีคอลัมน์ “ปีการศึกษา” ค่าในแต่ละแถวต้องตรงกับปีที่เลือก —
+          แถวที่ไม่ตรงจะถูกบันทึกเป็นข้อผิดพลาดของแถวนั้น (ไม่ล้มทั้งงาน)
+        </p>
+      </div>
+
       <div>
         <label class="mb-2 block text-sm font-semibold text-stone-700">
           1. เลือกไฟล์ Excel <span class="font-normal text-ink-3">(.xlsx)</span>
@@ -437,6 +497,8 @@ onBeforeUnmount(stopPolling);
                   {{ job.file_name }}
                   <div class="text-xs text-ink-3">
                     {{ fmtDateTime(job.created_at) }}
+                    <span class="mx-1 text-stone-300">·</span>
+                    <i class="bi bi-mortarboard mr-0.5"></i>{{ yearLabel(job.academic_year_id) }}
                   </div>
                 </td>
                 <td class="px-4 py-3">

@@ -127,7 +127,7 @@ async def create_room(pool: asyncpg.Pool, room_code: str, room_name: str, level:
             return room_id
 
 
-async def list_students(pool: asyncpg.Pool, room_id: Optional[int] = None, search: Optional[str] = None, level: Optional[str] = None, role: Optional[str] = None, limit: Optional[int] = None, year_id: Optional[int] = None) -> list:
+async def list_students(pool: asyncpg.Pool, room_id: Optional[int] = None, search: Optional[str] = None, level: Optional[str] = None, role: Optional[str] = None, limit: Optional[int] = None, year_id: Optional[int] = None, all_years: bool = False) -> list:
     """
     รายชื่อนักเรียน/สมาชิก
     - level: กรองเฉพาะระดับชั้น (เช่น 'ม.4') — ใช้กับ ครูทั่วไป/ประธานระดับ/ผู้ช่วย ที่เห็นได้แค่ระดับตัวเอง
@@ -151,15 +151,23 @@ async def list_students(pool: asyncpg.Pool, room_id: Optional[int] = None, searc
         where = ["s.deleted_at IS NULL"]
         params = []
 
-        # 🌟 ปีการศึกษา — อ่านด้วย connection นี้เลย ไม่เปิด acquire ซ้อน (กัน deadlock ของ pool)
-        # ⚠️ ถ้าหา "ปีปัจจุบัน" ไม่ได้ (เกิดไม่ได้หลัง 027 — ปีปัจจุบันลบไม่ได้) จะ **ไม่กรองปี**
-        #    แล้วถอยไปใช้พฤติกรรมเดิม แทนที่จะคืนลิสต์ว่างเงียบ ๆ ซึ่งอ่านไม่ออกว่าทำไมหาย
-        if year_id is None:
-            current_year = await year_service.fetch_current_year(conn)
-            year_id = current_year["id"] if current_year else None
-        if year_id is not None:
-            params.append(year_id)
-            where.append(f"s.academic_year_id = ${len(params)}")
+        # 🌟 ค้นข้ามปี (P6 · ข้อตัดสินใจ #8 "เด็กจบต้องค้นชื่อเจอ")
+        # ⚠️ บังคับให้มีคำค้น — ไม่งั้นการไม่กรองปีคือการดัมป์รายชื่อทุกปีของทั้งโรงเรียน
+        #    (3172 คน × จำนวนปี) ซึ่งทั้งช้าและไม่ใช่สิ่งที่ผู้ใช้ต้องการ
+        if all_years:
+            if not search or not search.strip():
+                raise ValidationError("การค้นข้ามปีต้องระบุคำค้น (ชื่อ/นามสกุล/รหัสนักเรียน)")
+            year_id = None  # ไม่กรองปี
+        else:
+            # 🌟 ปีการศึกษา — อ่านด้วย connection นี้เลย ไม่เปิด acquire ซ้อน (กัน deadlock ของ pool)
+            # ⚠️ ถ้าหา "ปีปัจจุบัน" ไม่ได้ (เกิดไม่ได้หลัง 027 — ปีปัจจุบันลบไม่ได้) จะ **ไม่กรองปี**
+            #    แล้วถอยไปใช้พฤติกรรมเดิม แทนที่จะคืนลิสต์ว่างเงียบ ๆ ซึ่งอ่านไม่ออกว่าทำไมหาย
+            if year_id is None:
+                current_year = await year_service.fetch_current_year(conn)
+                year_id = current_year["id"] if current_year else None
+            if year_id is not None:
+                params.append(year_id)
+                where.append(f"s.academic_year_id = ${len(params)}")
 
         if level:
             params.append(level)

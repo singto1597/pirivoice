@@ -71,6 +71,7 @@ async def list_terms(
     ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    year_id: int | None = Query(None, description="กรองเฉพาะภาคของปีการศึกษานี้ — ไม่ระบุ = ทุกปี"),
     user_ctx: dict = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db_pool),
 ):
@@ -78,7 +79,7 @@ async def list_terms(
     uid = _ensure_user(user_ctx)
     try:
         result = await term_service.list_terms(
-            pool, uid, status=status, limit=limit, offset=offset
+            pool, uid, status=status, limit=limit, offset=offset, year_id=year_id
         )
     except (ForbiddenError, ValidationError) as e:
         raise _err(e)
@@ -105,6 +106,7 @@ async def create_term(
             pool, uid,
             name=req.name, start_date=req.start_date,
             end_date=req.end_date, is_current=req.is_current,
+            academic_year_id=req.academic_year_id,
         )
     except (ForbiddenError, ValidationError) as e:
         raise _err(e)
