@@ -380,6 +380,29 @@ const router = createRouter({
           },
         },
         {
+          // 🔄 เลื่อนชั้นทั้งโรงเรียน — ปลายทางเดียวที่ **เขียนสมาชิกทั้งโรงเรียนในครั้งเดียว**
+          //
+          // 🔴 **`requiresCouncil` คู่กับ `MANAGE_STUDENTS` โดยเจตนา — ไม่ใช่ของซ้ำ:**
+          //    · `MANAGE_STUDENTS` ครูทั่วไป/ประธานระดับก็มี ⇒ อย่างเดียวไม่พอ
+          //    · `isCouncilAuthority` รวม `council_member` ซึ่ง **ไม่มี** `MANAGE_STUDENTS`
+          //    ⇒ ประตูจริงของ backend คือ "มี MANAGE_STUDENTS" **และ** "โหมดจัดการระดับโรงเรียน"
+          //      (`get_manage_mode() == 'school'` ซึ่งต้องมี `is_admin`) — สองตัวนี้รวมกัน
+          //      ให้ผลตรงกับ `_gate` ของ `rollover_service` **พอดีทุกบทบาท** (ตรวจแล้ว 7 บทบาท)
+          //      ⇒ แถวเมนูที่ประกาศคู่นี้จึงไม่โผล่ให้คนที่กดแล้วได้ 403
+          //    ⚠️ ถ้าแก้ `_gate` ต้องแก้ `constants/nav.ts` (คู่ `councilOnly` + `permission`)
+          //       และตาราง `GATES` ใน `__tests__/routeMeta.spec.ts` ให้ตรงกัน
+          path: 'students/promote',
+          name: 'promote-students',
+          component: () => import('@/views/students/PromoteStudents.vue'),
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_STUDENTS',
+            requiresCouncil: true,
+            navTab: 'more',
+            headerBack: { name: 'students' },
+          },
+        },
+        {
           path: 'announcements',
           name: 'announcements',
           component: () => import('@/views/announcements/AnnouncementManagement.vue'),

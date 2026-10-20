@@ -140,7 +140,17 @@ beforeEach(() => {
  *    ซึ่งเป็นเจตนา — ทางเข้าซ้ำคือสาเหตุรากที่ผู้ใช้บอกว่าแอป "เยอะเกินไป"
  */
 type Reach = 'tab' | 'menu' | 'hidden' | 'segment' | 'fab'
-type Gate = 'none' | 'council' | { permission: string }
+
+/**
+ * ประตูสิทธิ์ของแถว — รูปแบบที่ 4 (`{ council, permission }`) คือ **AND ของสองอันแรก**
+ *
+ * ⚠️ มีอยู่เพราะ `promote-students` (เลื่อนชั้นทั้งโรงเรียน) ต้องการ *ทั้ง* การเป็นสภาฯ
+ *    *และ* `MANAGE_STUDENTS` — ไม่ตรงกับประตูไหนที่มีอยู่เดิม:
+ *      · `MANAGE_STUDENTS` เดี่ยว → ครู/ประธานระดับเห็นแถวแล้ว **403** จาก backend
+ *      · `councilOnly` เดี่ยว → `council_member` เห็นแล้วก็ **403** (ไม่มี MANAGE_STUDENTS)
+ *    ⇒ ถ้าประกาศผิดเพียงตัวเดียว ผู้ใช้จะเจอ "เมนูที่กดแล้วเด้ง" ซึ่งเทสต์นี้คือที่จับได้
+ */
+type Gate = 'none' | 'council' | { permission: string } | { council: true; permission: string }
 
 interface Fixture {
   /** ชื่อ route ปลายทาง */
@@ -209,6 +219,20 @@ const MENU_TODAY: Fixture[] = [
     gate: { permission: 'MANAGE_SETTINGS' },
     from: 'MainLayout:232 ภาคเรียน',
   },
+  // ── P1/P4: ปีการศึกษา + เลื่อนชั้น (ยังไม่ได้เติมเข้าเมนูเดิมสมัย R0.0) ──────────
+  {
+    name: 'academic-years',
+    reach: 'menu',
+    gate: { permission: 'MANAGE_SETTINGS' },
+    from: 'P1 · กลุ่ม "โรงเรียน" (คู่กับภาคเรียน)',
+  },
+  {
+    // 🔴 ประตูคู่ — ครูระดับชั้นมี MANAGE_STUDENTS แต่ต้องไม่เห็นแถวนี้ (กดแล้ว 403)
+    name: 'promote-students',
+    reach: 'menu',
+    gate: { council: true, permission: 'MANAGE_STUDENTS' },
+    from: 'P4 · กลุ่ม "โรงเรียน" ถัดจากปีการศึกษา',
+  },
   {
     name: 'audit-logs',
     reach: 'menu',
@@ -229,7 +253,10 @@ function gatePasses(gate: Gate, profile: Profile): boolean {
   if (gate === 'none') return true
   if (gate === 'council') return Boolean(profile.council || profile.isAdmin)
   const list = profile.permissions ?? []
-  return profile.isAdmin === true || list.includes(gate.permission)
+  const byPermission = profile.isAdmin === true || list.includes(gate.permission)
+  // 🔄 ประตูคู่ = ต้องผ่าน **ทั้งสอง** (ใช้กับ `promote-students` เท่านั้น)
+  if ('council' in gate) return Boolean(profile.council || profile.isAdmin) && byPermission
+  return byPermission
 }
 
 /** ชื่อ route ทั้งหมดที่ nav model เปิดให้เข้าถึง (ไม่นับแท็บ ซึ่งตรวจแยก) */
