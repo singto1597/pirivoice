@@ -5,6 +5,7 @@ import type {
   IssueListResponse,
   IssueStep,
   MyIssueSummary,
+  OrphanedAssignments,
   RequestedDestination,
   UpdateIssuePayload,
 } from '@/types/issue'
@@ -133,4 +134,36 @@ export async function updateComment(
 
 export async function deleteComment(issueId: number, commentId: number): Promise<void> {
   await api.delete(`/api/issues/${issueId}/comments/${commentId}`)
+}
+
+// ============================================================
+// 🔁 P5 — เรื่องค้างที่ผู้รับหมดวาระ (หลังขึ้นปีใหม่)
+// ============================================================
+//
+// ⚠️ สองเส้นทางนี้เป็นของ **ผู้ดูแลระดับโรงเรียนเท่านั้น** — backend ต้องผ่านทั้ง
+//    `MANAGE_STUDENTS` และ `get_manage_mode() == 'school'` (ครูระดับชั้น/ประธานระดับ 403)
+//    ⇒ หน้า `OrphanedAssignments.vue` ใช้ประตู route คู่เดียวกับหน้า "เลื่อนชั้นนักเรียน"
+
+/** เรื่องที่ยังเปิดอยู่แต่ผู้รับไม่มีแถว active ในปีที่ระบุ (ไม่ระบุ = ปีปัจจุบัน) */
+export async function listOrphanedAssignments(yearId?: number): Promise<OrphanedAssignments> {
+  return (await api.get('/api/issues/orphaned-assignments', {
+    params: yearId ? { year_id: yearId } : undefined,
+  })) as OrphanedAssignments
+}
+
+/**
+ * มอบหมายเรื่องค้างให้ผู้รับคนใหม่ — เขียน `issue_status_history` + แจ้งเตือน + audit
+ *
+ * ⚠️ ผู้รับใหม่ต้องมีแถว active ในปีปัจจุบัน (backend ตรวจ — หมดวาระแล้วได้ 400)
+ * ⚠️ เรื่องที่ปิดแล้วมอบหมายต่อไม่ได้ (400)
+ */
+export async function reassignIssue(
+  issueId: number,
+  toUserId: number,
+  note?: string,
+): Promise<{ status: string; issue_id: number; to_user_id: number; role: string }> {
+  return (await api.post(`/api/issues/${issueId}/reassign`, {
+    to_user_id: toUserId,
+    note: note || undefined,
+  })) as { status: string; issue_id: number; to_user_id: number; role: string }
 }

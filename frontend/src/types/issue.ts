@@ -257,3 +257,68 @@ export const DESTINATION_LABELS: Record<RequestedDestination, string> = {
   vote: 'โหวตสาธารณะ',
   talk: 'พูดคุยสาธารณะ',
 }
+
+// ============================================================
+// 🔁 P5 — เรื่องค้างที่ผู้รับหมดวาระ (หลังขึ้นปีใหม่)
+// ============================================================
+
+/** ผู้ที่ดำรงตำแหน่งเดียวกันในปีนี้ — ตัวเลือกสำหรับมอบหมายต่อ */
+export interface OrphanCandidate {
+  user_id: number
+  full_name: string | null
+  class_role: string
+  room_code: string | null
+}
+
+/**
+ * เรื่องที่ยังเปิดอยู่แต่ผู้รับไม่มีสมาชิกภาพในปีที่ดู
+ *
+ * ⚠️ `assignee_old_room_code` คือห้อง **ล่าสุดที่เคยอยู่** (จากแถวปีเก่า) — ไม่ใช่ห้องปัจจุบัน
+ *    (คนนี้ไม่มีแถวปัจจุบัน) ⇒ UI ต้องเรียกมันว่า "เคยอยู่" ไม่ใช่ "อยู่"
+ */
+export interface OrphanedIssue {
+  id: number
+  title: string
+  status: IssueStatus
+  current_level: IssueLevel
+  room_id: number | null
+  room_code: string | null
+  assignee_id: number | null
+  assignee_name: string | null
+  assignee_role: string | null
+  assignee_old_room_code: string | null
+  reporter_id: number | null
+  created_at: string
+  candidates: OrphanCandidate[]
+}
+
+export interface OrphanedAssignments {
+  year_id: number
+  items: OrphanedIssue[]
+  total: number
+}
+
+/** ป้ายตัวเลือกผู้รับ: `"สมชาย ใจดี · ม.1/1"` (ห้องอาจไม่มี — คนระดับโรงเรียน) */
+export function candidateLabel(c: OrphanCandidate): string {
+  const name = (c.full_name ?? '').trim() || `ผู้ใช้ #${c.user_id}`
+  return c.room_code ? `${name} · ${c.room_code}` : name
+}
+
+/** ข้อความยืนยันก่อนมอบหมาย — บอกชื่อเรื่องและชื่อผู้รับใหม่ให้ครบ */
+export function reassignConfirmText(item: OrphanedIssue, candidate: OrphanCandidate): string {
+  return `มอบหมายเรื่อง «${item.title}» ให้ ${candidateLabel(candidate)} ดำเนินการต่อ`
+}
+
+export type OrphanedScreenState = 'loading' | 'error' | 'empty' | 'ready'
+
+/** สถานะหน้าจอ — `error` มาก่อน `loading` (บทเรียนเดียวกับ `rolloverScreenState`) */
+export function orphanedScreenState(opts: {
+  isLoading: boolean
+  hasError: boolean
+  count: number
+}): OrphanedScreenState {
+  if (opts.hasError) return 'error'
+  if (opts.isLoading) return 'loading'
+  if (opts.count === 0) return 'empty'
+  return 'ready'
+}

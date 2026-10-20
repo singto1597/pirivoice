@@ -208,6 +208,14 @@ const MENU_TODAY: Fixture[] = [
     from: 'R1 · FAB `member` ของหน้า สมาชิก (เดิม MainLayout:217)',
   },
   {
+    // 🔀 ย้ายห้อง — ครูระดับชั้นคือผู้ใช้จริง ⇒ **ไม่มี `council`** ในประตู
+    //    (ต่างจาก `promote-students` ที่ครูเห็นแถวแล้ว 403)
+    name: 'student-moves',
+    reach: 'menu',
+    gate: { permission: 'MANAGE_STUDENTS' },
+    from: 'P5 · กลุ่ม "ผู้ดูแล" ถัดจาก "สมาชิก"',
+  },
+  {
     name: 'announcements',
     reach: 'menu',
     gate: { permission: 'MANAGE_ANNOUNCEMENTS' },
@@ -232,6 +240,13 @@ const MENU_TODAY: Fixture[] = [
     reach: 'menu',
     gate: { council: true, permission: 'MANAGE_STUDENTS' },
     from: 'P4 · กลุ่ม "โรงเรียน" ถัดจากปีการศึกษา',
+  },
+  {
+    // 🔴 ประตูคู่เดียวกับ `promote-students` — backend ใช้ `_gate` ตัวเดียวกัน
+    name: 'orphaned-assignments',
+    reach: 'menu',
+    gate: { council: true, permission: 'MANAGE_STUDENTS' },
+    from: 'P5 · กลุ่ม "โรงเรียน" ต่อจากเลื่อนชั้น (ขั้นสุดท้ายของงานขึ้นปีใหม่)',
   },
   {
     name: 'audit-logs',
