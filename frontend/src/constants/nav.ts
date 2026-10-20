@@ -185,6 +185,17 @@ export const NAV_GROUPS: NavGroup[] = [
         to: { name: 'students' },
         permission: 'MANAGE_STUDENTS',
       },
+      {
+        // 🔀 ย้ายห้องนักเรียน — งานเดียวกับ "แก้ข้อมูลรายคน" (P5)
+        //    ⚠️ **`MANAGE_STUDENTS` เดี่ยว ไม่มี `councilOnly`** ต่างจาก `promote-students`:
+        //       backend อนุญาตครู/ประธานระดับให้ย้ายได้ **ภายในระดับชั้นของตัวเอง**
+        //       ⇒ ถ้าใส่ `councilOnly` ครูที่กดได้จริงจะมองไม่เห็นแถวนี้
+        key: 'student-moves',
+        label: 'ย้ายห้องนักเรียน',
+        icon: 'bi-arrow-left-right',
+        to: { name: 'student-moves' },
+        permission: 'MANAGE_STUDENTS',
+      },
       // ซ่อนจากเมนู — เป็น *segment* ของหน้า "สมาชิก" กับ *FAB* ของหน้านั้น ไม่ใช่ทางเข้าแยก
       { key: 'users', label: 'เจ้าหน้าที่', icon: 'bi-person-gear', to: { name: 'users' }, permission: 'MANAGE_STUDENTS', hiddenFromMenu: true },
       { key: 'import-students', label: 'นำเข้านักเรียน', icon: 'bi-file-earmark-arrow-up', to: { name: 'import-students' }, permission: 'MANAGE_STUDENTS', hiddenFromMenu: true },
@@ -217,6 +228,18 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: 'MANAGE_STUDENTS',
       },
       { key: 'academic-terms', label: 'ภาคเรียน', icon: 'bi-calendar3-range', to: { name: 'academic-terms' }, permission: 'MANAGE_SETTINGS' },
+      {
+        // 🧯 เรื่องค้างที่ผู้รับหมดวาระ — ขั้นสุดท้ายของงานขึ้นปีใหม่ (ข้อตัดสินใจ #4:
+        //    "คงเรื่องไว้ ไม่ปิดอัตโนมัติ" ⇒ ต้องมีที่ให้มอบหมายต่อ)
+        //    ⚠️ ประตูคู่ **เหมือน `promote-students` เป๊ะ** เพราะ backend ใช้ `_gate` เดียวกัน
+        //       (`MANAGE_STUDENTS` **และ** โหมดจัดการระดับโรงเรียน) — อย่าถอดตัวใดตัวหนึ่ง
+        key: 'orphaned-assignments',
+        label: 'เรื่องที่ผู้รับหมดวาระ',
+        icon: 'bi-person-exclamation',
+        to: { name: 'orphaned-assignments' },
+        councilOnly: true,
+        permission: 'MANAGE_STUDENTS',
+      },
       // ⚠️ ไม่มีแถว "รายชื่อนักเรียน" ที่นี่ — ถูกรวมเข้าแถว "สมาชิก" ในกลุ่มผู้ดูแลแล้ว (R1)
       { key: 'audit-logs', label: 'บันทึกการใช้งาน', icon: 'bi-clock-history', to: { name: 'audit-logs' }, permission: 'VIEW_AUDIT_LOG' },
     ],
@@ -302,6 +325,8 @@ export const routeTitles: Record<string, string> = {
   // ⚠️ ต้องตรงกับ `label` ของแถวเมนู — ปลายทางเดียวมีสองชื่อทำให้ผู้ใช้คิดว่าคนละหน้า
   //    (บทเรียนเดียวกับ `board-reports` ที่เคยเป็น "ตรวจรายงาน" บนเมนู / "จัดการรายงาน" บนหัวแถบ)
   'promote-students': 'เลื่อนชั้นนักเรียน',
+  'student-moves': 'ย้ายห้องนักเรียน',
+  'orphaned-assignments': 'เรื่องที่ผู้รับหมดวาระ',
   // ⚠️ สองอันนี้ `navHidden` (ไม่โชว์ในเมนู) แต่ **ต้องมี routeTitles** — ไม่งั้น `<h1>`
   //    บนหัวหน้าจะว่าง แล้วผู้ใช้ไม่รู้ว่ากำลังทำอะไรอยู่
   'academic-year-new': 'เพิ่มปีการศึกษา',

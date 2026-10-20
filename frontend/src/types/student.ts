@@ -64,3 +64,145 @@ export interface ImportJob {
   started_at: string | null
   completed_at: string | null
 }
+
+// ============================================================
+// 🔀 P5 — สถานะสมาชิก · ย้ายห้อง · ประวัติรายคน
+// ============================================================
+
+/**
+ * สถานะแถวสมาชิก — ตรงกับ `StudentStatus` (Literal) ฝั่ง backend
+ *
+ * ⚠️ `promoted`/`graduated` = แถว **ปีเก่า** ที่ถูกปิดจาก rollover · `superseded` =
+ *    แถวซ้ำที่ถูกแทนที่ด้วยการย้ายห้อง ⇒ ทั้งสามค่า **ไม่ใช่ "ใช้งานอยู่"**
+ *    หน้าใดที่มีสิทธิ์แก้สถานะต้องไม่เสนอค่าที่ระบบตั้งเอง (ดู `STUDENT_STATUS_LABELS`)
+ */
+export type StudentStatus =
+  | 'active'
+  | 'pending'
+  | 'suspended'
+  | 'promoted'
+  | 'graduated'
+  | 'transferred_out'
+  | 'left'
+  | 'superseded'
+
+/** หนึ่งรายการย้ายห้อง — มาจากตาราง `student_moves` */
+export interface StudentMove {
+  id: number
+  from_room_id: number | null
+  from_room_code: string | null
+  to_room_id: number | null
+  to_room_code: string | null
+  academic_year_id: number | null
+  year_be: number | null
+  note: string | null
+  moved_by: number | null
+  moved_by_name: string | null
+  moved_at: string | null
+}
+
+/** หนึ่งปีของชีวิตนักเรียน — แถว `students` ของปีนั้น */
+export interface StudentHistoryYear {
+  student_row_id: number
+  academic_year_id: number | null
+  year_be: number | null
+  room_id: number | null
+  room_code: string | null
+  level: string | null
+  student_no: number | null
+  class_role: string
+  status: string
+}
+
+/** ไทม์ไลน์ประวัติ: ข้ามปี (`years`) + ย้ายในปี (`moves`) */
+export interface StudentHistory {
+  user_id: number
+  student_id: string | null
+  full_name: string | null
+  years: StudentHistoryYear[]
+  moves: StudentMove[]
+}
+
+export interface MovedStudent {
+  id: number
+  student_id: string
+  from_room_id: number | null
+  to_room_id: number | null
+}
+
+export interface SkippedStudent {
+  id: number
+  student_id: string
+  reason: string
+}
+
+/** ผล `POST /api/students/bulk-move` — `moved`+`skipped`+`superseded_ids` */
+export interface BulkMoveResult {
+  moved: MovedStudent[]
+  skipped: SkippedStudent[]
+  /** แถวซ้ำของคนเดียวกันที่ถูกตั้งเป็น `superseded` (ควรเป็น 0 ในภาวะปกติ) */
+  superseded_ids: number[]
+  to_room: { id: number; room_code: string }
+}
+
+// ============================================================
+// 🧠 Pure helpers — ตาม frontend.md §4 ("ว่าง ≠ พัง ≠ ยังโหลดไม่เสร็จ")
+// ============================================================
+
+/** ป้ายชื่อสถานะสมาชิก — ค่าที่ระบบตั้งเอง (`promoted`/`graduated`/`superseded`) แยกสี */
+export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
+  active: 'กำลังศึกษา',
+  pending: 'รอยืนยัน',
+  suspended: 'พักการเรียน',
+  promoted: 'เลื่อนชั้นแล้ว (ปีเก่า)',
+  graduated: 'จบการศึกษา',
+  transferred_out: 'ย้ายออก',
+  left: 'ออกกลางคัน',
+  superseded: 'ถูกแทนที่ (แถวซ้ำ)',
+}
+
+/** ข้อความยืนยันก่อนย้ายห้อง — ต้องบอก **จำนวน + ห้องปลายทาง + ผลข้างเคียง** */
+export function moveConfirmText(count: number, toRoomCode: string, note?: string | null): string {
+  const parts = [`ย้ายนักเรียน ${count} คนไปห้อง «${toRoomCode}»`]
+  if (note && note.trim()) parts.push(`บันทึกเหตุผล: ${note.trim()}`)
+  parts.push('การย้ายจะถูกบันทึกเป็นประวัติของนักเรียนแต่ละคน')
+  return parts.join(' · ')
+}
+
+/** สรุปผลหลังย้ายสำเร็จ — บอกทั้งที่ย้ายได้และที่ถูกข้าม (ไม่ซ่อนความล้มเหลวบางส่วน) */
+export function moveResultText(r: BulkMoveResult): string {
+  const parts = [`ย้ายสำเร็จ ${r.moved.length} คนไป «${r.to_room.room_code}»`]
+  if (r.skipped.length > 0) parts.push(`ข้าม ${r.skipped.length} คน (อยู่ในห้องนี้แล้ว)`)
+  if (r.superseded_ids.length > 0) parts.push(`มี ${r.superseded_ids.length} แถวซ้ำถูกแทนที่`)
+  return parts.join(' · ')
+}
+
+/** บรรทัดสรุปหนึ่งปีในไทม์ไลน์: `"2569 · ม.5/1 · เลขที่ 12"` (ปีที่ไม่มีข้อมูล = ไม่แสดงช่องว่าง) */
+export function historyYearLabel(y: StudentHistoryYear): string {
+  const year = y.year_be ? `ปี ${y.year_be}` : 'ไม่ทราบปี'
+  const room = y.room_code ?? 'ไม่มีห้อง'
+  const no = y.student_no ? ` · เลขที่ ${y.student_no}` : ''
+  return `${year} · ${room}${no}`
+}
+
+/** บรรทัดการย้าย: `"ม.1/1 → ม.1/2"` — ห้องที่ถูกลบไปแล้วต้องอ่านรู้เรื่อง ไม่ใช่ `null` */
+export function moveLabel(m: StudentMove): string {
+  return `${m.from_room_code ?? 'ไม่มีห้อง'} → ${m.to_room_code ?? 'ไม่มีห้อง'}`
+}
+
+export type HistoryScreenState = 'loading' | 'error' | 'empty' | 'ready'
+
+/**
+ * สถานะของแผ่นประวัติ — `error` มาก่อน `loading` โดยเจตนา (การโหลดรอบสองที่ล้ม
+ * ต้องโชว์ error ไม่ใช่ค้าง skeleton ตลอดกาล)
+ */
+export function historyScreenState(opts: {
+  isLoading: boolean
+  hasError: boolean
+  hasData: boolean
+}): HistoryScreenState {
+  if (opts.hasError) return 'error'
+  if (opts.isLoading) return 'loading'
+  if (!opts.hasData) return 'empty'
+  return 'ready'
+}

@@ -233,3 +233,41 @@ class MyIssueSummaryOut(BaseModel):
     total_issues: int                              # จำนวนเรื่องที่ฉันแจ้งทั้งหมด
     by_status: List[IssueStatusCountOut]           # นับแยกตามสถานะทั้ง 6 (zero-fill)
     recent: List[IssueOut]                         # 5 เรื่องล่าสุด (การ์ดบนหน้า Welcome)
+
+
+# ===================== P5: เรื่องค้างที่ผู้รับหมดวาระ =====================
+class ReassignRequest(BaseModel):
+    """มอบหมายเรื่องที่ผู้รับเดิมหมดวาระ ให้ผู้รับคนใหม่ (ต้อง active ในปีปัจจุบัน)"""
+    to_user_id: int = Field(..., description="users.id ของผู้รับใหม่")
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class OrphanCandidate(BaseModel):
+    """ผู้ที่ดำรงตำแหน่งเดียวกันในปีปัจจุบัน — ตัวเลือก 'มอบหมายต่อ'"""
+    user_id: int
+    full_name: Optional[str] = None
+    class_role: str
+    room_code: Optional[str] = None
+
+
+class OrphanedIssueOut(BaseModel):
+    """เรื่องที่ยังเปิดอยู่แต่ผู้รับไม่มีสมาชิกภาพในปีปัจจุบัน"""
+    id: int
+    title: str
+    status: str
+    current_level: Optional[str] = None
+    room_id: Optional[int] = None
+    room_code: Optional[str] = None
+    assignee_id: int
+    assignee_name: Optional[str] = None
+    assignee_role: Optional[str] = None
+    assignee_old_room_code: Optional[str] = None
+    reporter_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    candidates: List[OrphanCandidate] = []
+
+
+class OrphanedAssignmentsOut(BaseModel):
+    year_id: int
+    items: List[OrphanedIssueOut] = []
+    total: int = 0

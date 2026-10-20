@@ -141,6 +141,24 @@ const router = createRouter({
           meta: { navTab: 'issues', segmentGroup: 'issues', headerBack: false },
         },
         {
+          // 🧯 เรื่องค้างที่ผู้รับหมดวาระ (P5 · ข้อตัดสินใจ #4)
+          //
+          // ⚠️ **ต้องมาก่อน `issues/:id`** — ไม่งั้น `orphaned` ถูกจับเป็น `:id`
+          //    แล้วหน้า detail ยิง API ด้วย id = NaN (กับดักเดียวกับ `boards/reports`)
+          // ⚠️ ประตูคู่ `MANAGE_STUDENTS` + `requiresCouncil` = ประตูเดียวกับ `promote-students`
+          //    และตรงกับ backend (`MANAGE_STUDENTS` **และ** `get_manage_mode() == 'school'`)
+          path: 'issues/orphaned',
+          name: 'orphaned-assignments',
+          component: () => import('@/views/issues/OrphanedAssignments.vue'),
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_STUDENTS',
+            requiresCouncil: true,
+            navTab: 'more',
+            headerBack: { name: 'home' },
+          },
+        },
+        {
           path: 'issues/:id',
           name: 'issue-detail',
           component: () => import('@/views/issues/IssueDetail.vue'),
@@ -398,6 +416,23 @@ const router = createRouter({
             requiresAuth: true,
             requiresPermission: 'MANAGE_STUDENTS',
             requiresCouncil: true,
+            navTab: 'more',
+            headerBack: { name: 'students' },
+          },
+        },
+        {
+          // 🔀 ย้ายห้องนักเรียน (P5) — คู่กับ "แก้ข้อมูลรายคน" ในหน้า สมาชิก
+          //
+          // ⚠️ **ไม่มี `requiresCouncil` โดยเจตนา** — ต่างจาก `promote-students`:
+          //    backend อนุญาตให้ครู/ประธานระดับย้ายได้เอง **ภายในระดับชั้นของตัวเอง**
+          //    (`bulk_move_students` เช็ค `level` ของห้องต้นทาง/ปลายทาง)
+          //    ⇒ ใส่ `requiresCouncil` จะทำให้ครูที่กดได้จริงมองไม่เห็นเมนู
+          path: 'students/moves',
+          name: 'student-moves',
+          component: () => import('@/views/students/StudentMoves.vue'),
+          meta: {
+            requiresAuth: true,
+            requiresPermission: 'MANAGE_STUDENTS',
             navTab: 'more',
             headerBack: { name: 'students' },
           },

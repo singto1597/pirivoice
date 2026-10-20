@@ -16,6 +16,7 @@ from core.exceptions import NotFoundError, ForbiddenError, ValidationError, Conf
 from models.student_schemas import (
     StudentOut, StudentUpdateRequest, StudentCreateRequest, RoomOut,
     MyProfileOut, UpdateProfileRequest,
+    BulkMoveRequest, StudentHistoryOut,
 )
 from services import student_service
 from services import audit_service
@@ -214,6 +215,12 @@ async def update_student(
             is_admin=req.is_admin,
             staff_level=req.staff_level,
             responsibilities=req.responsibilities,
+            prefix=req.prefix,
+            first_name=req.first_name,
+            last_name=req.last_name,
+            nickname=req.nickname,
+            student_no=req.student_no,
+            student_code=req.student_id,
             actor_user_id=user_ctx["user_id"],
             client_source="web",
         )
@@ -223,6 +230,89 @@ async def update_student(
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"status": "ok"}
+
+
+@router.post("/students/bulk-move", response_model=dict)
+async def bulk_move_students(
+    req: BulkMoveRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ย้ายนักเรียนหลายคนเข้าห้องเดียว **ภายในปีปัจจุบัน**
+
+    ต้องมี `MANAGE_STUDENTS` และอยู่ในขอบเขตระดับชั้น (ครู/ประธานระดับได้เฉพาะระดับตัวเอง)
+    — `mode` คำนวณที่นี่แล้วส่งเข้า service เพื่อให้ service ไม่ต้องถือ logic สิทธิ์ซ้ำ
+    """
+    if not user_ctx.get("user_id"):
+        raise HTTPException(status_code=401, detail="ต้องเข้าสู่ระบบ")
+
+    async with pool.acquire() as conn:
+        try:
+            await require_permission_anywhere(conn, user_ctx["user_id"], "MANAGE_STUDENTS")
+        except ForbiddenError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        mode = await get_manage_mode(conn, user_ctx["user_id"])
+
+    try:
+        return await student_service.bulk_move_students(
+            pool,
+            actor_user_id=user_ctx["user_id"],
+            student_ids=req.student_ids,
+            to_room_code=req.to_room_code,
+            note=req.note,
+            manage_mode=mode,
+            client_source="web",
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (ValidationError, ConflictError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/students/{student_id}/history", response_model=StudentHistoryOut)
+async def get_student_history(
+    student_id: int,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """🧾 ประวัติรายคน — ข้ามปี (แถว `students` ทุกปี) + การย้ายในปี (`student_moves`)
+
+    ⚠️ เห็นแถว `promoted`/`graduated` ด้วยโดยเจตนา — นี่คือช่องทางตอบข้อตัดสินใจ #8
+       "เด็กจบต้องค้นชื่อเจอ" · ขอบเขตสิทธิ์ใช้กติกาเดียวกับ PATCH (ระดับชั้นของแถวราก)
+    """
+    if not user_ctx.get("user_id"):
+        raise HTTPException(status_code=401, detail="ต้องเข้าสู่ระบบ")
+
+    async with pool.acquire() as conn:
+        try:
+            await require_permission_anywhere(conn, user_ctx["user_id"], "MANAGE_STUDENTS")
+        except ForbiddenError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+        target = await conn.fetchrow(
+            """SELECT s.class_role AS cur_role, r.level AS grade
+               FROM students s LEFT JOIN rooms r ON r.id = s.room_id
+               WHERE s.id = $1 AND s.deleted_at IS NULL""",
+            student_id,
+        )
+        if not target:
+            raise HTTPException(status_code=404, detail="ไม่พบนักเรียน")
+        try:
+            await _assert_manage_target(
+                conn, user_ctx["user_id"],
+                target_role=target["cur_role"],
+                current_role=target["cur_role"],
+                target_grade=target["grade"],
+            )
+        except ForbiddenError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    try:
+        return await student_service.get_student_history(pool, student_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/students", response_model=dict, status_code=201)

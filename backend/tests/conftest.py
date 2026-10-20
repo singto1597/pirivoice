@@ -47,6 +47,10 @@ _TABLES = (
     "notification_preferences", "academic_terms", "announcements",
     "push_subscriptions", "push_outbox", "bookmarks", "app_settings",
     "event_registrations", "events", "academic_years", "rollover_runs",
+    # P5 (migration 029) — ประวัติการย้ายห้อง · ต้องอยู่ "หลัง" students/users/rooms
+    # เพราะ FK อ้างถึงตารางเหล่านั้น (TRUNCATE ... CASCADE จะจัดการลำดับให้อยู่แล้ว
+    # แต่การเรียงให้อ่านรู้เรื่องทำให้ไม่มีใครต้องเดา)
+    "student_moves",
 )
 
 # 🌟 ปีการศึกษาที่ `clean_database` ปลูกกลับหลัง TRUNCATE (migration 027)

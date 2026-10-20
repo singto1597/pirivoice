@@ -99,6 +99,12 @@ const GATES: Record<string, [boolean | undefined, string | undefined, boolean | 
   //    `council_member` เห็นแล้วก็ 403 (ไม่มี MANAGE_STUDENTS)
   //    ⇒ คู่กันให้ผลตรงกับ `rollover_service._gate` ทุกบทบาท
   'promote-students': [true, 'MANAGE_STUDENTS', true],
+  // 🔀 ย้ายห้องนักเรียน — **ไม่มี `requiresCouncil`** ต่างจาก `promote-students`:
+  //    backend อนุญาตครู/ประธานระดับย้ายได้ภายในระดับชั้นของตัวเอง ⇒ ครูคือผู้ใช้จริงของหน้านี้
+  'student-moves': [true, 'MANAGE_STUDENTS', undefined],
+  // 🧯 เรื่องค้างที่ผู้รับหมดวาระ — ประตูคู่เดียวกับ `promote-students` เพราะ backend
+  //    ใช้ `_gate` ตัวเดียวกัน (`MANAGE_STUDENTS` + โหมดจัดการระดับโรงเรียน)
+  'orphaned-assignments': [true, 'MANAGE_STUDENTS', true],
   'academic-year-new': [true, 'MANAGE_SETTINGS', undefined],
   'academic-year-edit': [true, 'MANAGE_SETTINGS', undefined],
   'audit-logs': [true, 'VIEW_AUDIT_LOG', undefined],
@@ -127,9 +133,9 @@ const NAV_HIDDEN = [
 const TAB_ROOTS = ['home', 'more', 'my-issues', 'boards', 'events']
 
 describe('ประตูสิทธิ์ (snapshot)', () => {
-  it('ครบทั้ง 37 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
+  it('ครบทั้ง 39 route และตรงกับที่ประกาศไว้ทุกตัว', () => {
     const children = appChildren()
-    expect(children).toHaveLength(37)
+    expect(children).toHaveLength(39)
 
     const actual: Record<string, [boolean | undefined, string | undefined, boolean | undefined]> =
       {}

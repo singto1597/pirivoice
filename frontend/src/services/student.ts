@@ -1,5 +1,13 @@
 import api from './api'
-import type { Student, StudentCreatePayload, Room, ImportJob } from '@/types/student'
+import type {
+  BulkMoveResult,
+  ImportJob,
+  Room,
+  Student,
+  StudentCreatePayload,
+  StudentHistory,
+  StudentStatus,
+} from '@/types/student'
 
 // Student API
 
@@ -11,6 +19,8 @@ export async function listStudents(params?: {
   room_id?: number
   search?: string
   role?: string
+  /** ไม่ระบุ = ปีปัจจุบัน (backend กรองปีให้ — ดู `list_students`) */
+  year_id?: number
 }): Promise<Student[]> {
   return (await api.get('/api/students', { params })) as Student[]
 }
@@ -58,11 +68,42 @@ export async function updateStudent(
   studentId: number,
   data: {
     class_role?: string
-    status?: string
+    status?: StudentStatus
     is_admin?: boolean
     staff_level?: string | null
     responsibilities?: string[]
+    // P5 — ข้อมูลตัวตน (แก้ข้อมูลที่กรอกผิด) · ⚠️ `student_id` ไม่แก้ `users.username`
+    prefix?: string | null
+    first_name?: string | null
+    last_name?: string | null
+    nickname?: string | null
+    student_no?: number
+    student_id?: string
   },
 ): Promise<void> {
   await api.patch(`/api/students/${studentId}`, data)
+}
+
+// ============================================================
+// 🔀 P5 — ย้ายห้องเป็นกลุ่ม + ประวัติรายคน
+// ============================================================
+
+/**
+ * ย้ายนักเรียนหลายคนเข้าห้องเดียว **ภายในปีปัจจุบัน**
+ *
+ * ⚠️ `student_ids` = `students.id` ของแถวสมาชิก (ไม่ใช่ `users.id`) — backend ปฏิเสธ
+ *    แถวของปีอื่นด้วย 400 เพราะการย้ายข้ามปีคือ "เลื่อนชั้น/ย้อนหลัง" ไม่ใช่ "ย้ายห้อง"
+ * ⚠️ ต้องมี `MANAGE_STUDENTS` และอยู่ในระดับชั้นของทั้งห้องต้นทางและปลายทาง
+ */
+export async function bulkMoveStudents(payload: {
+  student_ids: number[]
+  to_room_code: string
+  note?: string
+}): Promise<BulkMoveResult> {
+  return (await api.post('/api/students/bulk-move', payload)) as BulkMoveResult
+}
+
+/** ประวัติรายคน — แถวทุกปี (ห้อง/ตำแหน่ง/สถานะ) + การย้ายในปี */
+export async function getStudentHistory(studentRowId: number): Promise<StudentHistory> {
+  return (await api.get(`/api/students/${studentRowId}/history`)) as StudentHistory
 }
