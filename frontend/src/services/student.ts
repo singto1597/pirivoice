@@ -7,6 +7,7 @@ import type {
   StudentCreatePayload,
   StudentHistory,
   StudentStatus,
+  UnassignResult,
 } from '@/types/student'
 
 // Student API
@@ -121,4 +122,19 @@ export async function bulkMoveStudents(payload: {
 /** ประวัติรายคน — แถวทุกปี (ห้อง/ตำแหน่ง/สถานะ) + การย้ายในปี */
 export async function getStudentHistory(studentRowId: number): Promise<StudentHistory> {
   return (await api.get(`/api/students/${studentRowId}/history`)) as StudentHistory
+}
+
+/**
+ * ถอดนักเรียนออกจากห้อง (`room_id = NULL`) **ภายในปีปัจจุบัน**
+ *
+ * ใช้เมื่อต้อง "เคลียร์ห้อง" ก่อนนำเข้าไฟล์รายชื่อชุดใหม่ — ไฟล์ import จะวางทุกคน
+ * ลงห้องที่ถูกต้องและปิดแถวไม่มีห้องให้เอง (ไม่เหลือ active ซ้อน)
+ * ⚠️ แถวบทบาทระดับโรงเรียน (admin/ครูสภา/ประธานสภา/สมาชิกสภา) และครู คง role เดิมไว้
+ *    ⇒ "ไม่มีห้อง" ไม่ได้แปลว่าถอดตำแหน่ง
+ */
+export async function unassignStudents(payload: {
+  student_ids: number[]
+  note?: string
+}): Promise<UnassignResult> {
+  return (await api.post('/api/students/unassign-room', payload)) as UnassignResult
 }

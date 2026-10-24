@@ -780,6 +780,169 @@ async def bulk_move_students(
 
 
 # ============================================================
+# 🔓 ถอดออกจากห้อง (P5 ต่อยอด) — เคลียร์ห้องก่อนนำเข้าไฟล์ใหม่
+# ============================================================
+# 🏫 บทบาทที่ "อยู่ที่ระดับโรงเรียน" ไม่ใช่สมาชิกของห้อง — `room_id IS NULL` คือ *ที่อยู่จริง*
+#    ของบทบาทเหล่านี้ ⇒ ถอดออกจากห้องไม่ได้ (จะทำให้สิทธิ์หลุดจากที่ควรเป็น)
+SCHOOL_WIDE_ROLES = {"admin", "teacher_council", "council_president", "council_member"}
+
+# 👩‍🏫 บทบาทที่ **คงไว้** เมื่อถอดออกจากห้อง (ไม่รีเซ็ตเป็น student)
+#    - บทบาทระดับโรงเรียน ⇒ "ไม่มีห้อง" คือที่อยู่ปกติ
+#    - `teacher` ⇒ ห้องคือ *ห้องประจำ* ไม่ใช่ตัวตน — ถอดห้องแล้วยังเป็นครู
+#      (ขอบเขตยังมาจาก `staff_level` ซึ่งไม่ถูกล้าง) · ถ้ารีเซ็ตเป็น student จะถอดตำแหน่งครูเงียบ ๆ
+UNASSIGN_KEEP_ROLE_ROLES = SCHOOL_WIDE_ROLES | {"teacher"}
+
+
+async def unassign_students(
+    pool: asyncpg.Pool,
+    *,
+    actor_user_id: int,
+    student_ids: list[int],
+    note: Optional[str] = None,
+    manage_mode: Optional[dict] = None,
+    client_source: str = "web",
+) -> dict:
+    """ถอดนักเรียนออกจากห้อง (`room_id = NULL`) **ภายในปีปัจจุบันเท่านั้น**
+
+    **ใช้เมื่อไร:** โรงเรียนต้องการ "กวาดห้องให้ว่าง" ก่อนอัปไฟล์รายชื่อชุดใหม่ที่ระบุห้อง
+    ให้ทุกคน (เช่น หลังสลับห้องทั้งระดับ หรือเมื่อพบว่าห้องถูกแก้จนมั่ว) — ไฟล์ import
+    จะวางทุกคนลงห้องที่ถูกต้องในรอบเดียว และ guard ใน `import_service` จะปิดแถวที่ไม่มีห้อง
+    ให้อัตโนมัติ ⇒ **ไม่เหลือแถว active ซ้อน**
+
+    ⚠️ `room_id = NULL` ในระบบนี้ไม่ใช่ "ที่ว่าง" เฉย ๆ — เป็นตำแหน่งของบทบาทระดับโรงเรียน
+       (`SCHOOL_WIDE_ROLES`) ⇒ **แถวที่เป็นบทบาทเหล่านี้จะคง role ไว้** (ไม่รีเซ็ตเป็น student)
+       เพราะ "ไม่มีห้อง" คือที่อยู่จริงของ admin/ครูสภา/ประธานสภา/สมาชิกสภา
+       · `teacher` ก็คง role ไว้ด้วย (ห้อง = ห้องประจำ ไม่ใช่ตัวตน · ขอบเขตมาจาก `staff_level`)
+    ⚠️ แถวอื่นที่ถอดจะรีเซ็ต `class_role='student'`, `responsibilities='[]'`, `staff_level=NULL`
+       (ตำแหน่งในห้องไม่มีความหมายเมื่อไม่มีห้อง) และ `permissions` คำนวณใหม่จาก role student
+       — ประวัติการย้ายยังบันทึกครบใน `student_moves` (to_room_id = NULL)
+    """
+    ids = list(dict.fromkeys(student_ids or []))
+    if not ids:
+        raise ValidationError("ต้องเลือกนักเรียนอย่างน้อย 1 คน")
+
+    from core.logger import AuditLogger
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            current_year = await year_service.fetch_current_year(conn)
+            if not current_year:
+                raise ValidationError("ยังไม่มีปีการศึกษาปัจจุบัน — ตั้งปีก่อนถอดนักเรียนออกจากห้อง")
+
+            rows = await conn.fetch(
+                """SELECT s.id, s.user_id, s.room_id, s.student_id, s.academic_year_id,
+                          s.class_role, r.room_code, r.level
+                   FROM students s
+                   LEFT JOIN rooms r ON r.id = s.room_id
+                   WHERE s.id = ANY($1::int[]) AND s.deleted_at IS NULL
+                   FOR UPDATE OF s""",
+                ids,
+            )
+            found = {r["id"] for r in rows}
+            missing = [sid for sid in ids if sid not in found]
+            if missing:
+                raise NotFoundError(f"ไม่พบแถวสมาชิก id: {missing}")
+
+            wrong_year = [r["id"] for r in rows if r["academic_year_id"] != current_year["id"]]
+            if wrong_year:
+                raise ValidationError(
+                    "ถอดออกจากห้องได้เฉพาะสมาชิกของปีปัจจุบัน (แถว id: "
+                    + ", ".join(str(i) for i in wrong_year)
+                    + ")"
+                )
+
+            # --- ตรวจทั้งหมดก่อนแก้แถวใด ๆ: ถ้าผิดข้อเดียว ทรานแซกชันต้องไม่เขียนอะไรเลย ---
+            mode = (manage_mode or {}).get("mode")
+            grade = (manage_mode or {}).get("grade")
+            target_rows = [r for r in rows if r["room_id"] is not None]
+            if mode != "school":
+                if not grade:
+                    raise ValidationError("คุณไม่มีขอบเขตระดับชั้น — ถอดนักเรียนออกจากห้องไม่ได้")
+                bad = [r["id"] for r in target_rows if r["level"] != grade]
+                if bad:
+                    raise ValidationError(
+                        f"มีนักเรียนนอกระดับ {grade} อยู่ในรายการ (แถว id: "
+                        + ", ".join(str(i) for i in bad)
+                        + ")"
+                    )
+
+            student_role_perms = get_role_permissions("student")
+            unassigned: list[dict] = []
+            skipped: list[dict] = []
+
+            for r in rows:
+                if r["room_id"] is None:
+                    skipped.append(
+                        {"id": r["id"], "student_id": r["student_id"], "reason": "ไม่มีห้องอยู่แล้ว"}
+                    )
+                    continue
+
+                # 🛡️ `room_id = NULL` ไม่ชนใน unique index ⇒ กันแถว "ไม่มีห้อง" ซ้อนด้วยมือ
+                duplicate = await conn.fetchval(
+                    """SELECT 1 FROM students
+                       WHERE academic_year_id = $1 AND student_id = $2
+                         AND deleted_at IS NULL AND room_id IS NULL AND id <> $3""",
+                    r["academic_year_id"], r["student_id"], r["id"],
+                )
+                if duplicate:
+                    skipped.append(
+                        {"id": r["id"], "student_id": r["student_id"],
+                         "reason": "มีแถวไม่มีห้องของคนนี้อยู่แล้ว"}
+                    )
+                    continue
+
+                if r["class_role"] in UNASSIGN_KEEP_ROLE_ROLES:
+                    # บทบาทระดับโรงเรียน/ครู: "ไม่มีห้อง" ไม่ได้แปลว่าถอดตำแหน่ง ⇒ คง role/permissions
+                    await conn.execute(
+                        "UPDATE students SET room_id = NULL, updated_at = NOW() WHERE id = $1",
+                        r["id"],
+                    )
+                else:
+                    await conn.execute(
+                        """UPDATE students
+                           SET room_id = NULL,
+                               class_role = 'student',
+                               responsibilities = '[]'::jsonb,
+                               staff_level = NULL,
+                               permissions = $2::jsonb,
+                               updated_at = NOW()
+                           WHERE id = $1""",
+                        r["id"], json.dumps(student_role_perms),
+                    )
+
+                await conn.execute(
+                    """INSERT INTO student_moves
+                           (student_row_id, user_id, student_id, from_room_id, to_room_id,
+                            academic_year_id, note, moved_by)
+                       VALUES ($1, $2, $3, $4, NULL, $5, $6, $7)""",
+                    r["id"], r["user_id"], r["student_id"], r["room_id"],
+                    r["academic_year_id"], note, actor_user_id,
+                )
+
+                unassigned.append({
+                    "id": r["id"],
+                    "student_id": r["student_id"],
+                    "from_room_id": r["room_id"],
+                    "from_room_code": r["room_code"],
+                })
+
+            await AuditLogger("student_service").log(
+                conn=conn,
+                action="UNASSIGN_STUDENTS",
+                actor_identifier=str(actor_user_id),
+                client_source=client_source,
+                user_id=actor_user_id,
+                entity_type="student",
+                entity_id=None,
+                old_values={"unassigned": unassigned},
+                new_values={"note": note},
+                endpoint_or_command="POST /students/unassign-room",
+            )
+
+            return {"unassigned": unassigned, "skipped": skipped}
+
+
+# ============================================================
 # 🧾 ประวัติรายคน (P5) — timeline จาก 2 แหล่ง: ข้ามปี (students) + ย้ายในปี (student_moves)
 # ============================================================
 async def get_student_history(pool: asyncpg.Pool, student_row_id: int) -> dict:
