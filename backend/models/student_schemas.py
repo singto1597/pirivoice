@@ -78,6 +78,18 @@ class BulkMoveRequest(BaseModel):
     note: Optional[str] = None
 
 
+class UnassignRoomsRequest(BaseModel):
+    """🔓 ถอดนักเรียนออกจากห้อง (ตั้ง `room_id = NULL`) — เตรียมก่อนนำเข้าไฟล์ใหม่
+
+    ⚠️ `room_id = NULL` ในระบบนี้ **ไม่ใช่ "ที่ว่าง"** แต่เป็นตำแหน่งของ *บทบาทระดับโรงเรียน*
+       (admin / ครูสภา / ประธานสภา / สมาชิกสภา) ⇒ แถวเหล่านี้คง role เดิมไว้ ส่วนแถวอื่น
+       รีเซ็ต `class_role` เป็น `student` เพื่อไม่ให้ตำแหน่งในห้องหลุดลอยไปกับแถวที่ไม่มีห้อง
+    ⚠️ `student_ids` = `students.id` ของแถวสมาชิก (ไม่ใช่ `users.id`) และต้องเป็นปีปัจจุบัน
+    """
+    student_ids: List[int] = Field(..., min_length=1, description="students.id ของแถวสมาชิกที่จะถอดออกจากห้อง")
+    note: Optional[str] = None
+
+
 class StudentMoveOut(BaseModel):
     """หนึ่งรายการย้ายห้อง — ใช้ทั้งในผลลัพธ์ bulk-move และ timeline ประวัติ"""
     id: int

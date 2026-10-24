@@ -16,7 +16,7 @@ from core.exceptions import NotFoundError, ForbiddenError, ValidationError, Conf
 from models.student_schemas import (
     StudentOut, StudentUpdateRequest, StudentCreateRequest, RoomOut,
     MyProfileOut, UpdateProfileRequest,
-    BulkMoveRequest, StudentHistoryOut,
+    BulkMoveRequest, UnassignRoomsRequest, StudentHistoryOut,
 )
 from services import student_service
 from services import audit_service
@@ -270,6 +270,43 @@ async def bulk_move_students(
             actor_user_id=user_ctx["user_id"],
             student_ids=req.student_ids,
             to_room_code=req.to_room_code,
+            note=req.note,
+            manage_mode=mode,
+            client_source="web",
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (ValidationError, ConflictError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/students/unassign-room", response_model=dict)
+async def unassign_rooms(
+    req: UnassignRoomsRequest,
+    user_ctx: dict = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+):
+    """ถอดนักเรียนออกจากห้อง (`room_id = NULL`) **ภายในปีปัจจุบัน** — เตรียมก่อนอัปไฟล์ใหม่
+
+    ต้องมี `MANAGE_STUDENTS` และอยู่ในขอบเขตระดับชั้น (ยกเว้นโหมดระดับโรงเรียน)
+    ⚠️ แถวบทบาทระดับโรงเรียน (admin/ครูสภา/ประธานสภา/สมาชิกสภา) คง role เดิมไว้
+       — "ไม่มีห้อง" คือที่อยู่ปกติของบทบาทเหล่านี้ ไม่ใช่การถอดตำแหน่ง
+    """
+    if not user_ctx.get("user_id"):
+        raise HTTPException(status_code=401, detail="ต้องเข้าสู่ระบบ")
+
+    async with pool.acquire() as conn:
+        try:
+            await require_permission_anywhere(conn, user_ctx["user_id"], "MANAGE_STUDENTS")
+        except ForbiddenError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        mode = await get_manage_mode(conn, user_ctx["user_id"])
+
+    try:
+        return await student_service.unassign_students(
+            pool,
+            actor_user_id=user_ctx["user_id"],
+            student_ids=req.student_ids,
             note=req.note,
             manage_mode=mode,
             client_source="web",

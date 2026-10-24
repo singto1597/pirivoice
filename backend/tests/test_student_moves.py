@@ -10,11 +10,13 @@
 
 ตาม docs/rules/testing.md: ตรวจ DB ตรง ๆ ผ่าน `db_pool` ไม่เชื่อ HTTP response
 """
+import json
 import random
 
 import pytest
 import pytest_asyncio
 
+from core.rbac import get_role_permissions
 from services import auth_service
 
 _ROOMS = [
@@ -202,6 +204,71 @@ async def test_bulk_move_supersedes_when_target_already_has_row(move_world, db_p
         assert await conn.fetchval("SELECT COUNT(*) FROM student_moves") == 1
 
 
+@pytest.mark.asyncio
+async def test_bulk_move_back_to_room_with_superseded_row_revives_it(move_world, db_pool):
+    """ย้ายกลับห้องเดิม (แถวห้องนั้นถูก supersede ไปแล้ว) ⇒ **ต้องเหลือ active 1 แถว**
+
+    🔴 ถ้าไม่ปลุกแถวปลายทาง: แถวปลายทางเป็น `superseded` อยู่ · แถวต้นทางถูกปิดตามปกติ
+    ⇒ คนนี้เหลือ **ศูนย์แถว active** — หลุดจาก RBAC/แดชบอร์ด/รายชื่อทั้งที่ยังเรียนอยู่
+    """
+    w = move_world
+
+    # จำลองสภาพหลัง "ย้ายออกจาก ม.1/1": แถว ม.1/1 = superseded, แถว ม.1/2 = active
+    async with db_pool.acquire() as conn:
+        source = w["rows"]["mv_s1"]["id"]
+        await conn.execute(
+            "UPDATE students SET room_id = $1 WHERE id = $2", w["rooms"]["ม.1/2"], source
+        )
+        await conn.execute(
+            """INSERT INTO students (user_id, room_id, academic_year_id, student_id,
+                                     student_no, class_role, permissions, responsibilities, status)
+               VALUES ($1,$2,$3,$4,1,'student','[]'::jsonb,'[]'::jsonb,'superseded')""",
+            w["users"]["mv_s1"]["user_id"], w["rooms"]["ม.1/1"], w["year_id"],
+            w["rows"]["mv_s1"]["student_id"],
+        )
+
+    resp = await _post(client_of(w), "/api/students/bulk-move", _hdr(w), {
+        "student_ids": [source], "to_room_code": "ม.1/1", "note": "ย้ายกลับห้องเดิม",
+    })
+    assert resp.status_code == 200, resp.text
+
+    async with db_pool.acquire() as conn:
+        active = await conn.fetch(
+            """SELECT id, room_id FROM students
+               WHERE user_id = $1 AND academic_year_id = $2
+                 AND deleted_at IS NULL AND status = 'active'""",
+            w["users"]["mv_s1"]["user_id"], w["year_id"],
+        )
+        assert len(active) == 1, "ต้องเหลือ active แถวเดียว (ไม่ใช่ศูนย์)"
+        assert active[0]["room_id"] == w["rooms"]["ม.1/1"]
+        assert await conn.fetchval(
+            "SELECT status FROM students WHERE id = $1", source
+        ) == "superseded"
+        assert await conn.fetchval("SELECT COUNT(*) FROM student_moves") == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_move_skips_superseded_source_row(move_world, db_pool):
+    """ส่งแถว superseded มาที่ API ตรง ๆ ⇒ ข้าม (ไม่ย้ายประวัติ ไม่แตะห้อง)"""
+    w = move_world
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchval(
+            """INSERT INTO students (user_id, room_id, academic_year_id, student_id,
+                                     student_no, class_role, permissions, responsibilities, status)
+               VALUES ($1,$2,$3,'SUP1',1,'student','[]'::jsonb,'[]'::jsonb,'superseded')
+               RETURNING id""",
+            w["users"]["mv_s2"]["user_id"], w["rooms"]["ม.1/1"], w["year_id"],
+        )
+
+    resp = await _post(client_of(w), "/api/students/bulk-move", _hdr(w), {
+        "student_ids": [row], "to_room_code": "ม.1/2",
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["moved"] == []
+    assert len(resp.json()["skipped"]) == 1
+    assert await _room_of(db_pool, row) == w["rooms"]["ม.1/1"]
+
+
 # ============================================================
 # 3) ขอบเขตสิทธิ์
 # ============================================================
@@ -315,6 +382,194 @@ async def test_history_returns_years_and_moves(move_world):
     assert body["moves"][0]["from_room_code"] == "ม.1/1"
     assert body["moves"][0]["to_room_code"] == "ม.1/2"
     assert body["moves"][0]["note"] == "ย้ายทดสอบ"
+
+
+# ============================================================
+# 6) ถอดออกจากห้อง (unassign) — "กวาดห้องให้ว่างก่อนอัปไฟล์ใหม่"
+# ============================================================
+# 🔴 สาเหตุที่ต้องมี: โรงเรียนที่ห้องถูกแก้จนมั่ว ต้องเคลียร์ห้องก่อน แล้ว import
+#    รายชื่อชุดใหม่ที่ระบุห้องให้ทุกคน · ถ้าถอดห้องแล้ว import guard ไม่ปิดแถวไม่มีห้อง
+#    คนเดียวจะมี active 2 แถว (ไม่มีห้อง + ในห้องใหม่) ⇒ ยอด/สิทธิ์เพี้ยน
+@pytest.mark.asyncio
+async def test_unassign_clears_room_and_writes_history(move_world, db_pool):
+    w = move_world
+    ids = [w["rows"]["mv_s1"]["id"], w["rows"]["mv_s2"]["id"]]
+
+    resp = await _post(client_of(w), "/api/students/unassign-room", _hdr(w), {
+        "student_ids": ids, "note": "เคลียร์ห้องก่อนอัปไฟล์ใหม่",
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["unassigned"]) == 2
+    assert body["skipped"] == []
+
+    async with db_pool.acquire() as conn:
+        for sid in ids:
+            row = await conn.fetchrow(
+                "SELECT room_id, class_role FROM students WHERE id = $1", sid
+            )
+            assert row["room_id"] is None, "ต้องไม่มีห้องแล้ว"
+            assert row["class_role"] == "student", "นักเรียนธรรมดาต้องไม่เสีย role อื่น"
+
+        moves = await conn.fetch("SELECT * FROM student_moves ORDER BY id")
+        assert len(moves) == 2
+        assert all(m["from_room_id"] == w["rooms"]["ม.1/1"] for m in moves)
+        assert all(m["to_room_id"] is None for m in moves)
+        assert all(m["academic_year_id"] == w["year_id"] for m in moves)
+        assert all(m["note"] == "เคลียร์ห้องก่อนอัปไฟล์ใหม่" for m in moves)
+
+        audit = await conn.fetchval(
+            "SELECT COUNT(*) FROM audit_logs WHERE action = 'UNASSIGN_STUDENTS'"
+        )
+        assert audit == 1
+
+
+@pytest.mark.asyncio
+async def test_unassign_resets_room_position_role(move_world, db_pool):
+    """ตำแหน่ง *ในห้อง* (เช่น class_president) ไม่มีความหมายเมื่อไม่มีห้อง ⇒ รีเซ็ตเป็น student
+
+    🔴 ถ้าไม่รีเซ็ต: คนที่ไม่มีห้องจะยังถือ permissions ของตำแหน่งในห้อง
+       (สิทธิ์หลุดจากบริบทที่ควรเป็น + ครูเห็นชื่อในรายการตำแหน่งที่ไม่มีอยู่จริง)
+    """
+    w = move_world
+    row = w["rows"]["mv_s2"]
+    set_role = client_of(w).patch(
+        f"/api/students/{row['id']}", json={"class_role": "class_president"},
+        headers=_hdr(w),
+    )
+    assert set_role.status_code == 200, set_role.text
+
+    resp = await _post(client_of(w), "/api/students/unassign-room", _hdr(w), {
+        "student_ids": [row["id"]],
+    })
+    assert resp.status_code == 200, resp.text
+
+    async with db_pool.acquire() as conn:
+        got = await conn.fetchrow(
+            "SELECT room_id, class_role, responsibilities, permissions FROM students WHERE id = $1",
+            row["id"],
+        )
+        assert got["room_id"] is None
+        assert got["class_role"] == "student"
+        assert json.loads(got["responsibilities"]) == []
+        assert sorted(json.loads(got["permissions"])) == sorted(get_role_permissions("student"))
+
+
+@pytest.mark.asyncio
+async def test_unassign_keeps_school_wide_role(move_world, db_pool):
+    """สมาชิกสภาที่ *มีห้อง* → ถอดห้องแล้วยังเป็นสมาชิกสภา (ไม่มีห้องคือที่อยู่ปกติของ role นี้)
+
+    🔴 ถ้ารีเซ็ตเป็น student: สิทธิ์สภาหลุดทั้งที่คนยังดำรงตำแหน่ง — และการเลื่อนปี
+       ครั้งก่อน ๆ ก็ถือว่า role เหล่านี้อยู่ระดับโรงเรียน
+    """
+    w = move_world
+    row = w["rows"]["mv_s3"]
+    assert (client_of(w).patch(
+        f"/api/students/{row['id']}", json={"class_role": "council_member"},
+        headers=_hdr(w),
+    )).status_code == 200
+
+    resp = await _post(client_of(w), "/api/students/unassign-room", _hdr(w), {
+        "student_ids": [row["id"]],
+    })
+    assert resp.status_code == 200, resp.text
+
+    async with db_pool.acquire() as conn:
+        got = await conn.fetchrow(
+            "SELECT room_id, class_role FROM students WHERE id = $1", row["id"]
+        )
+        assert got["room_id"] is None
+        assert got["class_role"] == "council_member", "บทบาทระดับโรงเรียนต้องไม่ถูกรีเซ็ต"
+
+
+@pytest.mark.asyncio
+async def test_unassign_keeps_teacher_role(move_world, db_pool):
+    """`teacher` = ห้องประจำ ไม่ใช่ตัวตน ⇒ ถอดห้องแล้วยังเป็นครู (staff_level ยังอยู่)"""
+    w = move_world
+    row = w["rows"]["mv_teacher"]
+
+    resp = await _post(client_of(w), "/api/students/unassign-room", _hdr(w), {
+        "student_ids": [row["id"]],
+    })
+    assert resp.status_code == 200, resp.text
+
+    async with db_pool.acquire() as conn:
+        got = await conn.fetchrow(
+            "SELECT room_id, class_role, staff_level FROM students WHERE id = $1", row["id"]
+        )
+        assert got["room_id"] is None
+        assert got["class_role"] == "teacher"
+        assert got["staff_level"] == "ม.1", "ขอบเขตครูต้องไม่หายไปกับการถอดห้อง"
+
+
+@pytest.mark.asyncio
+async def test_unassign_skips_already_roomless(move_world, db_pool):
+    """ถอดซ้ำ / แถวที่ไม่มีห้องอยู่แล้ว ⇒ `skipped` ไม่ error (หน้า UI กดซ้ำได้ไม่พัง)"""
+    w = move_world
+    row = w["rows"]["mv_s1"]["id"]
+    assert (await _post(client_of(w), "/api/students/unassign-room", _hdr(w), {
+        "student_ids": [row],
+    })).status_code == 200
+
+    second = await _post(client_of(w), "/api/students/unassign-room", _hdr(w), {
+        "student_ids": [row],
+    })
+    assert second.status_code == 200, second.text
+    assert second.json()["unassigned"] == []
+    assert len(second.json()["skipped"]) == 1
+
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval("SELECT COUNT(*) FROM student_moves") == 1, (
+            "แถวที่ข้ามแล้วต้องไม่เขียนประวัติซ้ำ"
+        )
+
+
+@pytest.mark.asyncio
+async def test_unassign_rejects_previous_year_rows(move_world, db_pool):
+    """แถวปีเก่า (ประวัติ) ห้ามถูกถอด — ไม่งั้น timeline ย้อนหลังเสีย"""
+    w = move_world
+    async with db_pool.acquire() as conn:
+        old_year = await conn.fetchval(
+            "INSERT INTO academic_years (year_be, name) VALUES (2501, 'ปีเก่า 2') RETURNING id"
+        )
+        old_row = await conn.fetchval(
+            """INSERT INTO students (user_id, room_id, academic_year_id, student_id,
+                                     student_no, class_role, permissions, responsibilities)
+               VALUES ($1,$2,$3,'OLD2',1,'student','[]'::jsonb,'[]'::jsonb) RETURNING id""",
+            w["users"]["mv_s2"]["user_id"], w["rooms"]["ม.1/2"], old_year,
+        )
+
+    resp = await _post(client_of(w), "/api/students/unassign-room", _hdr(w), {
+        "student_ids": [old_row],
+    })
+    assert resp.status_code == 400, resp.text
+    assert await _room_of(db_pool, old_row) == w["rooms"]["ม.1/2"], "ต้องไม่ถูกแก้เลย"
+
+
+@pytest.mark.asyncio
+async def test_unassign_is_scoped_to_teacher_grade(move_world, db_pool):
+    w = move_world
+    c = client_of(w)
+
+    ok = await _post(c, "/api/students/unassign-room", _hdr(w, "mv_teacher"), {
+        "student_ids": [w["rows"]["mv_s1"]["id"]],
+    })
+    assert ok.status_code == 200, ok.text
+
+    other_grade = await _post(c, "/api/students/unassign-room", _hdr(w, "mv_teacher"), {
+        "student_ids": [w["rows"]["mv_s4"]["id"]],
+    })
+    assert other_grade.status_code == 400, other_grade.text
+    assert await _room_of(db_pool, w["rows"]["mv_s4"]["id"]) == w["rooms"]["ม.2/1"]
+
+
+@pytest.mark.asyncio
+async def test_unassign_requires_manage_students(move_world):
+    w = move_world
+    resp = await _post(client_of(w), "/api/students/unassign-room", _hdr(w, "mv_s1"), {
+        "student_ids": [w["rows"]["mv_s2"]["id"]],
+    })
+    assert resp.status_code == 403, resp.text
 
 
 # ============================================================

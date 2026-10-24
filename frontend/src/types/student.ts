@@ -147,6 +147,19 @@ export interface BulkMoveResult {
   to_room: { id: number; room_code: string }
 }
 
+export interface UnassignedStudent {
+  id: number
+  student_id: string
+  from_room_id: number | null
+  from_room_code: string | null
+}
+
+/** ผล `POST /api/students/unassign-room` — ถอดออกจากห้อง (ไม่มีห้อง = `room_id` NULL) */
+export interface UnassignResult {
+  unassigned: UnassignedStudent[]
+  skipped: SkippedStudent[]
+}
+
 // ============================================================
 // 🧠 Pure helpers — ตาม frontend.md §4 ("ว่าง ≠ พัง ≠ ยังโหลดไม่เสร็จ")
 // ============================================================
@@ -163,6 +176,17 @@ export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
   superseded: 'ถูกแทนที่ (แถวซ้ำ)',
 }
 
+/**
+ * แถวนี้เป็น "แถวปัจจุบัน" ที่ย้าย/ถอดได้หรือไม่
+ *
+ * `superseded` = แถวซ้ำที่ระบบปิดไปแล้วตอนย้ายห้อง (ยังเก็บเป็นประวัติ)
+ * ⇒ ถ้าเอาขึ้นรายชื่อ "เลือกแล้วย้าย" จะย้ายประวัติ ไม่ใช่ตัวเด็ก
+ * (ลิสต์ backend คืนทุกสถานะของปีนั้นโดยเจตนา — การกรองเป็นหน้าที่ของหน้าจอ)
+ */
+export function isCurrentMember(s: Pick<Student, 'status'>): boolean {
+  return s.status !== 'superseded'
+}
+
 /** ข้อความยืนยันก่อนย้ายห้อง — ต้องบอก **จำนวน + ห้องปลายทาง + ผลข้างเคียง** */
 export function moveConfirmText(count: number, toRoomCode: string, note?: string | null): string {
   const parts = [`ย้ายนักเรียน ${count} คนไปห้อง «${toRoomCode}»`]
@@ -176,6 +200,36 @@ export function moveResultText(r: BulkMoveResult): string {
   const parts = [`ย้ายสำเร็จ ${r.moved.length} คนไป «${r.to_room.room_code}»`]
   if (r.skipped.length > 0) parts.push(`ข้าม ${r.skipped.length} คน (อยู่ในห้องนี้แล้ว)`)
   if (r.superseded_ids.length > 0) parts.push(`มี ${r.superseded_ids.length} แถวซ้ำถูกแทนที่`)
+  return parts.join(' · ')
+}
+
+/** ข้อความยืนยัน "ย้ายทั้งห้อง" — ต้องบอก **จำนวน + ห้องต้นทาง + ห้องปลายทาง** */
+export function wholeRoomConfirmText(
+  count: number,
+  fromRoomCode: string,
+  toRoomCode: string,
+): string {
+  return (
+    `ย้ายนักเรียนทั้งห้อง «${fromRoomCode}» จำนวน ${count} คนไป «${toRoomCode}»` +
+    ' · การย้ายจะถูกบันทึกเป็นประวัติของนักเรียนแต่ละคน'
+  )
+}
+
+/**
+ * ข้อความยืนยัน "ถอดออกจากห้อง" — ต้องอธิบาย **ผลที่ตามมา** ไม่ใช่แค่คำว่า "แน่ใจไหม"
+ * (ผู้ใช้ต้องรู้ว่าเด็กจะไปอยู่ในสถานะ "ไม่มีห้อง" และต้องอัปไฟล์ใหม่/ย้ายกลับ)
+ */
+export function unassignConfirmText(count: number): string {
+  return (
+    `ถอดนักเรียน ${count} คนออกจากห้อง — ทั้ง ${count} คนจะอยู่สถานะ «ไม่มีห้อง» ` +
+    '· ประวัติการย้ายยังถูกบันทึก · ใช้เมื่อต้องการเคลียร์ห้องแล้วนำเข้าไฟล์รายชื่อชุดใหม่'
+  )
+}
+
+/** สรุปผลหลังถอดออกจากห้อง — แยก "ถอดแล้ว" กับ "ข้าม" ให้เห็นชัด */
+export function unassignResultText(r: UnassignResult): string {
+  const parts = [`ถอดออกจากห้องแล้ว ${r.unassigned.length} คน`]
+  if (r.skipped.length > 0) parts.push(`ข้าม ${r.skipped.length} คน (ไม่มีห้องอยู่แล้ว)`)
   return parts.join(' · ')
 }
 

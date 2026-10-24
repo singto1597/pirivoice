@@ -513,6 +513,43 @@ async def test_reimport_same_year_does_not_duplicate(client, db_pool, admin_user
 
 
 @pytest.mark.asyncio
+async def test_import_back_to_old_room_revives_superseded_row(client, db_pool, admin_user):
+    """นำเข้ากลับเข้าห้องเดิม (แถวนั้นถูก supersede ไปแล้ว) ⇒ **ต้องเหลือ active 1 แถว**
+
+    🔴 ก่อนแก้: DO UPDATE ปล่อยแถวเดิมเป็น `superseded` แล้ว guard ปิดแถว active อีกห้อง
+    ⇒ คนนี้เหลือศูนย์ active (หลุดจากรายชื่อ/สิทธิ์/ยอด) ทั้งที่ไฟล์บอกให้อยู่ห้องเดิม
+    """
+    _, username, password = admin_user
+    token = login_token(client, username, password)
+
+    job1 = await upload_and_get_job(client, token, [
+        ["47031", "ม.4/1", 1, "นาย", "กลับห้อง", "เดิม", "", ""],
+    ])
+    await import_service.process_import_job(db_pool, job1)
+    job2 = await upload_and_get_job(client, token, [
+        ["47031", "ม.4/2", 1, "นาย", "กลับห้อง", "เดิม", "", ""],
+    ])
+    await import_service.process_import_job(db_pool, job2)
+
+    # นำเข้ากลับเข้าห้องเดิม (แถว ม.4/1 เป็น superseded อยู่)
+    job3 = await upload_and_get_job(client, token, [
+        ["47031", "ม.4/1", 1, "นาย", "กลับห้อง", "เดิม", "", ""],
+    ])
+    r3 = await import_service.process_import_job(db_pool, job3)
+    assert r3["status"] == "COMPLETED", r3["errors"]
+
+    async with db_pool.acquire() as conn:
+        active = await conn.fetch(
+            """SELECT s.id, r.room_code FROM students s
+               JOIN rooms r ON r.id = s.room_id
+               WHERE s.student_id = '47031' AND s.deleted_at IS NULL
+                 AND s.status = 'active'""",
+        )
+    assert len(active) == 1, f"ต้องเหลือ active แถวเดียว — ได้ {len(active)}"
+    assert active[0]["room_code"] == "ม.4/1"
+
+
+@pytest.mark.asyncio
 async def test_same_year_room_move_supersedes_the_old_row(client, db_pool, admin_user):
     """นำเข้าใหม่โดยเปลี่ยนห้อง (ปีเดียวกัน) ⇒ **แถวเก่าเป็น `superseded` ไม่ใช่ค้าง active**
 
@@ -764,3 +801,163 @@ async def test_year_errors_are_recorded_in_error_logs_jsonb(client, db_pool, adm
     assert len(logs) == 1, logs
     assert str(PHANTOM_BE) in json.dumps(logs, ensure_ascii=False)
     assert job["skipped_count"] == 1
+
+
+# ============================================================
+# 10. ถอดห้องก่อน → import ใหม่ (เส้นทาง "ห้องถูกแก้จนมั่ว")
+# ============================================================
+
+@pytest.mark.asyncio
+async def test_import_after_unassign_leaves_exactly_one_active_row(client, db_pool, admin_user):
+    """ถอดทุกคนออกจากห้อง → อัปไฟล์ใหม่ที่ระบุห้อง ⇒ เหลือ active **แถวเดียวต่อคน**
+
+    🔴 นี่คือเหตุผลที่ guard supersede ต้องปิดแถว `room_id IS NULL` ด้วย:
+       `NULL` ไม่ชนกันใน unique index (028) ⇒ ถ้าไม่ปิด คนเดียวจะมีแถว "ไม่มีห้อง"
+       และแถว "อยู่ในห้องใหม่" เป็น `active` พร้อมกัน ⇒ dashboard/สิทธิ์เพี้ยน
+    """
+    _, username, password = admin_user
+    token = login_token(client, username, password)
+    hdr = {"Authorization": f"Bearer {token}"}
+    current_id = await _current_year_id(db_pool)
+    codes = {"47101", "47102"}
+
+    # 1) ไฟล์แรกลงห้อง ม.4/1 (สถานะ "มั่ว" ที่สมมติขึ้น)
+    job1 = await upload_and_get_job(client, token, [
+        ["47101", "ม.4/1", 1, "นาย", "เอ", "หนึ่ง", "", ""],
+        ["47102", "ม.4/1", 2, "นาย", "บี", "สอง", "", ""],
+    ])
+    assert (await import_service.process_import_job(db_pool, job1))["imported"] == 2
+
+    async with db_pool.acquire() as conn:
+        row_ids = [r["id"] for r in await conn.fetch(
+            "SELECT id FROM students WHERE student_id = ANY($1::text[]) AND status = 'active'",
+            sorted(codes),
+        )]
+    assert len(row_ids) == 2
+
+    # 2) ถอดทั้งสองคนออกจากห้อง
+    res = client.post(
+        "/api/students/unassign-room",
+        json={"student_ids": row_ids, "note": "เคลียร์ห้องก่อนอัปใหม่"},
+        headers=hdr,
+    )
+    assert res.status_code == 200, res.text
+    assert len(res.json()["unassigned"]) == 2
+
+    # 3) ไฟล์ใหม่ระบุห้องที่ถูกต้อง
+    job2 = await upload_and_get_job(client, token, [
+        ["47101", "ม.4/2", 1, "นาย", "เอ", "หนึ่ง", "", ""],
+        ["47102", "ม.4/2", 2, "นาย", "บี", "สอง", "", ""],
+    ])
+    r2 = await import_service.process_import_job(db_pool, job2)
+    assert r2["status"] == "COMPLETED", r2["errors"]
+    assert r2["imported"] == 2
+
+    # 4) 🔍 Deep DB: active แถวเดียวต่อคน + แถวไม่มีห้องถูก supersede (ไม่ถูกลบ)
+    for code in codes:
+        rows = await _student_rows(db_pool, code)
+        active = [r for r in rows if r["status"] == "active" and r["deleted_at"] is None]
+        assert len(active) == 1, f"{code}: active ต้องมีแถวเดียว — ได้ {len(active)}"
+        assert active[0]["room_code"] == "ม.4/2"
+        assert active[0]["academic_year_id"] == current_id
+
+        roomless = [r for r in rows if r["room_id"] is None]
+        assert len(roomless) == 1
+        assert roomless[0]["status"] == "superseded", "แถวไม่มีห้องต้องถูกปิด ไม่ใช่ค้าง active"
+        assert roomless[0]["deleted_at"] is None, "ห้ามลบ — เก็บเป็นประวัติ"
+
+    async with db_pool.acquire() as conn:
+        overlap = await conn.fetch(
+            """
+            SELECT user_id, count(*) FROM students
+            WHERE deleted_at IS NULL AND status = 'active'
+            GROUP BY user_id HAVING count(*) > 1
+            """
+        )
+        assert overlap == [], f"มี active ซ้อน: {overlap}"
+
+
+@pytest.mark.asyncio
+async def test_import_keeps_school_wide_role_when_placing_that_person_in_a_room(
+    client, db_pool, admin_user
+):
+    """แถว `room_id NULL` ของ **บทบาทระดับโรงเรียน** ไม่ถูก supersede โดย import
+
+    ครูสภาที่ขึ้นทะเบียนแบบไม่ผูกห้อง อาจยังถูกระบุในไฟล์รายชื่อ (มีห้องประจำ) —
+    พฤติกรรมที่เลือก: **ไม่ปิดแถวบทบาทโรงเรียน** (เทียบเท่า `SCHOOL_WIDE_ROLES` ใน
+    `unassign_students`) ⇒ คนนั้นถือสองแถว แต่ role ระดับโรงเรียนไม่หาย
+    ⚠️ นี่เป็นข้อยกเว้นเดียวของ guard — ถ้าเปลี่ยนลิสต์นี้ต้องแก้ทั้งสองที่
+    """
+    _, username, password = admin_user
+    token = login_token(client, username, password)
+    current_id = await _current_year_id(db_pool)
+
+    async with db_pool.acquire() as conn:
+        council_row = await conn.fetchval(
+            """INSERT INTO students (user_id, room_id, academic_year_id, student_id,
+                                     student_no, class_role, permissions, responsibilities)
+               VALUES ($1, NULL, $2, '47103', 0, 'council_member',
+                       '[]'::jsonb, '[]'::jsonb) RETURNING id""",
+            (await conn.fetchval("SELECT id FROM users LIMIT 1")), current_id,
+        )
+
+    job = await upload_and_get_job(client, token, [
+        ["47103", "ม.4/1", 5, "นาย", "สภา", "ทดสอบ", "", ""],
+    ])
+    assert (await import_service.process_import_job(db_pool, job))["imported"] == 1
+
+    async with db_pool.acquire() as conn:
+        status = await conn.fetchval(
+            "SELECT status FROM students WHERE id = $1", council_row
+        )
+        assert status == "active", "แถวบทบาทระดับโรงเรียนต้องไม่ถูก supersede"
+
+
+# ============================================================
+# 11. บัญชีที่ import สร้างใหม่ — บังคับเปลี่ยนรหัสครั้งแรก
+# ============================================================
+# 🔐 รหัสเริ่มต้นของ import = รหัสนักเรียน (เดาได้) ⇒ ถ้าไม่บังคับเปลี่ยน
+#    เด็ก ม.1 ทั้งโรงเรียนจะใช้รหัสผ่านที่เพื่อนรู้
+@pytest.mark.asyncio
+async def test_import_created_accounts_must_change_password(client, db_pool, admin_user):
+    _, username, password = admin_user
+    token = login_token(client, username, password)
+
+    job = await upload_and_get_job(client, token, [
+        ["47201", "ม.4/1", 1, "นาย", "ใหม่", "หนึ่ง", "", ""],
+    ])
+    assert (await import_service.process_import_job(db_pool, job))["imported"] == 1
+
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval(
+            "SELECT must_change_password FROM users WHERE username = '47201'"
+        ) is True
+
+
+@pytest.mark.asyncio
+async def test_reimport_does_not_force_password_change_on_existing_account(
+    client, db_pool, admin_user
+):
+    """บัญชีที่มีอยู่แล้ว *ไม่ถูกรีเซ็ต flag* — เขาอาจเปลี่ยนรหัสไปแล้ว"""
+    _, username, password = admin_user
+    token = login_token(client, username, password)
+
+    job1 = await upload_and_get_job(client, token, [
+        ["47202", "ม.4/1", 1, "นาย", "เก่า", "สอง", "", ""],
+    ])
+    await import_service.process_import_job(db_pool, job1)
+
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET must_change_password = FALSE WHERE username = '47202'"
+        )
+
+    job2 = await upload_and_get_job(client, token, [
+        ["47202", "ม.4/1", 1, "นาย", "เก่า", "สอง", "เล่น", ""],
+    ])
+    assert (await import_service.process_import_job(db_pool, job2))["imported"] == 1
+
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval(
+            "SELECT must_change_password FROM users WHERE username = '47202'"
+        ) is False

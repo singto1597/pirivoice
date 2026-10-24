@@ -40,7 +40,7 @@ from models.import_schemas import (
     CLAIMABLE_STATUS,
 )
 from services import auth_service, year_service
-from services.student_service import map_role_label
+from services.student_service import map_role_label, SCHOOL_WIDE_ROLES
 
 logger = logging.getLogger("IMPORT_SERVICE")
 
@@ -64,7 +64,7 @@ MAX_ERROR_LOGS = 500
 
 # 🛡️ Role ระดับโรงเรียน (ทำงานทั้งโรงเรียน ไม่ผูกห้อง/ระดับ) — สร้างได้เฉพาะผู้ดูแลทั้งโรงเรียน
 # (allowed_level is None) เท่านั้น ครูระดับชั้น (allowed_level set) นำเข้า role เหล่านี้ไม่ได้
-SCHOOL_WIDE_ROLES = {"admin", "teacher_council", "council_president", "council_member"}
+# 🌟 นิยามย้ายไป `services/student_service.py` — ที่เดียว (unassign ใช้ด้วย) ⇒ import ด้านบน
 
 
 # ============================================================
@@ -640,12 +640,15 @@ async def _process_single_row(
                 full_name = " ".join(p for p in (prefix, first_name, last_name) if p).strip() or username
                 user = await conn.fetchval(
                     """
-                    INSERT INTO users (username, password_hash, full_name)
-                    VALUES ($1, $2, $3)
+                    INSERT INTO users (username, password_hash, full_name, must_change_password)
+                    VALUES ($1, $2, $3, TRUE)
                     RETURNING id
                     """,
                     username, hashed, full_name,
                 )
+                # 🔐 บัญชีที่ import สร้างใหม่ต้องเปลี่ยนรหัสตอนล็อกอินครั้งแรก
+                #    (รหัสเริ่มต้น = รหัสนักเรียน ซึ่งเดาได้ ⇒ ไม่บังคับ = ความเสี่ยง)
+                #    ผู้ใช้ที่ *มีบัญชีอยู่แล้ว* ไม่ถูกแตะ — เขาอาจเปลี่ยนรหัสไปแล้ว
             ctx.user_cache[username] = user
 
         # 🌟 3. Student — upsert แบบ atomic กัน 2 worker/reimport ชนกันสร้างแถวซ้ำ
@@ -665,6 +668,12 @@ async def _process_single_row(
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 ON CONFLICT (room_id, academic_year_id, student_id) WHERE deleted_at IS NULL
                 DO UPDATE SET
+                    -- 🔴 ปลุกแถวที่ถูกปิดเป็น `superseded` กลับมา — ไม่งั้น "ย้ายกลับห้องเดิม"
+                    --    จะเหลือ **ศูนย์แถว active**: แถวนี้ยัง superseded อยู่ แต่ guard
+                    --    ด้านล่างไปปิดแถว active อีกห้องของคนเดียวกัน ⇒ คนหลุดจาก RBAC/แดชบอร์ด
+                    --    (สถานะอื่น — pending/suspended/left/... — คงเดิม: เป็นเจตนาของคน ไม่ใช่แถวซ้ำ)
+                    status = CASE WHEN students.status = 'superseded'
+                                  THEN 'active' ELSE students.status END,
                     user_id = EXCLUDED.user_id,
                     student_no = EXCLUDED.student_no,
                     prefix = EXCLUDED.prefix,
@@ -687,17 +696,24 @@ async def _process_single_row(
             #    upsert ลงห้องใหม่ แต่ **แถวเดิมในห้องเก่ายัง active อยู่** ⇒ คนเดียวปรากฏ
             #    สองห้อง · ยอด dashboard บวม · RBAC เห็นสิทธิ์จากห้องที่ไม่อยู่แล้ว
             #    ⚠️ แตะเฉพาะ `status='active'` — ไม่ยุ่งกับ pending/suspended/history
-            #    ⚠️ แตะเฉพาะแถวที่มีห้อง (`room_id IS NOT NULL`) — แถว school-wide
-            #       (room_id NULL) เป็น "บทบาทระดับโรงเรียน" ไม่ใช่ "การย้ายห้อง"
+            #    ⚠️ อีกกรณี: แถวที่ **ถูกถอดออกจากห้อง** (`room_id IS NULL`) ก่อนอัปไฟล์ใหม่
+            #       (endpoint `POST /students/unassign-room`) — ถ้าไม่ปิดแถวนี้ด้วย
+            #       คนเดียวจะมีทั้งแถว "ไม่มีห้อง" และแถวในห้องใหม่ **active พร้อมกัน**
+            #       ⇒ ปิดด้วย **ยกเว้นบทบาทระดับโรงเรียน** เพราะแถว room_id NULL ของ
+            #       admin/ครูสภา/ประธานสภา/สภาตั้งใจให้อยู่ระดับโรงเรียน ไม่ใช่การย้ายห้อง
             #    ⚠️ รัน **หลัง** upsert แล้วจึงกัน `room_id <> $3` ได้ (แถวที่เพิ่งเขียน
             #       อยู่ห้อง $3 ⇒ ไม่ถูกแตะ) — ถ้ารันก่อน จะ supersede แถวตัวเองทิ้ง
             await conn.execute(
                 """
                 UPDATE students SET status = 'superseded', updated_at = NOW()
                 WHERE academic_year_id = $1 AND student_id = $2 AND deleted_at IS NULL
-                  AND status = 'active' AND room_id IS NOT NULL AND room_id <> $3
+                  AND status = 'active'
+                  AND (
+                        (room_id IS NOT NULL AND room_id <> $3)
+                     OR (room_id IS NULL AND class_role <> ALL($4::text[]))
+                  )
                 """,
-                row_year_id, student_id, room_id,
+                row_year_id, student_id, room_id, sorted(SCHOOL_WIDE_ROLES),
             )
         else:
             # school-wide (room_id NULL): NULL ไม่ชนกันใน unique index → ใช้ SELECT-แล้ว-INSERT/UPDATE ตามเดิม
