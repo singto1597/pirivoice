@@ -666,7 +666,7 @@ async def bulk_move_students(
 
             rows = await conn.fetch(
                 """SELECT s.id, s.user_id, s.room_id, s.student_id, s.student_no,
-                          s.academic_year_id, s.class_role, r.level
+                          s.academic_year_id, s.class_role, s.status, r.level
                    FROM students s
                    LEFT JOIN rooms r ON r.id = s.room_id
                    WHERE s.id = ANY($1::int[]) AND s.deleted_at IS NULL
@@ -708,19 +708,48 @@ async def bulk_move_students(
             superseded: list[int] = []
 
             for r in rows:
+                # แถวซ้ำที่ระบบปิดไปแล้วไม่ใช่ตัวเด็ก — ย้ายไปก็ไม่เปลี่ยนอะไรที่ผู้ใช้เห็น
+                # (หน้าเว็บกรองออกอยู่แล้ว แต่ API ต้องกันเองด้วย)
+                if r["status"] == "superseded":
+                    skipped.append({
+                        "id": r["id"], "student_id": r["student_id"],
+                        "reason": "แถวซ้ำที่ถูกแทนที่แล้ว (ไม่ใช่แถวปัจจุบัน)",
+                    })
+                    continue
                 if r["room_id"] == target["id"]:
                     skipped.append({"id": r["id"], "student_id": r["student_id"], "reason": "อยู่ในห้องนี้แล้ว"})
                     continue
 
                 # ห้องปลายทางมีแถวของนักเรียนคนนี้ในปีเดียวกันอยู่แล้ว → แถวนั้นชนะ
                 # (หลีกเลี่ยง UniqueViolation ของ index 028 — ประวัติการย้ายยังบันทึก)
-                exists_target = await conn.fetchval(
-                    """SELECT 1 FROM students
+                exists_target = await conn.fetchrow(
+                    """SELECT id, status FROM students
                        WHERE room_id = $1 AND academic_year_id = $2 AND student_id = $3
                          AND deleted_at IS NULL AND id <> $4""",
                     target["id"], r["academic_year_id"], r["student_id"], r["id"],
                 )
-                if exists_target:
+                if exists_target and exists_target["status"] == "superseded":
+                    # 🔴 "ย้ายกลับห้องเดิม": แถวปลายทางเป็นแถวประวัติที่ถูกปิดไปแล้ว
+                    #    ถ้าปล่อยไว้เฉย ๆ (ปิดแถวต้นทางตามปกติ) คนนี้จะเหลือ **ศูนย์แถว active**
+                    #    ⇒ ปลุกแถวปลายทางกลับมา แล้วปิดแถวต้นทาง (ข้อมูลตำแหน่งของแถวปลายทาง
+                    #    เป็น snapshot เดิม — ตั้งตำแหน่งใหม่ได้ที่หน้า “แก้ไขสมาชิก”)
+                    await conn.execute(
+                        "UPDATE students SET status = 'active', updated_at = NOW() WHERE id = $1",
+                        exists_target["id"],
+                    )
+                    await conn.execute(
+                        "UPDATE students SET status = 'superseded', updated_at = NOW() WHERE id = $1",
+                        r["id"],
+                    )
+                    superseded.append(r["id"])
+                elif exists_target and exists_target["status"] != "active":
+                    # สถานะที่ระบบไม่ควรเดาแทนคน (ย้ายออก/ลาออก/พักการเรียน) — ไม่แตะอะไร
+                    skipped.append({
+                        "id": r["id"], "student_id": r["student_id"],
+                        "reason": "ห้องปลายทางมีแถวของคนนี้ที่ไม่ได้ใช้งานอยู่ — ต้องแก้สถานะก่อน",
+                    })
+                    continue
+                elif exists_target:
                     await conn.execute(
                         "UPDATE students SET status = 'superseded', updated_at = NOW() WHERE id = $1",
                         r["id"],
@@ -831,7 +860,7 @@ async def unassign_students(
 
             rows = await conn.fetch(
                 """SELECT s.id, s.user_id, s.room_id, s.student_id, s.academic_year_id,
-                          s.class_role, r.room_code, r.level
+                          s.class_role, s.status, r.room_code, r.level
                    FROM students s
                    LEFT JOIN rooms r ON r.id = s.room_id
                    WHERE s.id = ANY($1::int[]) AND s.deleted_at IS NULL
@@ -871,6 +900,12 @@ async def unassign_students(
             skipped: list[dict] = []
 
             for r in rows:
+                if r["status"] == "superseded":
+                    skipped.append({
+                        "id": r["id"], "student_id": r["student_id"],
+                        "reason": "แถวซ้ำที่ถูกแทนที่แล้ว (ไม่ใช่แถวปัจจุบัน)",
+                    })
+                    continue
                 if r["room_id"] is None:
                     skipped.append(
                         {"id": r["id"], "student_id": r["student_id"], "reason": "ไม่มีห้องอยู่แล้ว"}

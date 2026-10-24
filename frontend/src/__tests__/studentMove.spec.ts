@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  isCurrentMember,
   moveConfirmText,
   moveResultText,
   unassignConfirmText,
@@ -78,5 +79,17 @@ describe('moveResultText', () => {
     expect(text).toContain('ย้ายสำเร็จ 1 คน')
     expect(text).toContain('ม.1/2')
     expect(text).toContain('1 แถวซ้ำ')
+  })
+})
+
+describe('isCurrentMember', () => {
+  it('แถวซ้ำที่ถูกแทนที่แล้วไม่อยู่ในรายการที่ย้ายได้', () => {
+    expect(isCurrentMember({ status: 'superseded' })).toBe(false)
+  })
+
+  it('สถานะอื่นของปีนั้นยังย้าย/ถอดได้ (ลิสต์ไม่ใช่ตัวกรองสิทธิ์)', () => {
+    for (const status of ['active', 'pending', 'suspended', 'left']) {
+      expect(isCurrentMember({ status })).toBe(true)
+    }
   })
 })

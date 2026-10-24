@@ -513,6 +513,43 @@ async def test_reimport_same_year_does_not_duplicate(client, db_pool, admin_user
 
 
 @pytest.mark.asyncio
+async def test_import_back_to_old_room_revives_superseded_row(client, db_pool, admin_user):
+    """นำเข้ากลับเข้าห้องเดิม (แถวนั้นถูก supersede ไปแล้ว) ⇒ **ต้องเหลือ active 1 แถว**
+
+    🔴 ก่อนแก้: DO UPDATE ปล่อยแถวเดิมเป็น `superseded` แล้ว guard ปิดแถว active อีกห้อง
+    ⇒ คนนี้เหลือศูนย์ active (หลุดจากรายชื่อ/สิทธิ์/ยอด) ทั้งที่ไฟล์บอกให้อยู่ห้องเดิม
+    """
+    _, username, password = admin_user
+    token = login_token(client, username, password)
+
+    job1 = await upload_and_get_job(client, token, [
+        ["47031", "ม.4/1", 1, "นาย", "กลับห้อง", "เดิม", "", ""],
+    ])
+    await import_service.process_import_job(db_pool, job1)
+    job2 = await upload_and_get_job(client, token, [
+        ["47031", "ม.4/2", 1, "นาย", "กลับห้อง", "เดิม", "", ""],
+    ])
+    await import_service.process_import_job(db_pool, job2)
+
+    # นำเข้ากลับเข้าห้องเดิม (แถว ม.4/1 เป็น superseded อยู่)
+    job3 = await upload_and_get_job(client, token, [
+        ["47031", "ม.4/1", 1, "นาย", "กลับห้อง", "เดิม", "", ""],
+    ])
+    r3 = await import_service.process_import_job(db_pool, job3)
+    assert r3["status"] == "COMPLETED", r3["errors"]
+
+    async with db_pool.acquire() as conn:
+        active = await conn.fetch(
+            """SELECT s.id, r.room_code FROM students s
+               JOIN rooms r ON r.id = s.room_id
+               WHERE s.student_id = '47031' AND s.deleted_at IS NULL
+                 AND s.status = 'active'""",
+        )
+    assert len(active) == 1, f"ต้องเหลือ active แถวเดียว — ได้ {len(active)}"
+    assert active[0]["room_code"] == "ม.4/1"
+
+
+@pytest.mark.asyncio
 async def test_same_year_room_move_supersedes_the_old_row(client, db_pool, admin_user):
     """นำเข้าใหม่โดยเปลี่ยนห้อง (ปีเดียวกัน) ⇒ **แถวเก่าเป็น `superseded` ไม่ใช่ค้าง active**
 

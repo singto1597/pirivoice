@@ -176,6 +176,17 @@ export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
   superseded: 'ถูกแทนที่ (แถวซ้ำ)',
 }
 
+/**
+ * แถวนี้เป็น "แถวปัจจุบัน" ที่ย้าย/ถอดได้หรือไม่
+ *
+ * `superseded` = แถวซ้ำที่ระบบปิดไปแล้วตอนย้ายห้อง (ยังเก็บเป็นประวัติ)
+ * ⇒ ถ้าเอาขึ้นรายชื่อ "เลือกแล้วย้าย" จะย้ายประวัติ ไม่ใช่ตัวเด็ก
+ * (ลิสต์ backend คืนทุกสถานะของปีนั้นโดยเจตนา — การกรองเป็นหน้าที่ของหน้าจอ)
+ */
+export function isCurrentMember(s: Pick<Student, 'status'>): boolean {
+  return s.status !== 'superseded'
+}
+
 /** ข้อความยืนยันก่อนย้ายห้อง — ต้องบอก **จำนวน + ห้องปลายทาง + ผลข้างเคียง** */
 export function moveConfirmText(count: number, toRoomCode: string, note?: string | null): string {
   const parts = [`ย้ายนักเรียน ${count} คนไปห้อง «${toRoomCode}»`]

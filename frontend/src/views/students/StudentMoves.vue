@@ -18,6 +18,7 @@ import type { Room, Student, StudentHistory } from '@/types/student'
 import {
   historyScreenState,
   historyYearLabel,
+  isCurrentMember,
   moveConfirmText,
   moveLabel,
   moveResultText,
@@ -113,10 +114,12 @@ async function load() {
       }),
       listRooms(),
     ])
-    students.value = list
+    // ⚠️ backend คืน **ทุกสถานะ** ของปีนั้น (รวมแถวซ้ำ `superseded`) — หน้าจอที่ให้
+    //    "เลือกแล้วย้าย" ต้องเห็นเฉพาะแถวปัจจุบัน ไม่งั้นจะย้ายประวัติแทนตัวเด็ก
+    students.value = list.filter(isCurrentMember)
     rooms.value = roomList
     // คนที่หลุดจากตัวกรองต้องไม่ค้างอยู่ในรายการที่เลือก (ไม่งั้นกดย้ายแล้วเจอ id ที่ไม่เห็น)
-    const visible = new Set(list.map((s) => s.id))
+    const visible = new Set(students.value.map((s) => s.id))
     selected.value = new Set([...selected.value].filter((id) => visible.has(id)))
   } catch (e) {
     hasError.value = true
@@ -141,7 +144,9 @@ async function loadWholeRoster() {
   wholeLoading.value = true
   wholeError.value = false
   try {
-    wholeRoster.value = await listStudents({ room_id: Number(wholeSource.value) })
+    // "ทั้งห้อง" ต้องนับเฉพาะแถวปัจจุบัน — แถว `superseded` ไม่ใช่คนที่ต้องย้าย
+    const list = await listStudents({ room_id: Number(wholeSource.value) })
+    wholeRoster.value = list.filter(isCurrentMember)
   } catch {
     wholeRoster.value = []
     wholeError.value = true

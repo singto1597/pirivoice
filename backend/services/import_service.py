@@ -668,6 +668,12 @@ async def _process_single_row(
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 ON CONFLICT (room_id, academic_year_id, student_id) WHERE deleted_at IS NULL
                 DO UPDATE SET
+                    -- 🔴 ปลุกแถวที่ถูกปิดเป็น `superseded` กลับมา — ไม่งั้น "ย้ายกลับห้องเดิม"
+                    --    จะเหลือ **ศูนย์แถว active**: แถวนี้ยัง superseded อยู่ แต่ guard
+                    --    ด้านล่างไปปิดแถว active อีกห้องของคนเดียวกัน ⇒ คนหลุดจาก RBAC/แดชบอร์ด
+                    --    (สถานะอื่น — pending/suspended/left/... — คงเดิม: เป็นเจตนาของคน ไม่ใช่แถวซ้ำ)
+                    status = CASE WHEN students.status = 'superseded'
+                                  THEN 'active' ELSE students.status END,
                     user_id = EXCLUDED.user_id,
                     student_no = EXCLUDED.student_no,
                     prefix = EXCLUDED.prefix,

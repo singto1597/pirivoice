@@ -204,6 +204,71 @@ async def test_bulk_move_supersedes_when_target_already_has_row(move_world, db_p
         assert await conn.fetchval("SELECT COUNT(*) FROM student_moves") == 1
 
 
+@pytest.mark.asyncio
+async def test_bulk_move_back_to_room_with_superseded_row_revives_it(move_world, db_pool):
+    """ย้ายกลับห้องเดิม (แถวห้องนั้นถูก supersede ไปแล้ว) ⇒ **ต้องเหลือ active 1 แถว**
+
+    🔴 ถ้าไม่ปลุกแถวปลายทาง: แถวปลายทางเป็น `superseded` อยู่ · แถวต้นทางถูกปิดตามปกติ
+    ⇒ คนนี้เหลือ **ศูนย์แถว active** — หลุดจาก RBAC/แดชบอร์ด/รายชื่อทั้งที่ยังเรียนอยู่
+    """
+    w = move_world
+
+    # จำลองสภาพหลัง "ย้ายออกจาก ม.1/1": แถว ม.1/1 = superseded, แถว ม.1/2 = active
+    async with db_pool.acquire() as conn:
+        source = w["rows"]["mv_s1"]["id"]
+        await conn.execute(
+            "UPDATE students SET room_id = $1 WHERE id = $2", w["rooms"]["ม.1/2"], source
+        )
+        await conn.execute(
+            """INSERT INTO students (user_id, room_id, academic_year_id, student_id,
+                                     student_no, class_role, permissions, responsibilities, status)
+               VALUES ($1,$2,$3,$4,1,'student','[]'::jsonb,'[]'::jsonb,'superseded')""",
+            w["users"]["mv_s1"]["user_id"], w["rooms"]["ม.1/1"], w["year_id"],
+            w["rows"]["mv_s1"]["student_id"],
+        )
+
+    resp = await _post(client_of(w), "/api/students/bulk-move", _hdr(w), {
+        "student_ids": [source], "to_room_code": "ม.1/1", "note": "ย้ายกลับห้องเดิม",
+    })
+    assert resp.status_code == 200, resp.text
+
+    async with db_pool.acquire() as conn:
+        active = await conn.fetch(
+            """SELECT id, room_id FROM students
+               WHERE user_id = $1 AND academic_year_id = $2
+                 AND deleted_at IS NULL AND status = 'active'""",
+            w["users"]["mv_s1"]["user_id"], w["year_id"],
+        )
+        assert len(active) == 1, "ต้องเหลือ active แถวเดียว (ไม่ใช่ศูนย์)"
+        assert active[0]["room_id"] == w["rooms"]["ม.1/1"]
+        assert await conn.fetchval(
+            "SELECT status FROM students WHERE id = $1", source
+        ) == "superseded"
+        assert await conn.fetchval("SELECT COUNT(*) FROM student_moves") == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_move_skips_superseded_source_row(move_world, db_pool):
+    """ส่งแถว superseded มาที่ API ตรง ๆ ⇒ ข้าม (ไม่ย้ายประวัติ ไม่แตะห้อง)"""
+    w = move_world
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchval(
+            """INSERT INTO students (user_id, room_id, academic_year_id, student_id,
+                                     student_no, class_role, permissions, responsibilities, status)
+               VALUES ($1,$2,$3,'SUP1',1,'student','[]'::jsonb,'[]'::jsonb,'superseded')
+               RETURNING id""",
+            w["users"]["mv_s2"]["user_id"], w["rooms"]["ม.1/1"], w["year_id"],
+        )
+
+    resp = await _post(client_of(w), "/api/students/bulk-move", _hdr(w), {
+        "student_ids": [row], "to_room_code": "ม.1/2",
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["moved"] == []
+    assert len(resp.json()["skipped"]) == 1
+    assert await _room_of(db_pool, row) == w["rooms"]["ม.1/1"]
+
+
 # ============================================================
 # 3) ขอบเขตสิทธิ์
 # ============================================================
