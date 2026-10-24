@@ -219,10 +219,11 @@ async def test_bulk_move_back_to_room_with_superseded_row_revives_it(move_world,
         await conn.execute(
             "UPDATE students SET room_id = $1 WHERE id = $2", w["rooms"]["ม.1/2"], source
         )
-        await conn.execute(
+        target_row = await conn.fetchval(
             """INSERT INTO students (user_id, room_id, academic_year_id, student_id,
                                      student_no, class_role, permissions, responsibilities, status)
-               VALUES ($1,$2,$3,$4,1,'student','[]'::jsonb,'[]'::jsonb,'superseded')""",
+               VALUES ($1,$2,$3,$4,1,'student','[]'::jsonb,'[]'::jsonb,'superseded')
+               RETURNING id""",
             w["users"]["mv_s1"]["user_id"], w["rooms"]["ม.1/1"], w["year_id"],
             w["rows"]["mv_s1"]["student_id"],
         )
@@ -231,6 +232,8 @@ async def test_bulk_move_back_to_room_with_superseded_row_revives_it(move_world,
         "student_ids": [source], "to_room_code": "ม.1/1", "note": "ย้ายกลับห้องเดิม",
     })
     assert resp.status_code == 200, resp.text
+    # `moved[].id` ต้องชี้แถวที่ยัง active (แถวปลายทางที่ถูกปลุก) ไม่ใช่แถวต้นทางที่ถูกปิดเป็นประวัติ
+    assert resp.json()["moved"][0]["id"] == target_row, resp.json()
 
     async with db_pool.acquire() as conn:
         active = await conn.fetch(

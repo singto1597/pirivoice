@@ -720,6 +720,11 @@ async def bulk_move_students(
                     skipped.append({"id": r["id"], "student_id": r["student_id"], "reason": "อยู่ในห้องนี้แล้ว"})
                     continue
 
+                # 🎯 แถวที่จะกลายเป็น "แถวปัจจุบันในห้องปลายทาง" — ปกติคือแถวต้นทางที่ถูก UPDATE
+                #    แต่กรณี "ย้ายกลับห้องเดิม" แถวปัจจุบันคือแถวปลายทางที่ถูกปลุกกลับมา
+                #    ⇒ `moved[].id` ต้องชี้แถวที่ยัง active อยู่ ไม่ใช่แถวที่เพิ่งถูกปิดเป็นประวัติ
+                surviving_id = r["id"]
+
                 # ห้องปลายทางมีแถวของนักเรียนคนนี้ในปีเดียวกันอยู่แล้ว → แถวนั้นชนะ
                 # (หลีกเลี่ยง UniqueViolation ของ index 028 — ประวัติการย้ายยังบันทึก)
                 exists_target = await conn.fetchrow(
@@ -742,6 +747,7 @@ async def bulk_move_students(
                         r["id"],
                     )
                     superseded.append(r["id"])
+                    surviving_id = exists_target["id"]
                 elif exists_target and exists_target["status"] != "active":
                     # สถานะที่ระบบไม่ควรเดาแทนคน (ย้ายออก/ลาออก/พักการเรียน) — ไม่แตะอะไร
                     skipped.append({
@@ -781,7 +787,7 @@ async def bulk_move_students(
                     r["academic_year_id"], note, actor_user_id,
                 )
                 moved.append({
-                    "id": r["id"],
+                    "id": surviving_id,
                     "student_id": r["student_id"],
                     "from_room_id": r["room_id"],
                     "to_room_id": target["id"],
