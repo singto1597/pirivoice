@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "docs:build": "vitepress build ../docs",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "test:unit": "vitest",
@@ -58,6 +59,7 @@
     "typescript": "~6.0.0",
     "vite": "^8.0.8",
     "vite-plugin-vue-devtools": "^8.1.1",
+    "vitepress": "^1.6.4",
     "vitest": "^4.1.4",
     "vue-tsc": "^3.2.6"
   },

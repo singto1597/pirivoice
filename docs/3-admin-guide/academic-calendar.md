@@ -37,7 +37,7 @@
 ขั้นเลื่อนชั้นและขั้นนำเข้ารายชื่อมีรายละเอียดใน [คู่มือเจ้าหน้าที่](../2-staff-operations/index.md)
 การตั้งภาคเรียนของปีใหม่ทำในหัวข้อถัดไปของบทนี้
 
-![ภาพที่ 25 — หน้าปีการศึกษา](../assets/screenshots/admin/25-academic-years.webp)
+![ภาพที่ 25 — หน้าปีการศึกษา](../assets/screenshots/admin/academic-years.webp)
 
 ## ตั้งปีปัจจุบัน
 
