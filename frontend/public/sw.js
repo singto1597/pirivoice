@@ -214,7 +214,12 @@ async function handleNavigate(req) {
     const fresh = await fetch(req);
     // เก็บ HTML shell ล่าสุดไว้ — เฉพาะ response ที่โอเคจริง
     // (ห้ามเก็บ 401/500 ไม่งั้นออฟไลน์แล้วจะได้หน้า error ค้าง)
-    if (fresh && fresh.ok) {
+    //
+    // ⚠️ ห้ามเก็บหน้า /docs/ เป็น shell — คู่มือ VitePress เป็น static site
+    //    คนละชุดกับ SPA ถ้าเก็บทับ /index.html แล้วเปิดแอปออฟไลน์จะได้หน้าคู่มือ
+    const path = new URL(req.url).pathname
+    const isDocs = path === '/docs' || path.startsWith('/docs/')
+    if (fresh && fresh.ok && !isDocs) {
       try {
         const cache = await caches.open(SHELL_CACHE);
         await cache.put('/index.html', fresh.clone());
