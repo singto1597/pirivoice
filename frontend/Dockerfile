@@ -40,7 +40,8 @@ COPY --from=build-stage /app/dist /usr/share/nginx/html
 #
 # 📚 /docs/ เป็นคู่มือ VitePress ที่ฝังมากับ public/ — ต้องเปิด directory index
 #    ไม่งั้น /docs/ และ /docs/<บท>/ จะตกไป SPA แล้วเปิดหน้าแอปแทนคู่มือ
-#    ใช้ $uri/ เฉพาะ subtree นี้ ส่วน /playbooks/ ยังห้ามใช้เพราะไม่มี index.html
+#    · $uri.html รองรับ cleanUrls ของ VitePress (/docs/บท/ชื่อบท ไม่มี .html)
+#    · ใช้ $uri/ เฉพาะ subtree นี้ ส่วน /playbooks/ ยังห้ามใช้เพราะไม่มี index.html
 #
 # ⚠️ PWA (A1): `sw.js` + `manifest.json` **ต้องไม่ถูก cache** — ต่างจากไฟล์อื่นทั้งหมด
 #    ถ้า cache ไว้ อัปเดต service worker รอบหน้าจะไม่มีผลเลยบนเครื่องที่ติดตั้งไปแล้ว
@@ -65,7 +66,7 @@ RUN echo 'server { \
         return 301 /docs/; \
     } \
     location /docs/ { \
-        try_files $uri $uri/ =404; \
+        try_files $uri $uri/ $uri.html =404; \
     } \
     location / { \
         try_files $uri /index.html; \
