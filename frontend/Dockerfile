@@ -38,6 +38,10 @@ COPY --from=build-stage /app/dist /usr/share/nginx/html
 #    จับว่าเป็น directory แล้วคืน 403 (ไม่มี index) แทนที่จะส่งต่อไปที่ SPA
 #    ใช้แค่ try_files $uri /index.html → ไฟล์จริงถูกเสิร์ฟ, route ที่เหลือ fallback ไป SPA
 #
+# 📚 /docs/ เป็นคู่มือ VitePress ที่ฝังมากับ public/ — ต้องเปิด directory index
+#    ไม่งั้น /docs/ และ /docs/<บท>/ จะตกไป SPA แล้วเปิดหน้าแอปแทนคู่มือ
+#    ใช้ $uri/ เฉพาะ subtree นี้ ส่วน /playbooks/ ยังห้ามใช้เพราะไม่มี index.html
+#
 # ⚠️ PWA (A1): `sw.js` + `manifest.json` **ต้องไม่ถูก cache** — ต่างจากไฟล์อื่นทั้งหมด
 #    ถ้า cache ไว้ อัปเดต service worker รอบหน้าจะไม่มีผลเลยบนเครื่องที่ติดตั้งไปแล้ว
 #    และจะหาสาเหตุไม่ได้ (เบราว์เซอร์ไม่ยอมโหลด sw.js ใหม่)
@@ -56,6 +60,12 @@ RUN echo 'server { \
     location = /manifest.json { \
         add_header Cache-Control "no-cache"; \
         try_files $uri =404; \
+    } \
+    location = /docs { \
+        return 301 /docs/; \
+    } \
+    location /docs/ { \
+        try_files $uri $uri/ =404; \
     } \
     location / { \
         try_files $uri /index.html; \
