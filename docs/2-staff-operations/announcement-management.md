@@ -25,7 +25,7 @@
 ประกาศจะขึ้นบนหน้า Landing Page และหน้าแรกของผู้ใช้ทันที
 ไม่มีการแจ้งเตือนมือถือสำหรับประกาศ **ปกติ**
 
-![ภาพที่ 16 — หน้าจัดการประกาศ](../assets/screenshots/staff/16-announcements.webp)
+![ภาพที่ 16 — หน้าจัดการประกาศ](../assets/screenshots/staff/announcements.webp)
 
 ## เลือกระดับความสำคัญ
 

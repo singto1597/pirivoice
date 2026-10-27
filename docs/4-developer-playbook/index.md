@@ -30,7 +30,7 @@
 ## ก่อนแก้โค้ดอะไรก็ตาม
 
 1. อ่าน [docs/skills.md](../skills.md) ส่วนที่เกี่ยวกับโมดูลนั้น ก่อนลงมือ
-2. อ่านกฎชั้นที่กำลังแก้ ใน [docs/rules/](../rules/) และ [docs/system_prompt.md](../system_prompt.md)
+2. อ่านกฎชั้นที่กำลังแก้ ใน [backend](../rules/backend.md) · [frontend](../rules/frontend.md) · [testing](../rules/testing.md) และ [docs/system_prompt.md](../system_prompt.md)
 3. เปิดไฟล์จริงที่บทนั้นอ้างถึง ไม่ใช่เชื่อข้อความในคู่มือนี้อย่างเดียว
 4. รันชุดตรวจตาม [การทดสอบและการนำขึ้นระบบ](testing-and-deployment.md) ให้ครบก่อนคอมมิต
 

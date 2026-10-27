@@ -42,7 +42,7 @@
 
 แต่ละอุปกรณ์ต้องเปิดแยกกัน การเปิดบนมือถือไม่ทำให้คอมพิวเตอร์ได้รับ push ด้วย
 
-![ภาพที่ 4 — การตั้งค่าการแจ้งเตือน](../assets/screenshots/user/04-notification-settings.webp)
+![ภาพที่ 4 — การตั้งค่าการแจ้งเตือน](../assets/screenshots/user/notification-settings.webp)
 
 ## ถ้าต้องการปิด push บนอุปกรณ์นี้
 

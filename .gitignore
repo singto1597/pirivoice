@@ -6,6 +6,11 @@ backend/venv/
 frontend/node_modules/
 frontend/dist/
 
+# คู่มือ VitePress: build ไปที่ public เพื่อฝังในเว็บหลัก ไม่ commit ผลลัพธ์
+frontend/public/docs/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
 # Credentials ของ seed users (auto-generated)
 default_admin_credentials.txt
 *.credentials.txt
