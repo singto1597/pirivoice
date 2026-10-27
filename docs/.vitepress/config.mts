@@ -11,6 +11,19 @@ export default {
   description: 'ศูนย์ช่วยเหลือและคู่มือการใช้งาน PIRIvoice สำหรับนักเรียน เจ้าหน้าที่ และผู้ดูแลระบบ',
   base: '/docs/',
   outDir: '../frontend/public/docs',
+  head: [
+    ['meta', { name: 'theme-color', content: '#b91c1c' }],
+    ['link', { rel: 'icon', href: '/docs/favicon.png' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
+    [
+      'link',
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap',
+      },
+    ],
+  ],
 
   // เว็บสาธารณะแสดงเฉพาะคู่มือผู้ใช้/เจ้าหน้าที่/ผู้ดูแลระบบ
   // เอกสารวิศวกรรมยังอยู่ใน Git แต่ไม่ถูก build ลง public/docs
@@ -58,6 +71,9 @@ export default {
   },
 
   themeConfig: {
+    logo: '/logos/school-logo.png',
+    siteTitle: 'PIRIvoice Help Center',
+
     nav: [
       { text: 'หน้าแรก', link: '/' },
       { text: 'สำหรับนักเรียน', link: '/1-user-guide/' },
@@ -129,6 +145,38 @@ export default {
     returnToTopLabel: 'กลับขึ้นด้านบน',
     sidebarMenuLabel: 'เมนู',
     darkModeSwitchLabel: 'ธีม',
-    search: { provider: 'local' },
+    search: {
+      provider: 'local',
+      options: {
+        translations: {
+          button: {
+            buttonText: 'ค้นหา',
+            buttonAriaLabel: 'ค้นหาในคู่มือ',
+          },
+          modal: {
+            displayDetails: 'แสดงรายละเอียด',
+            resetButtonTitle: 'ล้างการค้นหา',
+            backButtonTitle: 'ปิดการค้นหา',
+            noResultsText: 'ไม่พบผลลัพธ์สำหรับ',
+            footer: {
+              selectText: 'เลือก',
+              selectKeyAriaLabel: 'Enter',
+              navigateText: 'เลื่อน',
+              navigateUpKeyAriaLabel: 'ลูกศรขึ้น',
+              navigateDownKeyAriaLabel: 'ลูกศรลง',
+              closeText: 'ปิด',
+              closeKeyAriaLabel: 'Esc',
+            },
+          },
+        },
+      },
+    },
+
+    notFound: {
+      title: 'ไม่พบหน้าที่ต้องการ',
+      quote: 'ลิงก์อาจถูกย้ายหรือพิมพ์ผิด กลับไปเลือกคู่มือตามบทบาทได้ที่หน้าแรก',
+      linkLabel: 'กลับไปหน้าแรก',
+      linkText: 'กลับไปหน้าแรก',
+    },
   },
 }
