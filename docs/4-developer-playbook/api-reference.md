@@ -265,7 +265,7 @@
 - `approve-to-public` รับเฉพาะเรื่องที่ `requested_destination` เป็น `vote` หรือ `talk`
   ถ้าเป็น `normal` จะได้ 400 และถ้าเคยเผยแพร่แล้วจะได้ 409
 - `reassign` กับ `orphaned-assignments` ต้องเป็นโหมด `school` เท่านั้น ครูระดับชั้นจึงใช้ไม่ได้ แม้จะมี `MANAGE_STUDENTS`
-- การรับเรื่อง ส่งต่อ ปิดเรื่อง และเปลี่ยนผู้รับ เขียน `issue_status_history` พร้อมแจ้งเตือนใน transaction เดียวกัน
+- การรับเรื่อง ส่งต่อ ปิดเรื่อง และเปลี่ยนปลายทางเรื่อง เขียน `issue_status_history` พร้อมแจ้งเตือนใน transaction เดียวกัน
 
 ::: tip เส้นทางคงที่ต้องมาก่อนเส้นทางที่มีพารามิเตอร์
 `GET /api/issues/summary` ถูกประกาศก่อน `GET /api/issues/{id}` เสมอ

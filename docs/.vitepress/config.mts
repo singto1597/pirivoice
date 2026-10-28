@@ -195,6 +195,7 @@ export default {
             { text: 'ตั้งค่าระบบ', link: '/3-admin-guide/system-configuration' },
             { text: 'ปีการศึกษาและภาคเรียน', link: '/3-admin-guide/academic-calendar' },
             { text: 'แดชบอร์ดและรายงาน', link: '/3-admin-guide/dashboard-and-reports' },
+            { text: 'ภาคผนวกทางเทคนิค', link: '/3-admin-guide/technical-appendix' },
           ],
         },
       ],
