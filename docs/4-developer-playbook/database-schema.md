@@ -1,24 +1,25 @@
 # โครงสร้างฐานข้อมูล
 
-บทนี้อธิบายทุกตารางในฐานข้อมูล PostgreSQL 16 ของระบบ พร้อมคอลัมน์ ชนิดข้อมูล ค่าเริ่มต้น
-index ที่ห้ามลบ และ migration ทั้ง 29 ไฟล์
-ใช้บทนี้เมื่อต้องเขียน SQL ใหม่ เพิ่มตาราง หรือตรวจว่าคอลัมน์หนึ่งมีจริงหรือไม่
+ทุกตารางใน PostgreSQL 16 อยู่หน้านี้ พร้อมคอลัมน์ ชนิดข้อมูล index ที่ห้ามลบ และ migration ทั้ง 29 ไฟล์
+
+- 🗂️ **ตารางและคอลัมน์** — แยกตามโดเมน เปิดดูได้ทุกตาราง
+- 🔗 **ความสัมพันธ์** — ERD ของแต่ละโดเมนกับ FK ที่ผูกกัน
+- 🧱 **กับดักที่ต้องรู้** — index ที่ห้ามลบ ตารางที่ไม่มี FK และจุดที่ `init_db` กับ migration ไม่ตรงกัน
 
 ## ใครใช้บทนี้
 
-นักพัฒนาที่เขียน service หรือ query โดยตรง ผู้ดูแลระบบที่ต้องตรวจข้อมูลย้อนหลัง
-และผู้ที่ต้องแก้ migration
+คนที่เขียน service หรือ query ตรง ๆ คนที่ต้องตรวจข้อมูลย้อนหลัง และคนที่ต้องแก้ migration
 
 ## ก่อนเริ่ม
 
-- ระบบไม่มี ORM ทุก SQL เป็นข้อความใน `services/`
+- ระบบไม่มี ORM — SQL ทั้งหมดเป็นข้อความใน `services/`
 - ตารางถูกสร้างสองทาง คือ `core/init_db.py` สำหรับฐานข้อมูลใหม่ และ `migrations/` สำหรับฐานข้อมูลที่มีข้อมูลแล้ว
-- ทั้งสองทางต้องให้ผลเหมือนกัน การแก้ที่เดียวทำให้เทสต์ผ่านแต่ production พัง
+- สองทางต้องให้ผลเหมือนกัน ถ้าแก้ที่เดียว เทสต์ผ่านแต่ production พัง
 - เอกสารนี้ยึด `core/init_db.py` เป็นหลัก และระบุทุกจุดที่ migration แก้เพิ่ม
 
 ## หลักการออกแบบหกข้อ
 
-1. **แถวสมาชิกผูกกับปีการศึกษา** หนึ่งคนมีได้หลายแถว คนละปี การเลื่อนชั้นคือการสร้างแถวใหม่ ไม่ใช่การเขียนทับ
+1. **แถวสมาชิกผูกกับปีการศึกษา** — หนึ่งคนมีได้หลายแถว คนละปี การเลื่อนชั้นคือการสร้างแถวใหม่ ไม่ใช่เขียนทับ
 2. **ข้อมูลที่ต้องตรวจย้อนหลังไม่มี FK** เช่น `audit_logs`, `announcements.created_by`, `events.created_by` เพราะการลบผู้ใช้ไม่ควรลบหลักฐาน
 3. **ตารางโดเมนของผู้ใช้ใช้ soft delete** ด้วย `deleted_at` และ index ที่บังคับความไม่ซ้ำเป็น partial index
 4. **ตารางชั่วคราวหรือ junction ใช้ hard delete** เช่น `bookmarks`, `push_subscriptions`, `push_outbox`, `issue_countdowns`
@@ -52,7 +53,12 @@ erDiagram
 
 `students` เป็นตารางเชื่อมระหว่างคน ห้อง และปี
 หนึ่งคนมีได้หลายแถวเมื่อขึ้นปีใหม่ และ `room_id` เป็น `ON DELETE CASCADE`
-ซึ่งหมายความว่าการลบห้องจะลบแถวสมาชิกของห้องนั้นด้วย
+แปลว่าลบห้องแล้วแถวสมาชิกของห้องนั้นหายตามไปด้วย
+
+::: warning ลบห้องแล้วแถวสมาชิกหายทั้งห้อง
+`students.room_id` เป็น `ON DELETE CASCADE` — ลบห้องหนึ่งครั้ง แถวสมาชิกทุกแถวของห้องนั้นหายทันที
+ถ้าอยากเก็บประวัติ ให้ใช้ soft delete กับห้องแทนการลบจริง
+:::
 
 ## โดเมนตัวตนและปีการศึกษา
 
@@ -130,9 +136,8 @@ index: `uq_academic_years_single_current` (partial), `uq_academic_years_year_be`
 | `deleted_at` | `TIMESTAMP` |
 
 **จุดที่ต้องระวัง:** ใน `init_db.py` คอลัมน์ `academic_year_id` เป็น nullable และไม่มี default
-เพราะค่า default ต้องเป็น id ของปีปัจจุบันซึ่งรู้ตอนรันจริง
-migration 027 เป็นผู้ตั้ง `NOT NULL DEFAULT <id ของปีปัจจุบัน>` หลัง backfill
-ฐานข้อมูลใหม่จึงได้ค่า default ที่เป็นเลขนั้นในวันที่สร้าง
+เพราะค่า default ต้องเป็น id ของปีปัจจุบัน ซึ่งรู้ตอนรันจริง
+migration 027 เป็นคนตั้ง `NOT NULL DEFAULT <id ของปีปัจจุบัน>` หลัง backfill — ฐานข้อมูลใหม่จึงได้ default เป็นเลขนั้นในวันที่สร้าง
 
 index: `idx_students_room_no_active`, `idx_students_role_active`, `idx_students_responsibilities` (GIN), `idx_students_year_room`,
 `uq_students_room_year_student` (partial unique บน `room_id, academic_year_id, student_id`)
@@ -263,7 +268,7 @@ index: `idx_issues_room_status`, `idx_issues_reporter`, `idx_issues_level`, `idx
 `started_at` `TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP` · `deadline` `TIMESTAMPTZ NOT NULL` ·
 `is_overdue` `BOOLEAN DEFAULT FALSE` · `created_at`
 
-การตั้งกำหนดใหม่คือการลบแถวเดิมแล้วเพิ่มแถวใหม่ ไม่ใช่การแก้แถวเดิม
+การตั้งกำหนดใหม่คือลบแถวเดิมแล้วเพิ่มแถวใหม่ ไม่ใช่แก้แถวเดิม
 ตารางนี้จึงเป็นหนึ่งในสี่ตารางที่ใช้ hard delete
 
 ### `issue_comments`
@@ -324,7 +329,7 @@ erDiagram
 index: `idx_piri_boards_status_created`, `idx_piri_boards_source_issue`, `idx_piri_boards_author`
 
 `board_type = 'suggestion'` ถูกเพิ่มโดย migration 022 ซึ่งต้องลบ CHECK เดิมก่อน
-การเพิ่มชนิดใหม่ในอนาคตต้องออก migration ที่ลบและสร้าง CHECK ใหม่
+ถ้าจะเพิ่มชนิดใหม่ทีหลัง ต้องออก migration ที่ลบและสร้าง CHECK ใหม่
 
 ### `piri_board_comments`
 
@@ -375,7 +380,7 @@ index: `uq_piri_board_report_user_comment_active` (partial unique), `idx_piri_bo
 `board_id` FK cascade · `user_id` FK users cascade · `viewed_at` `TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`
 `PRIMARY KEY (board_id, user_id)` ไม่มี `id` และไม่มี soft delete
 
-ตารางนี้ใช้กันการกดรีเฟรชปั่นยอดชม ผู้ใช้หนึ่งคนนับได้หนึ่งครั้งต่อช่วงเวลาที่กำหนดใน service
+ตารางนี้กันการกดรีเฟรชปั่นยอดชม — คนหนึ่งนับได้ครั้งเดียวต่อช่วงเวลาที่กำหนดใน service
 
 ## โดเมนกิจกรรมและประกาศ
 
@@ -401,7 +406,7 @@ erDiagram
 | `category` | `VARCHAR(20) NOT NULL DEFAULT 'other'` |
 | `status` | `VARCHAR(20) NOT NULL DEFAULT 'draft'` |
 | `published_at`, `cancelled_at` | `TIMESTAMPTZ` |
-| `created_by`, `updated_by` | `INTEGER` ไม่มี FK โดยเจตนา |
+| `created_by`, `updated_by` | `INTEGER` ไม่มี FK (ตั้งใจให้เป็นแบบนี้) |
 | `created_at`, `updated_at`, `deleted_at` | `TIMESTAMPTZ` |
 
 กฎ: `chk_events_status`, `chk_events_capacity` (`capacity IS NULL OR capacity > 0`), `chk_events_category`
@@ -439,8 +444,8 @@ unique เป็นแบบธรรมดาเพราะการยกเ�
 | `deleted_at` | `TIMESTAMPTZ` |
 | `retired_at` | `TIMESTAMPTZ` ปลดระวาง |
 
-`retired_at` เป็นอิสระจาก `deleted_at` โดยเจตนา
-การกู้คืนประกาศที่ปลดระวางแล้วจะกลับมาเป็นปลดระวาง ไม่ใช่กลับไปแสดงบนหน้าแรก
+`retired_at` แยกจาก `deleted_at` ตั้งใจให้เป็นแบบนี้
+กู้คืนประกาศที่ปลดระวางแล้วจะกลับมาเป็นปลดระวาง ไม่ใช่กลับไปแสดงบนหน้าแรก
 ตารางนี้ถูก seed สองแถวเมื่อตารางว่าง และส่วนที่ seed มี `priority` เป็น `normal` หนึ่งแถวกับ `high` หนึ่งแถว
 
 ## โดเมนแจ้งเตือนและค่าส่วนตัว
@@ -490,7 +495,7 @@ index: `idx_notifications_user_unread_group` (partial), `idx_notifications_user_
 ไม่มี `CHECK` บน `group_type` เพราะกลุ่มจะเพิ่มได้
 index: `uq_notification_prefs_user_group` จำเป็นต่อ `ON CONFLICT (user_id, group_type) DO UPDATE`
 
-การไม่มีแถวหมายถึงเปิด ระบบจึงไม่ต้อง backfill ผู้ใช้เดิม
+การไม่มีแถวหมายถึงเปิด ระบบจึงไม่ต้อง backfill คนที่ใช้อยู่เดิม
 
 ### `push_subscriptions`
 
@@ -509,7 +514,7 @@ index: `uq_notification_prefs_user_group` จำเป็นต่อ `ON CONFLI
 index: `uq_push_subscriptions_endpoint` (unique บน `endpoint` เดี่ยว), `idx_push_subscriptions_user`
 
 unique เป็น `endpoint` เดี่ยว ไม่ใช่คู่กับ `user_id` เพราะ endpoint คือเครื่อง ไม่ใช่คน
-เครื่องที่ใช้ร่วมกันจะถูกยึดกับผู้ใช้ที่ล็อกอินล่าสุด
+เครื่องที่ใช้ร่วมกันจะถูกยึดกับคนที่ล็อกอินล่าสุด
 
 ### `push_outbox`
 
@@ -593,7 +598,7 @@ erDiagram
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP` |
 
 ทุกคอลัมน์ `NOT NULL` เพื่อให้ตรวจย้อนหลังได้ครบ ค่า `-` คือไม่ทราบค่า `-1` คือไม่ระบุห้องหรือตัวตน
-migration 013 เป็นผู้บังคับเงื่อนไขนี้และถอด FK เดิมออก
+migration 013 เป็นคนบังคับเงื่อนไขนี้และถอด FK เดิมออก
 
 index: `idx_audit_logs_action_created`, `idx_audit_logs_user_id`, `idx_audit_logs_entity`, `idx_audit_logs_created_at`
 
@@ -625,9 +630,9 @@ index: `idx_audit_logs_action_created`, `idx_audit_logs_user_id`, `idx_audit_log
 | `idx_push_outbox_pending` | worker ใช้หางานที่ยังไม่จบ |
 
 index ที่เป็น partial unique ทั้งหมดมีเงื่อนไข `WHERE deleted_at IS NULL` หรือเงื่อนไขเฉพาะ
-การเปลี่ยนเป็น unique ธรรมดาจะทำให้การกู้คืนข้อมูลที่ลบแล้วล้มเหลว
+ถ้าเปลี่ยนเป็น unique ธรรมดา การกู้คืนข้อมูลที่ลบแล้วจะล้มเหลว
 
-## ตารางที่ไม่มี FK โดยเจตนา
+## ตารางที่ตั้งใจไม่ใส่ FK
 
 | คอลัมน์ | เหตุผล |
 |---|---|
@@ -645,7 +650,7 @@ index ที่เป็น partial unique ทั้งหมดมีเงื�
 | `trg_notifications_push_outbox` | `migrations/018` และแก้ใน `019` | เพิ่มแถวใน `push_outbox` เมื่อมีแจ้งเตือนใหม่และผู้รับมีอุปกรณ์ |
 | `trg_notifications_stream` | `migrations/020` | ยิง `pg_notify` บน channel `piri_notifications` |
 
-ทั้งสองไม่ได้ mirror ใน `init_db.py` โดยเจตนา เพราะเป็นฟังก์ชันที่ `CREATE OR REPLACE` ได้ง่ายและจะเพี้ยนถ้าอยู่สองที่
+ทั้งสองไม่ได้ mirror ใน `init_db.py` ตั้งใจ เพราะเป็นฟังก์ชันที่ `CREATE OR REPLACE` ได้ง่าย และจะเพี้ยนถ้าอยู่สองที่
 ถ้าจะแก้เงื่อนไขการเข้าคิว ให้อ่าน `019` เป็นหลักเพราะทับของ `018`
 
 ## Soft delete
@@ -704,8 +709,11 @@ index ที่เป็น partial unique ทั้งหมดมีเงื�
 4. เพิ่มตารางใหม่ใน `_TABLES` ของ `backend/tests/conftest.py` เพื่อให้การล้างข้อมูลครบ
 5. รันเทสต์ที่สร้างฐานข้อมูลใหม่ เพราะเทสต์สร้าง schema จาก `init_db` พร้อม migration
 
-การแก้ `init_db.py` อย่างเดียวไม่ทำให้ฐานข้อมูลจริงเปลี่ยน เพราะ `CREATE TABLE IF NOT EXISTS` ไม่แก้อะไร
-การเขียน migration อย่างเดียวไม่ทำให้เทสต์บนฐานข้อมูลใหม่ได้ index ที่ตรงกัน ถ้าลืมใส่บล็อก index
+::: tip แก้ `init_db.py` อย่างเดียวไม่เปลี่ยนฐานข้อมูลจริง
+`CREATE TABLE IF NOT EXISTS` ไม่แก้อะไรถ้าตารางมีอยู่แล้ว — ต้องมี migration คู่กันเสมอ
+และถ้าเพิ่ม index ให้ใส่ทั้งใน migration กับบล็อก index ท้าย `init_db.py` ด้วยชื่อเดียวกัน
+ไม่งั้นเทสต์บนฐานข้อมูลใหม่จะได้ index ไม่ตรงกับ production
+:::
 
 ## ข้อจำกัดและข้อควรระวัง
 
@@ -719,38 +727,38 @@ index ที่เป็น partial unique ทั้งหมดมีเงื�
 - `piri_board_views` ไม่มี soft delete และไม่มี `id`
 - การลบ `academic_years` ที่มีแถวสมาชิกอ้างอยู่จะถูกปฏิเสธด้วย `ON DELETE RESTRICT`
 
-## แก้ไขปัญหาและคำถามที่พบบ่อย
+## ติดปัญหาตรงไหน? ดูวิธีแก้ตรงนี้เลย
 
-**ถาม: เขียน query แล้วได้ error ว่าคอลัมน์ไม่มีอยู่ ทั้งที่เห็นในเอกสารนี้**
-ตอบ: ตรวจว่าเป็นฐานข้อมูลที่ `init_db` รันครบแล้วหรือยัง โดยเฉพาะ `commenter_first_name` ซึ่งมาจาก migration 012
-ให้ตรวจตาราง `schema_migrations` ว่ามี version นั้นอยู่
+**Q: เขียน query แล้วได้ error ว่าคอลัมน์ไม่มีอยู่ ทั้งที่เห็นในเอกสารนี้?**
 
-**ถาม: เพิ่มตารางใน `init_db.py` แล้วฐานข้อมูลจริงไม่เปลี่ยน**
-ตอบ: `CREATE TABLE IF NOT EXISTS` ไม่แก้อะไรถ้าตารางมีอยู่
-ต้องเขียน migration และรันผ่าน `init_db` ตอน backend เริ่ม
+👉 **วิธีแก้:** ตรวจว่าเป็นฐานข้อมูลที่ `init_db` รันครบแล้วหรือยัง โดยเฉพาะ `commenter_first_name` ซึ่งมาจาก migration 012 ให้ดูตาราง `schema_migrations` ว่ามี version นั้นอยู่
 
-**ถาม: เทสต์ผ่านแต่ production ล้มเหลวเรื่อง index**
-ตอบ: มักเกิดจากการสร้าง index ชื่อต่างกันใน migration กับ `init_db`
-ให้ตรวจชื่อให้ตรงกันทุกตัวอักษร แล้วลองรันกับฐานข้อมูลที่มี migration ครบ
+**Q: เพิ่มตารางใน `init_db.py` แล้วฐานข้อมูลจริงไม่เปลี่ยน?**
 
-**ถาม: ลบห้องแล้วข้อมูลนักเรียนหายหมด**
-ตอบ: เป็นพฤติกรรมของ `ON DELETE CASCADE` บน `students.room_id`
-ถ้าต้องการเก็บประวัติ ให้ใช้ soft delete กับห้องแทนการลบจริง
+👉 **วิธีแก้:** `CREATE TABLE IF NOT EXISTS` ไม่แก้อะไรถ้าตารางมีอยู่ ต้องเขียน migration และรันผ่าน `init_db` ตอน backend เริ่ม
 
-**ถาม: ต้องการรายชื่อผู้ใช้ที่เคยทำรายการ แต่ผู้ใช้ถูกลบไปแล้ว**
-ตอบ: ใช้ `audit_logs.actor_identifier` ซึ่งเก็บค่าไว้ตอนเกิดเหตุและไม่มี FK
-ชื่อในตาราง `users` จะหาย แต่รหัสผู้กระทำยังอยู่
+**Q: เทสต์ผ่านแต่ production ล้มเหลวเรื่อง index?**
 
-**ถาม: เพิ่มหมวดกิจกรรมใหม่แล้วบันทึกไม่ผ่าน**
-ตอบ: `events.category` มี CHECK ที่ลิสต์ค่าตายตัว
-ต้องออก migration ลบและสร้าง CHECK ใหม่ พร้อมแก้ schema ของ API และรายการบนหน้าจอ
+👉 **วิธีแก้:** มักมาจากการสร้าง index ชื่อต่างกันใน migration กับ `init_db` ให้ตรวจชื่อให้ตรงกันทุกตัวอักษร แล้วลองรันกับฐานข้อมูลที่มี migration ครบ
 
-**ถาม: ลบประกาศแล้วกู้คืนได้ไหม**
-ตอบ: ได้ถ้าเป็นการลบแบบ soft delete และมี endpoint กู้คืน
-แต่ประกาศที่ถูกปลดระวางก่อนลบจะกลับมาเป็นปลดระวาง ไม่กลับไปแสดงบนหน้าแรก
+**Q: ลบห้องแล้วข้อมูลนักเรียนหายหมด?**
 
-**ถาม: ทำไม `piri_votes` มีแถวซ้ำของผู้ใช้คนเดียวกันได้**
-ตอบ: unique เป็น partial เฉพาะแถวที่ `deleted_at IS NULL`
-เมื่อผู้ใช้ยกเลิกโหวตแล้วโหวตใหม่ ระบบจะสร้างแถวใหม่หรือกู้แถวเดิมตาม service
+👉 **วิธีแก้:** เป็นพฤติกรรมของ `ON DELETE CASCADE` บน `students.room_id` ถ้าต้องการเก็บประวัติ ให้ใช้ soft delete กับห้องแทนการลบจริง
+
+**Q: ต้องการรายชื่อคนที่เคยทำรายการ แต่บัญชีถูกลบไปแล้ว?**
+
+👉 **วิธีแก้:** ใช้ `audit_logs.actor_identifier` ซึ่งเก็บค่าไว้ตอนเกิดเหตุและไม่มี FK ชื่อในตาราง `users` จะหาย แต่รหัสผู้กระทำยังอยู่
+
+**Q: เพิ่มหมวดกิจกรรมใหม่แล้วบันทึกไม่ผ่าน?**
+
+👉 **วิธีแก้:** `events.category` มี CHECK ที่ลิสต์ค่าตายตัว ต้องออก migration ลบและสร้าง CHECK ใหม่ พร้อมแก้ schema ของ API และรายการบนหน้าจอ
+
+**Q: ลบประกาศแล้วกู้คืนได้ไหม?**
+
+👉 **วิธีแก้:** ได้ถ้าเป็นการลบแบบ soft delete และมี endpoint กู้คืน แต่ประกาศที่ถูกปลดระวางก่อนลบจะกลับมาเป็นปลดระวาง ไม่กลับไปแสดงบนหน้าแรก
+
+**Q: ทำไม `piri_votes` มีแถวซ้ำของคนเดียวกันได้?**
+
+👉 **วิธีแก้:** unique เป็น partial เฉพาะแถวที่ `deleted_at IS NULL` เมื่อยกเลิกโหวตแล้วโหวตใหม่ ระบบจะสร้างแถวใหม่หรือกู้แถวเดิมตาม service
 
 บทที่เกี่ยวข้อง: [สถาปัตยกรรมภายใน](architecture-internals.md) · [API Reference](api-reference.md) · [งานเบื้องหลัง การแจ้งเตือน และ push](background-jobs-and-push.md)
