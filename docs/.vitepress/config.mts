@@ -1,9 +1,67 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // ไฟล์นี้อยู่นอก frontend/ จึง import `vitepress` ไม่ได้ (Node จะหา package ไม่เจอ)
 // VitePress รับ config เป็น object ธรรมดาได้ โดยไม่ต้องใช้ defineConfig
 // คู่มือนี้ถูก build ไปที่ frontend/public/docs แล้วฝังในเว็บหลักที่ path /docs/
 const frontendModules = fileURLToPath(new URL('../../frontend/node_modules/', import.meta.url))
+
+/**
+ * อ่านขนาดจริงของไฟล์ WebP จาก header (VP8X / VP8L / VP8)
+ * ใช้แยก "ภาพแคปมือถือ" (สูงกว่ากว้าง) ออกจาก "ภาพแคปเดสก์ท็อป"
+ * เพื่อให้ CSS ย่อเฉพาะภาพแนวตั้ง — ภาพเดสก์ท็อปต้องคงความกว้างไว้ให้อ่านตัวเลขได้
+ */
+function webpSize(file) {
+  let buf
+  try {
+    buf = readFileSync(file)
+  } catch {
+    return null
+  }
+  if (buf.length < 30 || buf.toString('ascii', 0, 4) !== 'RIFF') return null
+  let offset = 12
+  while (offset + 8 <= buf.length) {
+    const tag = buf.toString('ascii', offset, offset + 4)
+    const size = buf.readUInt32LE(offset + 4)
+    if (tag === 'VP8X') {
+      return { width: buf.readUIntLE(offset + 12, 3) + 1, height: buf.readUIntLE(offset + 15, 3) + 1 }
+    }
+    if (tag === 'VP8L') {
+      const bits = buf.readUInt32LE(offset + 9)
+      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 }
+    }
+    if (tag === 'VP8 ') {
+      return {
+        width: buf.readUInt16LE(offset + 14) & 0x3fff,
+        height: buf.readUInt16LE(offset + 16) & 0x3fff,
+      }
+    }
+    offset += 8 + size + (size % 2)
+  }
+  return null
+}
+
+/** ใส่คลาสตามสัดส่วนภาพ เพื่อให้ custom.css ย่อภาพแคปมือถือได้โดยไม่ต้องแก้ markdown 90 จุด */
+function markScreenshotSizes(md) {
+  md.core.ruler.push('screenshot_size', (state) => {
+    for (const block of state.tokens) {
+      if (block.type !== 'inline' || !block.children) continue
+      for (const token of block.children) {
+        if (token.type !== 'image') continue
+        const src = token.attrGet('src')
+        if (!src || /^(?:https?:|data:)/i.test(src)) continue
+        const base = state.env?.path ? path.dirname(state.env.path) : process.cwd()
+        const size = webpSize(path.resolve(base, src))
+        if (!size) continue
+        // แคปมือถือ ≈ 0.46 (780×1688) · แคปเดสก์ท็อป ≈ 0.90 (1520×1688) และ 1.6 (1280×800)
+        // เกณฑ์ 0.75 แยกสองกลุ่มนี้ออกจากกันชัดเจน
+        const portrait = size.width / size.height < 0.75
+        token.attrJoin('class', portrait ? 'shot shot--tall' : 'shot shot--wide')
+      }
+    }
+  })
+}
 
 export default {
   lang: 'th-TH',
@@ -67,6 +125,8 @@ export default {
       }
       md.renderer.rules.text = escape(md.renderer.rules.text)
       md.renderer.rules.code_inline = escape(md.renderer.rules.code_inline)
+
+      markScreenshotSizes(md)
     },
   },
 
