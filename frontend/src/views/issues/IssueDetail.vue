@@ -95,7 +95,7 @@ const canChangeDestination = computed(() => {
 async function handleChangeDestination() {
   if (!issue.value) return
   const { value: dest } = await Swal.fire({
-    title: 'เปลี่ยนผู้รับของเรื่อง',
+    title: 'เปลี่ยนปลายทางของเรื่อง',
     html:
       'เรื่องจะถูกส่งไป<span class="font-semibold">' +
       (issue.value.current_level === 'council' ? 'สภานักเรียน' : 'หัวหน้าห้อง') +
@@ -560,7 +560,7 @@ const secondaryActions = computed<ActionItem[]>(() => {
   if (canChangeDestination.value) {
     list.push({
       key: 'destination',
-      label: 'เปลี่ยนผู้รับ',
+      label: 'เปลี่ยนปลายทางเรื่อง',
       icon: 'bi-arrow-repeat',
       testid: 'change-dest-btn',
       run: handleChangeDestination,
