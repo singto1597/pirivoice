@@ -31,7 +31,28 @@ const props = withDefaults(
 const emit = defineEmits<{ action: [key: string] }>()
 
 const isLink = computed(() => props.item.to !== undefined)
+
+/**
+ * ปลายทางนอก SPA (ตอนนี้มีทางเดียว: `/docs/`) — เรนเดอร์เป็น `<a href>` ธรรมดา
+ *
+ * ⚠️ ถ้าเอา `href` ไปใส่ `RouterLink` ด้วย `to` vue-router จะไม่รู้จัก path นี้แล้วตกไป
+ *    catch-all ⇒ ผู้ใช้กด "คู่มือ" แล้วเด้งออกจากระบบแทนที่จะได้อ่านคู่มือ
+ * ⚠️ **ไม่ใส่ `target="_blank"`** ด้วยเหตุผลเดียวกับ `SchoolSystemsCard`
+ *    (บน PWA รู้สึกเหมือนถูกเตะออก และปุ่มย้อนกลับใช้ไม่ได้ตามที่ผู้ใช้คาด)
+ */
+const isHref = computed(() => props.item.href !== undefined)
+
 const badgeText = computed(() => (props.badge > BADGE_CAP ? `${BADGE_CAP}+` : String(props.badge)))
+
+/** `<component :is>` — ลิงก์ในแอป / ลิงก์ออกนอก SPA / ปุ่มกระทำ */
+const tag = computed(() => (isLink.value ? RouterLink : isHref.value ? 'a' : 'button'))
+
+/** props ของแท็กที่เลือก — แยกมาไว้ที่นี่เพื่อไม่ให้เทมเพลตต้องซ้อน ternary สามชั้น */
+const tagProps = computed(() => {
+  if (props.item.to !== undefined) return { to: props.item.to }
+  if (props.item.href !== undefined) return { href: props.item.href }
+  return { type: 'button' }
+})
 
 /**
  * ⚠️ ต้องเช็ค `props.item.action` ก่อน emit — type เป็น `'logout' | undefined`
@@ -46,8 +67,8 @@ function onClick(): void {
 
 <template>
   <component
-    :is="isLink ? RouterLink : 'button'"
-    v-bind="isLink ? { to: props.item.to } : { type: 'button' }"
+    :is="tag"
+    v-bind="tagProps"
     class="flex h-14 w-full items-center gap-3 rounded-control px-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
     :class="props.active ? 'bg-brand-tint text-brand' : 'text-ink-1 hover:bg-canvas'"
     @click="onClick"
@@ -65,7 +86,7 @@ function onClick(): void {
       {{ badgeText }}
     </span>
     <i
-      v-if="isLink"
+      v-if="isLink || isHref"
       class="bi bi-chevron-right shrink-0 text-xs text-ink-3"
       aria-hidden="true"
     />
