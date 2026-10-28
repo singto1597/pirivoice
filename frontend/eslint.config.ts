@@ -17,7 +17,12 @@ export default defineConfigWithVueTs(
     files: ['**/*.{vue,ts,mts,tsx}'],
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
+  // 📚 `public/docs` คือ **ผลลัพธ์ของ `npm run docs:build`** (VitePress) ไม่ใช่ซอร์สของเรา
+  //    ⇒ ถูก `.gitignore` ไว้แล้ว และต้องไม่ถูก lint
+  //    ⚠️ ลืมบรรทัดนี้แล้ว `npm run lint` จะ **แดงทันทีหลัง build คู่มือ** เพราะ bundle ของ
+  //       VitePress มีคอมโพเนนต์ชื่อ `Content` / `Badge` ที่ผิดกติกา multi-word ของเรา
+  //       (เจอจริง 28 ต.ค. 2026 หลัง deploy คู่มือขึ้น staging — อาการดูเหมือนโค้ดเราเสีย)
+  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/public/docs/**', '../docs/.vitepress/**']),
 
   ...pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
