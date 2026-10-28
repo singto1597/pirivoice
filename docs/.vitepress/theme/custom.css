@@ -711,6 +711,29 @@ body:has(.VPContent.is-home) {
   border-radius: 12px;
 }
 
+/* ภาพหน้าจอ — ย่อให้เห็นทั้งภาพในจอเดียว ไม่ต้องเลื่อนไล่ทีละครึ่งจอ
+   ภาพแคปมือถือ (สูงกว่ากว้าง) ถูกจำกัดความกว้างไว้ที่ราวขนาดจอจริง
+   ภาพแคปเดสก์ท็อป (แดชบอร์ด) คงความกว้างเต็มคอลัมน์เพราะมีตัวเลขให้อ่าน
+   คลาสมาจาก markScreenshotSizes() ใน config.mts ซึ่งวัดขนาดจริงของไฟล์ WebP */
+.vp-doc img {
+  display: block;
+  height: auto;
+  margin: 20px auto 8px;
+  border: 1px solid var(--hc-line);
+  border-radius: 14px;
+  background-color: var(--hc-surface);
+}
+
+.vp-doc img.shot--tall {
+  width: 100%;
+  max-width: 380px;
+}
+
+.vp-doc img.shot--wide {
+  width: 100%;
+  max-width: 100%;
+}
+
 .vp-doc table {
   display: table;
   width: 100%;
