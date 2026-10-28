@@ -20,7 +20,10 @@
   --hc-brand-tint: #fef2f2;
 
   --vp-font-family-base: 'Noto Sans Thai', Tahoma, Arial, system-ui, -apple-system, sans-serif;
-  --vp-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* ต่อท้ายด้วย Noto Sans Thai — ไม่งั้นตัวอักษรไทยในบล็อกโค้ด (รวมผัง mermaid)
+     จะกลายเป็นกล่องสี่เหลี่ยมเพราะฟอนต์ monospace ไม่มีสระ/พยัญชนะไทย */
+  --vp-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Noto Sans Thai',
+    sans-serif;
 
   --vp-c-bg: var(--hc-surface);
   --vp-c-bg-alt: var(--hc-canvas);
