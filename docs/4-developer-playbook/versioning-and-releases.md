@@ -110,6 +110,13 @@ git pull --ff-only
 `release.sh` ไม่ deploy เอง — ใช้ `pull_all.sh` ตามปกติ
 ชื่อ image ยังเป็น commit hash ไม่ใช่เลข SemVer (ดูหัวข้อถัดไป)
 
+> ⚠️ **ถ้า commit ที่จะดึง มาแก้ `pull_all.sh` เอง — ให้ `git fetch && git reset --hard origin/main`
+> ใน clone นั้นก่อน แล้วค่อยรัน `./pull_all.sh`**
+> เพราะ `pull_all.sh` เรียก `git reset --hard` อยู่ข้างใน และ bash อ่านไฟล์สคริปต์แบบ
+> incremental ⇒ ไฟล์ถูกเปลี่ยนใต้มือ แต่ bash อ่านรอบเดิมต่อจนจบ คำสั่งที่แก้ใหม่
+> (เช่น `--build-arg GIT_SHA=...`) **ไม่มีผลเงียบ ๆ** โดย deploy ยังขึ้น `✅` ตามปกติ
+> — ดูรายละเอียดใน `docs/skills.md` ("pull_all.sh ที่อัปเดตตัวเองระหว่างรัน")
+
 ## ทำไม IMAGE_TAG ยังเป็น commit hash
 
 `pull_all.sh` ตั้ง `IMAGE_TAG=$(git rev-parse --short HEAD)` และ compose ใช้
