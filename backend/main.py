@@ -27,6 +27,7 @@ from routers import bookmark_router, me_router
 from routers import event_router
 from routers import home_router
 from routers import public_router
+from routers import version_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -169,6 +170,7 @@ app.include_router(bookmark_router.router, prefix="/api")
 app.include_router(event_router.router, prefix="/api")
 app.include_router(home_router.router, prefix="/api")
 app.include_router(public_router.router, prefix="/api/v1")
+app.include_router(version_router.router, prefix="/api")
 
 
 @app.get("/health", tags=["Health"])

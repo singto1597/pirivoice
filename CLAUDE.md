@@ -53,8 +53,13 @@ cp .env.example .env            # single root .env consumed by everything
 docker stack deploy -c docker-compose.infra.yml ${ENV_NAME}_infra   # Postgres + Redis
 ./pull_all.sh                   # fetch → build images tagged by git commit hash → zero-downtime deploy
 ./oh_shit.sh                    # emergency rollback to previous commit's images
+./release.sh 2.4.0              # CHANGELOG → version files → commit → tag → push → GitHub Release
 ```
 - **Never hardcode/commit real secrets.** `.env` is gitignored; everything reads from the root `.env`.
+- **Versioning:** SemVer `vX.Y.Z` lives in `CHANGELOG.md`, `VERSION`, `backend/core/config.py`
+  (`PROJECT_VERSION`) and `frontend/package.json`. Add entries under `## [Unreleased]` and release
+  with `./release.sh` — docker `IMAGE_TAG` stays the commit hash. Rules:
+  `docs/4-developer-playbook/versioning-and-releases.md` (internal, not published to `/docs/`).
 - `docker-compose.app.yml` runs backend ×3 replicas behind Traefik; frontend ×3 replicas.
 
 ## Architecture

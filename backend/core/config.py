@@ -4,7 +4,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "PIRIvoice API (ระบบรับฟังความคิดเห็นและปัญหาสภานักเรียน)"
-    PROJECT_VERSION: str = "1.0.0"
+    PROJECT_VERSION: str = "2.3.0"
+    # commit ที่ build image นี้ — ส่งมาจาก build arg ใน pull_all.sh / setup.sh
+    # ค่า default "unknown" คือกรณีรัน dev ในเครื่องโดยไม่ build ผ่าน Docker
+    GIT_SHA: str = "unknown"
 
     DATABASE_URL: str
     API_KEY: str
