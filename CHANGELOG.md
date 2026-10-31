@@ -23,22 +23,22 @@
 ## [2.3.0] - 2026-10-31
 ### Added
 
-- `GET /api/version` คืน `{"version": "...", "commit": "..."}` ของ backend ที่กำลังรัน
+- `GET /api/version` คืน `{"version": "...", "commit": "..."}` ของ backend ที่กำลังรัน (#110)
   โดยอ่าน commit จาก build arg `GIT_SHA` ไม่ใช่จาก `.git` ที่ไม่มีใน image
-- แสดงเลขเวอร์ชันของแอปและ backend ไว้ท้ายหน้าตั้งค่า
+- แสดงเลขเวอร์ชันของแอปและ backend ไว้ท้ายหน้าตั้งค่า (#110)
 
 ### Changed
 
-- เริ่มใช้ SemVer + `CHANGELOG.md` + git tag + GitHub Release เป็นมาตรฐานการปล่อยงาน
-- `pull_all.sh` และ `setup.sh` ส่ง `GIT_SHA=${IMAGE_TAG}` เป็น build arg ตอน build backend
+- เริ่มใช้ SemVer + `CHANGELOG.md` + git tag + GitHub Release เป็นมาตรฐานการปล่อยงาน (#110)
+- `pull_all.sh` และ `setup.sh` ส่ง `GIT_SHA=${IMAGE_TAG}` เป็น build arg ตอน build backend (#110)
   (ชื่อ image ยังเป็น commit hash เหมือนเดิม)
 
 ### Added (เครื่องมือและเอกสาร)
 
-- `release.sh <X.Y.Z>` — ตัด `[Unreleased]` ในไฟล์นี้เป็นเวอร์ชันใหม่, sync เลขเวอร์ชัน
+- `release.sh <X.Y.Z>` — ตัด `[Unreleased]` ในไฟล์นี้เป็นเวอร์ชันใหม่, sync เลขเวอร์ชัน (#110)
   ทุกไฟล์, สร้าง annotated tag, push และสร้าง GitHub Release
-- ไฟล์ `VERSION` ที่ root ของ repository
-- บทความ `docs/4-developer-playbook/versioning-and-releases.md`
+- ไฟล์ `VERSION` ที่ root ของ repository (#110)
+- บทความ `docs/4-developer-playbook/versioning-and-releases.md` (#110)
 
 **Migration:** ไม่มี
 
