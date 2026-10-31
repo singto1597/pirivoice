@@ -3274,3 +3274,29 @@
   - 📌 กฎทั่วไป: ทุกครั้งที่ guard ของคุณ `UPDATE ... status='X'` ให้ถามว่า **ใครเป็นคนตั้งกลับ**
     — ถ้าไม่มีคนตั้ง ระบบจะมีสภาพ "ถูกต้องทุกแถว แต่ผิดทั้งระบบ"
 - **Date Added:** 2026-10-24
+
+### 🧩 `pull_all.sh` ที่ "อัปเดตตัวเอง" ระหว่างรัน — bash อ่านไฟล์เดิมต่อ จนคำสั่งที่แก้ใหม่ไม่มีผลเงียบ ๆ
+
+- **Context/Problem:** deploy v2.3.0 ขึ้น staging จาก clone ที่ยังอยู่ commit เก่า (`fc7d188`)
+  · log ขึ้น `✅ อัปเดตเสร็จสมบูรณ์` · image ติด tag ของ commit ใหม่ (`d3fe36b`) ·
+  ไฟล์ `pull_all.sh` บนดิสก์มี `--build-arg GIT_SHA=${IMAGE_TAG}` แล้ว — **แต่**
+  `GET /api/version` ตอบ `{"version":"2.3.0","commit":"unknown"}` และ image
+  (`docker inspect … .Config.Env`) ก็มี `GIT_SHA=unknown` จริง
+- **Root Cause:** `pull_all.sh` เรียก `git reset --hard origin/main` **อยู่ข้างในตัวเอง**
+  และ bash อ่านไฟล์สคริปต์แบบ incremental (ทีละบล็อกตาม offset) ⇒ ไฟล์ถูกเขียนทับ
+  ใต้มือ แต่ process ที่กำลังรันอยู่อ่าน **เวอร์ชันเก่าต่อ** ⇒ บรรทัด `docker build`
+  ที่รันจริงคือเวอร์ชันเก่าที่ไม่มี build arg · ไม่มี error · `IMAGE_TAG` ยังถูกต้อง
+  เพราะอ่านจาก git หลัง reset ⇒ ทุกอย่าง "ดูถูก" ยกเว้นค่าที่เพิ่งแก้
+- **Correct Pattern/Solution:**
+  - **ดึงโค้ดก่อน แล้วค่อยเรียกสคริปต์**: `git fetch && git reset --hard origin/main`
+    ใน clone ปลายทาง → `./pull_all.sh` (หรือรันซ้ำอีกรอบหลัง deploy แรก)
+  - **ตรวจ "ผลลัพธ์" ไม่ใช่ "exit code"**: หลัง deploy ต้องดู
+    `docker inspect <image> --format '{{range .Config.Env}}{{println .}}{{end}}' | grep GIT_SHA`
+    และยิง `/api/version` ว่า `commit` ไม่ใช่ `unknown` — `✅` ของสคริปต์ไม่ได้ยืนยันค่านี้
+  - **แก้แล้วต้อง `docker service update --force`**: ถ้า rebuild image ด้วย tag เดิม
+    (`:d3fe36b`) `docker stack deploy` จะ **ไม่** สร้าง task ใหม่ เพราะ spec ยังชี้
+    image ชื่อเดิม (tag เดียวกัน) ⇒ ต้อง force service ที่ใช้ image นั้น (backend/worker/push_worker)
+    ไม่งั้น container เก่ายังรัน image เก่าต่อไป
+  - 📌 จำง่าย ๆ: **สคริปต์ที่เปลี่ยนไฟล์ตัวเองระหว่างรัน = สคริปต์ที่รันเวอร์ชันเก่าเสมอ**
+    (หลักเดียวกับ "อย่าแก้ script ใน `ops/scripts/` ขณะ job รันอยู่")
+- **Date Added:** 2026-10-31
