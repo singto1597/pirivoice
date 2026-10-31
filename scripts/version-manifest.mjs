@@ -140,9 +140,16 @@ for (const [i, r] of rows.entries()) {
 for (let i = 1; i < rows.length; i++) {
   const a = rows[i - 1];
   const b = rows[i];
+  let aFull;
+  let bFull;
   try {
-    const aFull = resolveCut(a);
-    const bFull = resolveCut(b);
+    aFull = resolveCut(a);
+    bFull = resolveCut(b);
+  } catch {
+    // cut/tag ที่ resolve ไม่ได้ถูกฟ้องเป็นรายแถวไปแล้ว — อย่าเพิ่ม error ที่ทำให้สับสน
+    continue;
+  }
+  try {
     git('merge-base', '--is-ancestor', aFull, bFull);
   } catch {
     fail(`ความต่อเนื่อง: ${a.version} (${a.cut}) ไม่ใช่ ancestor ของ ${b.version} (${b.cut})`);
