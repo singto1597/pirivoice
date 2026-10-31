@@ -2,6 +2,7 @@
 
 เล่มนี้คือแผนที่โค้ด PIRIvoice สำหรับคนที่จะแก้ระบบต่อ — ทุกบทชี้ไฟล์จริงที่ใช้ตัดสินพฤติกรรม ไม่ได้สรุปจากความจำ
 
+- 🏛️ **ภาพรวมสถาปัตยกรรม** — ระบบประกอบจากอะไร และทุกส่วนต่อกันอย่างไร ดู [SAD](SYSTEM_ARCHITECTURE.md)
 - 🗺️ **เส้นทางของคำขอ** — จาก TCP ถึงแถวในฐานข้อมูล ผ่านชั้นไหนบ้าง
 - 🔐 **ตัวตนและสิทธิ์** — ใครทำอะไรได้ และเห็นข้อมูลกว้างแค่ไหน
 - 🚀 **ขึ้นระบบ** — เทสต์ สร้าง image และ deploy ทำยังไง
@@ -20,6 +21,7 @@
 
 | ถ้าต้องการ... | อ่านบท |
 |---|---|
+| **เข้าใจระบบทั้งก้อนในครั้งเดียว** — stack, request flow, แผนภาพ, โครงสร้างโฟลเดอร์, ฐานข้อมูล, auth, deploy | [**System Architecture Document (SAD)**](SYSTEM_ARCHITECTURE.md) |
 | เข้าใจว่า request วิ่งผ่านชั้นใด และทำไมห้ามเขียน SQL ใน router | [สถาปัตยกรรมภายใน](architecture-internals.md) |
 | เพิ่มหรือแก้อุปกรณ์ยืนยันตัวตน สิทธิ์ และขอบเขตข้อมูล | [การยืนยันตัวตนและสิทธิ์](auth-and-rbac.md) |
 | รู้ว่าตารางใดมีคอลัมน์ใด และ index ใดห้ามลบ | [โครงสร้างฐานข้อมูล](database-schema.md) |
@@ -51,9 +53,9 @@
 backend/
   main.py             สร้าง pool, init_db, seed, เปิด SSE hub, middleware, mount router
   core/               config · rbac · dependencies · logger · init_db · queues
-  routers/            HTTP ชั้นบาง 16 ไฟล์
+  routers/            HTTP ชั้นบาง 17 ไฟล์
   services/           business logic + raw SQL 21 ไฟล์
-  models/             Pydantic schema 17 ไฟล์
+  models/             Pydantic schema 18 ไฟล์
   workers/            ARQ import worker และ push worker
   migrations/         001–029
   tests/              pytest integration tests
@@ -101,6 +103,6 @@ frontend/src/
 
 **Q: ระบบนี้มี CI หรือไม่?**
 
-👉 **วิธีแก้:** ไม่มี pipeline อัตโนมัติบน GitHub ด่านทั้งหมดรันบนเครื่องก่อน push และ deploy ทำด้วยสคริปต์ที่ root ของ repo
+👉 **วิธีแก้:** มี CI ตัวเดียวคือ **`ci-version`** (`.github/workflows/ci-version.yml`) — ตรวจว่าเลขเวอร์ชัน, `CHANGELOG.md`, tag และ `scripts/version-manifest.tsv` ตรงกัน และสคริปต์ deploy ผ่าน `bash -n` เท่านั้น **ไม่ build และไม่ deploy** ด่านเทสต์/บิลด์ยังรันบนเครื่องก่อน push ตามเดิม deploy ทำด้วยสคริปต์ที่ root ของ repo
 
 บทที่เกี่ยวข้อง: [สถาปัตยกรรมภายใน](architecture-internals.md) · [การยืนยันตัวตนและสิทธิ์](auth-and-rbac.md) · [การทดสอบและการนำขึ้นระบบ](testing-and-deployment.md)

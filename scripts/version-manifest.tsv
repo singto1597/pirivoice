@@ -1,0 +1,40 @@
+# version	date	cut	bump	theme	refs
+# cut = commit ที่ tag ชี้ไป (ตัวที่ build image และ deploy จริง)
+# bump = major | minor | patch
+# refs = PR #a-#b หรือ main — ใช้ตรวจว่า PR ที่ merge แล้วถูกนับครบพอดีครั้งเดียว
+0.1.0	2026-08-08	1557490	minor	ตั้งโครง monorepo	main
+0.2.0	2026-08-16	af06924	minor	3 หมวด + RBAC ตามระดับชั้น	PR #1
+0.3.0	2026-08-17	d6a80b8	minor	Dashboard 3 หมวด + scope ครู	PR #2-#3
+0.4.0	2026-08-17	fe6f827	minor	นำเข้า Excel ผ่านคิว ARQ	PR #4-#7
+0.5.0	2026-08-17	a39ce42	minor	Rebrand เป็น PIRIvoice	PR #8
+0.6.0	2026-08-18	33d86a5	minor	setup.sh + Traefik + seed users	PR #9-#12
+1.0.0	2026-08-23	47492f0	major	Go-Live production	main
+1.1.0	2026-08-23	e6b1965	minor	สถานะถูกปัดตก	PR #13
+1.2.0	2026-08-26	1338520	minor	แก้ไขเรื่อง + คอมเมนต์ + ค้นหา	PR #14-#15
+1.3.0	2026-08-27	ddeb008	minor	ระดับสูงรับเรื่องแทน	PR #16
+1.4.0	2026-08-27	5e49e57	minor	Dashboard สภา + Audit	PR #17
+1.5.0	2026-08-29	68de186	minor	PIRI Boards + เปลี่ยนปลายทาง	PR #18-#19
+1.6.0	2026-08-31	743c28f	minor	แจ้งเตือนในแอป + Badge	PR #20
+1.7.0	2026-08-31	a636526	minor	P.R. Playbooks + Git LFS	PR #21
+1.8.0	2026-09-02	7d4a4fd	minor	Landing + Public stats	main
+1.9.0	2026-09-02	01a3061	minor	iOS shell + Home + summary API	PR #22-#23
+1.10.0	2026-09-05	9f6a300	minor	Editorial & Civic design system	PR #24
+1.11.0	2026-09-08	be3ad9a	minor	ผู้ช่วยหัวหน้าระดับ + User Management	PR #25-#28
+1.12.0	2026-09-26	adbeb2f	minor	Audit ครบ + IP จริง	main
+1.13.0	2026-09-28	29c2e2a	minor	ประกาศโรงเรียน	PR #29-#33
+1.14.0	2026-09-28	021d51a	minor	ตั้งค่าการแจ้งเตือนรายกลุ่ม	PR #34-#36
+1.15.0	2026-09-28	1a370a6	minor	ภาคเรียน + PWA	PR #37-#46
+1.16.0	2026-09-29	bd3f027	minor	Web Push + outbox	PR #47-#49
+1.17.0	2026-09-29	459c695	minor	SSE + Badge realtime	PR #50-#51
+1.18.0	2026-09-29	8774d26	minor	กิจกรรมของฉัน + Suggestion	PR #52-#54
+1.19.0	2026-09-29	9a88cbb	minor	Deep Link + Quiet Hours	PR #55-#57
+1.20.0	2026-09-30	105d8f3	minor	ระบบกิจกรรม	PR #58-#64
+1.21.0	2026-10-01	2f218e5	minor	UX R0-R1	PR #65-#69
+1.22.0	2026-10-01	423b2d3	minor	UX R2-R3	PR #70-#79
+1.23.0	2026-10-01	de4ea79	minor	UX R4-R6	main
+1.24.0	2026-10-03	c876809	minor	Home shortcuts + empty collapse	PR #80-#82
+2.0.0	2026-10-21	eb023dc	major	แกนปีการศึกษา + เลื่อนชั้น	PR #83-#90
+2.1.0	2026-10-24	9f99483	minor	ย้ายห้อง UX ใหม่ + ถอดออกจากห้อง	PR #91
+2.1.1	2026-10-24	2f73c42	patch	Fix moved[].id	PR #92
+2.2.0	2026-10-28	fc7d188	minor	คู่มือ 4 เล่ม + /docs/	PR #93-#109
+2.3.0	2026-10-31	d3fe36b	minor	SemVer + /api/version	PR #110
