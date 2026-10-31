@@ -80,10 +80,11 @@ new = (
     + text[m.end() :]
 )
 
-old_link = f"[Unreleased]: https://github.com/{slug}/compare/v{prev}...HEAD"
+# `prev` เป็น tag เต็มอยู่แล้ว (v2.2.0) — อย่าเติม v ซ้ำ
+old_link = f"[Unreleased]: https://github.com/{slug}/compare/{prev}...HEAD"
 new_link = (
     f"[Unreleased]: https://github.com/{slug}/compare/v{version}...HEAD\n"
-    f"[{version}]: https://github.com/{slug}/compare/v{prev}...v{version}"
+    f"[{version}]: https://github.com/{slug}/compare/{prev}...v{version}"
 )
 if old_link not in new:
     sys.exit(f"ไม่พบ compare link ของ [Unreleased] ที่ชี้ {prev} — ตรวจท้าย CHANGELOG.md")
