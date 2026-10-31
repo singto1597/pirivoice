@@ -14,6 +14,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- บันทึกกับดัก "สคริปต์อ่านไฟล์เดิมระหว่างรัน" ลง `docs/skills.md` กับเอกสาร versioning —
+  ถ้า commit ที่ deploy แก้ `pull_all.sh` เอง ต้อง pull ก่อนเรียกสคริปต์ ไม่งั้น build arg
+  ใหม่ (เช่น `GIT_SHA`) ไม่มีผลและ deploy ยังขึ้น `✅` (#111)
+
 ## [2.3.0] - 2026-10-31
 ### Added
 
