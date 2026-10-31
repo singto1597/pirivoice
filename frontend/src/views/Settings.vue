@@ -20,6 +20,7 @@ import { ref, onMounted, computed } from 'vue'
 import Swal from 'sweetalert2'
 import { BRAND } from '@/constants/brand'
 import { getNotificationPreferences, updateNotificationPreferences } from '@/services/notification'
+import { getVersion } from '@/services/version'
 import { PREFERENCE_GROUPS, GROUP_DESCRIPTIONS, type NotificationGroup } from '@/types/notification'
 import PushSettingsCard from '@/components/PushSettingsCard.vue'
 import QuietHoursCard from '@/components/QuietHoursCard.vue'
@@ -145,6 +146,21 @@ async function toggleGroup(group: NotificationGroup) {
     savingGroup.value = null
   }
 }
+
+// ===== 🔢 เวอร์ชัน =====
+// `__APP_VERSION__` ถูก Vite `define` แทนค่าตอน build — **ต้องอ่านใส่ const ที่นี่**
+// ถ้าเขียนใน template ตรง ๆ Vue จะคอมไพล์เป็น `_ctx.__APP_VERSION__` แล้ว build แตก
+const appVersion = __APP_VERSION__
+const backendCommit = ref('')
+
+onMounted(async () => {
+  try {
+    // แสดง commit ของ backend ที่กำลังตอบอยู่ — ถ้า API ล่มก็ยังเหลือเลขเวอร์ชันของแอป
+    backendCommit.value = (await getVersion()).commit
+  } catch {
+    backendCommit.value = ''
+  }
+})
 </script>
 
 <template>
@@ -371,5 +387,11 @@ async function toggleGroup(group: NotificationGroup) {
         <i class="bi bi-chevron-right shrink-0 text-ink-3" aria-hidden="true" />
       </RouterLink>
     </AppCard>
+
+    <!-- 🔢 เวอร์ชัน — บรรทัดเดียว บางพอไม่แย่งความสนใจ -->
+    <p class="pt-2 text-center text-xs text-ink-3">
+      PIRIvoice · v{{ appVersion }}
+      <template v-if="backendCommit"> · backend {{ backendCommit }}</template>
+    </p>
   </div>
 </template>

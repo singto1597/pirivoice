@@ -33,6 +33,12 @@ USER appuser
 # คัดลอก Source Code ทั้งหมดเข้าสู่ Container
 COPY --chown=appuser:appuser . .
 
+# commit ที่ build image นี้ — pull_all.sh / setup.sh ส่ง IMAGE_TAG เข้ามา
+# วางหลัง COPY เพื่อไม่ให้ทุก commit ทำให้ชั้น apt/pip ข้างบน cache แตก
+# worker / push_worker ใช้ image เดียวกันจึงได้ค่านี้ไปด้วยโดยไม่ต้องแก้ compose
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 # กำหนด Port ที่ Container จะเปิดรับการเชื่อมต่อ
 EXPOSE 8000
 

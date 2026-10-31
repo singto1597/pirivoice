@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
@@ -25,6 +26,18 @@ function buildId(): string {
   }
 }
 
+/**
+ * เลขเวอร์ชันของแอป — อ่านจาก `package.json` ซึ่ง `release.sh` เป็นคน sync
+ * ใช้ `readFileSync` ไม่ใช่ `import pkg from './package.json'` เพราะ tsconfig
+ * ของ config ไม่ได้เปิด `resolveJsonModule`
+ *
+ * ⚠️ ไม่ใช้ `__BUILD_ID__` แทนค่านี้ — build context ของ frontend คือ `./frontend`
+ *    ที่ไม่มี `.git` ⇒ ใน Docker มันตกไปคืน `Date.now()` ไม่ใช่ commit SHA
+ */
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
+) as { version: string }
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -34,6 +47,7 @@ export default defineConfig({
   ],
   define: {
     __BUILD_ID__: JSON.stringify(buildId()),
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   resolve: {
     alias: {

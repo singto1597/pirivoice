@@ -28,6 +28,7 @@
 | สร้างหน้าจอใหม่ให้เข้ากับระบบเดิม | [มาตรฐาน UI/UX](ui-ux-design-standards.md) |
 | ตรวจว่าการแก้โค้ดผ่านกฎของโปรเจกต์ | [มาตรฐานการเขียนโค้ด](coding-standards-rules.md) |
 | รันเทสต์ สร้าง image และ deploy | [การทดสอบและการนำขึ้นระบบ](testing-and-deployment.md) |
+| bump เลขเวอร์ชันและปล่อยงาน (tag + GitHub Release) | [เวอร์ชันและการปล่อยงาน](versioning-and-releases.md) |
 | รู้ว่าเอกสารเดิมผิดตรงไหน | [ข้อขัดแย้งระหว่างเอกสารเดิมกับโค้ด](known-discrepancies.md) |
 
 ## ก่อนแก้โค้ดอะไรก็ตาม

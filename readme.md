@@ -7,6 +7,9 @@
 
 ออกแบบด้วยสถาปัตยกรรม **Microservices & Monorepo** รองรับการ Deploy ด้วย Docker Swarm และ Traefik
 
+เวอร์ชันปัจจุบันดูที่ [`VERSION`](VERSION) · ประวัติทุกเวอร์ชันอยู่ที่ [`CHANGELOG.md`](CHANGELOG.md)
+(รูปแบบ [SemVer](https://semver.org/lang/th/) — ปล่อยงานด้วย `./release.sh X.Y.Z`)
+
 ## 📂 โครงสร้างโปรเจกต์ (Monorepo Architecture)
 
 - `backend/` : FastAPI (Python 3.12+ / asyncpg) - จัดการ Database, Business Logic และ API กลาง

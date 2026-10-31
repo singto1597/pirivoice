@@ -187,7 +187,9 @@ if [ "$NO_BUILD" = "1" ]; then
     yellow "   ⏭️  (--no-build) ข้าม Build — ใช้ image ที่มีอยู่: ${BACKEND_IMG}:${IMAGE_TAG}, ${FRONTEND_IMG}:${IMAGE_TAG}"
 else
     echo "   🔨 Build $BACKEND_IMG ..."
-    docker build -t "${BACKEND_IMG}:${IMAGE_TAG}" ./backend
+    docker build \
+        --build-arg GIT_SHA="${IMAGE_TAG}" \
+        -t "${BACKEND_IMG}:${IMAGE_TAG}" ./backend
 
     echo "   🔨 Build $FRONTEND_IMG (VITE_API_BASE_URL=$VITE_API_BASE_URL) ..."
     # VITE_API_BASE_URL เป็น build-arg → เปลี่ยนค่าแล้ว layer cache หักเอง ไม่ต้อง --no-cache
