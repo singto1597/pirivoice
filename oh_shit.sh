@@ -1,4 +1,7 @@
 #!/bin/bash
+# ⚠️ LEGACY — ใช้ ./rollback.sh <image-tag> แทน
+# สคริปต์นี้ทำ `git reset --hard HEAD~1` ซึ่งเขียนประวัติ checkout ทิ้ง
+# และไม่ตรวจว่า image ของ commit นั้นยังอยู่ — rollback.sh สลับ image โดยไม่แตะ git
 echo "🚨 เริ่มกระบวนการกู้ภัยฉุกเฉิน (Rollback)!"
 
 # 1. โหลดตัวแปรจาก .env

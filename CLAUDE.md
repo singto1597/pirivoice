@@ -52,13 +52,17 @@ npm run test:e2e     # playwright (browsers must be installed first: npx playwri
 cp .env.example .env            # single root .env consumed by everything
 docker stack deploy -c docker-compose.infra.yml ${ENV_NAME}_infra   # Postgres + Redis
 ./pull_all.sh                   # fetch → build images tagged by git commit hash → zero-downtime deploy
-./oh_shit.sh                    # emergency rollback to previous commit's images
-./release.sh 2.4.0              # CHANGELOG → version files → commit → tag → push → GitHub Release
+./rollback.sh <image-tag>       # switch the stack back to an existing image — does NOT touch git
+./release.sh 2.4.0 --dry-run    # check every gate + show the diff, write nothing
+./release.sh 2.4.0              # version manifest → CHANGELOG → version files → commit → tag → push → GitHub Release
 ```
 - **Never hardcode/commit real secrets.** `.env` is gitignored; everything reads from the root `.env`.
 - **Versioning:** SemVer `vX.Y.Z` lives in `CHANGELOG.md`, `VERSION`, `backend/core/config.py`
-  (`PROJECT_VERSION`) and `frontend/package.json`. Add entries under `## [Unreleased]` and release
-  with `./release.sh` — docker `IMAGE_TAG` stays the commit hash. Rules:
+  (`PROJECT_VERSION`), `frontend/package.json`/`package-lock.json` and `scripts/version-manifest.tsv`
+  (validated by `node scripts/version-manifest.mjs` + `.github/workflows/ci-version.yml`). Add a
+  narrative entry under `## [Unreleased] — <title>` (six headings, `**Migration:**` line) and release
+  with `./release.sh` — docker `IMAGE_TAG` stays the commit hash. MAJOR = the system's way of
+  thinking changed (bump immediately). Rules:
   `docs/4-developer-playbook/versioning-and-releases.md` (internal, not published to `/docs/`).
 - `docker-compose.app.yml` runs backend ×3 replicas behind Traefik; frontend ×3 replicas.
 

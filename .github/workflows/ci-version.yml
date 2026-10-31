@@ -1,0 +1,48 @@
+name: ci-version
+
+# ด่านตรวจประวัติเวอร์ชัน — ไม่ build ไม่ deploy แค่ตอบว่า "ประวัติยังเชื่อถือได้ไหม"
+#
+# ตรวจ:
+#   - VERSION = PROJECT_VERSION = package.json = package-lock.json (ทั้ง 2 ช่อง)
+#   - manifest ทุกแถวมี cut commit จริง เป็น ancestor ของ HEAD และตรงกับ tag
+#   - tag ทุกตัวเป็น annotated tag และเรียงต่อกันตามลำดับ
+#   - CHANGELOG มีหัวข้อของทุกเวอร์ชัน พร้อมวันที่และบรรทัด **Migration:**
+#   - PR ที่ merge แล้วถูกนับใน refs พอดีครั้งเดียว
+#   - สคริปต์ release/rollback/pull_all ผ่าน bash -n
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-version-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  version-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 + tags จำเป็น — validator ตรวจ ancestry ของ cut commit และเทียบ tag
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: ตรวจ version manifest + CHANGELOG + ไฟล์เลขเวอร์ชัน
+        run: node scripts/version-manifest.mjs
+
+      - name: ตรวจ syntax สคริปต์ deploy
+        run: |
+          bash -n release.sh
+          bash -n rollback.sh
+          bash -n pull_all.sh

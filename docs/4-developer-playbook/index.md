@@ -103,6 +103,6 @@ frontend/src/
 
 **Q: ระบบนี้มี CI หรือไม่?**
 
-👉 **วิธีแก้:** ไม่มี pipeline อัตโนมัติบน GitHub ด่านทั้งหมดรันบนเครื่องก่อน push และ deploy ทำด้วยสคริปต์ที่ root ของ repo
+👉 **วิธีแก้:** มี CI ตัวเดียวคือ **`ci-version`** (`.github/workflows/ci-version.yml`) — ตรวจว่าเลขเวอร์ชัน, `CHANGELOG.md`, tag และ `scripts/version-manifest.tsv` ตรงกัน และสคริปต์ deploy ผ่าน `bash -n` เท่านั้น **ไม่ build และไม่ deploy** ด่านเทสต์/บิลด์ยังรันบนเครื่องก่อน push ตามเดิม deploy ทำด้วยสคริปต์ที่ root ของ repo
 
 บทที่เกี่ยวข้อง: [สถาปัตยกรรมภายใน](architecture-internals.md) · [การยืนยันตัวตนและสิทธิ์](auth-and-rbac.md) · [การทดสอบและการนำขึ้นระบบ](testing-and-deployment.md)
