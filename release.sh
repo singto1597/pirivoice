@@ -299,8 +299,9 @@ if [ "$IS_RC" = "0" ]; then
 fi
 
 step "push main + tag"
-git push origin main
-git push origin "v$VERSION"
+# push พร้อมกันในคำสั่งเดียว — ถ้าแยกสองรอบ CI อาจ checkout main ทันที
+# ก่อน tag ขึ้น แล้ว validator ฟ้อง "ไม่พบ tag vX.Y.Z"
+git push origin main "v$VERSION"
 ok "push แล้ว"
 
 # ---------- 7. GitHub Release ----------
