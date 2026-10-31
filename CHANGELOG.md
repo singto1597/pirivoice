@@ -127,7 +127,9 @@ commit แรก `1557490` 8 ส.ค. 2026 — Initial commit 99 ไฟล์ 15
 
 ---
 
-## [Unreleased] — ทำให้ประวัติเชื่อถือได้: SAD, dry-run, rollback, CI
+## [Unreleased] — ยังไม่ตัดเวอร์ชัน
+
+## [2.4.0] — 2026-10-31 — ทำให้ประวัติเชื่อถือได้: SAD, dry-run, rollback, CI
 
 **บริบท ณ ตอนนั้น** — หลัง v2.3.0 ระบบมีเลขเวอร์ชันแล้ว แต่ประวัติ 35 เวอร์ชันก่อนหน้า
 ยังเป็นรายการ Added/Changed/Fixed ที่อ่านแล้วไม่รู้ว่า "ทำไม" กับ "เจออะไร"
@@ -1227,7 +1229,8 @@ backend เป็นเจ้าของฐานข้อมูลแต่เ
 
 ---
 
-[Unreleased]: https://github.com/singto1597/pirivoice/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/singto1597/pirivoice/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/singto1597/pirivoice/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/singto1597/pirivoice/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/singto1597/pirivoice/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/singto1597/pirivoice/compare/v2.1.0...v2.1.1

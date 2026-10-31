@@ -38,3 +38,4 @@
 2.1.1	2026-10-24	2f73c42	patch	Fix moved[].id	PR #92
 2.2.0	2026-10-28	fc7d188	minor	คู่มือ 4 เล่ม + /docs/	PR #93-#109
 2.3.0	2026-10-31	d3fe36b	minor	SemVer + /api/version	PR #110
+2.4.0	2026-10-31	RELEASE	minor	ทำให้ประวัติเชื่อถือได้: SAD, dry-run, rollback, CI	PR #111-#112
