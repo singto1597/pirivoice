@@ -3352,3 +3352,36 @@
     (`/api/issues/3/resolve` → `issues`) — เทียบ **segment เต็ม** ไม่ใช่ `startsWith`
   - cache key = token + url + stable-stringified params ⇒ ล้างทั้งชุดตอน login/logout/401
 - **Date Added:** 2026-11-04
+
+### 🔑 ตาราง audit ที่โตตลอดเวลา — `OFFSET` ทำให้หน้าถัดไป "เห็นซ้ำ/ข้าม" และ `created_at` เดียวตัดสินลำดับไม่ได้
+
+- **Context/Problem:** หน้า "บันทึกการใช้งาน" เดิมแบ่งหน้าด้วย `limit/offset` + `COUNT(*) OVER()`
+  ของตาราง `audit_logs` ที่มีแถวใหม่แทรกหัวทุก request (login / read / create ทุกครั้ง)
+  ⇒ พอผู้ใช้กด "หน้าถัดไป" แถวที่เพิ่งแทรกทำให้ตำแหน่งเลื่อน ⇒ เห็นรายการซ้ำหรือหลุดไปเลย
+  และ `total/pages` ที่คำนวณไว้ก็ผิดทันทีที่ query จบ
+- **Root Cause / กับดักที่เจอจริง:**
+  - **`OFFSET n` ไม่ใช่ "n แถวแรกที่ข้าม" ของชุดผลลัพธ์ที่นิ่ง** — มันคือ "ข้าม n แถว
+    ตามลำดับ ณ ตอนรัน" ⇒ ตารางที่แถวใหม่แทรกหัว (DESC) = ทุกหน้าถัดไปเลื่อน
+  - **`created_at` อย่างเดียวใช้เป็น cursor ไม่ได้**: `CURRENT_TIMESTAMP` ใน PostgreSQL
+    คือ **เวลาเริ่ม transaction** ⇒ หลายแถวที่เขียนใน transaction เดียวกันมีค่าเท่ากันเป๊ะ
+    ⇒ เงื่อนไข `created_at < $1` ตัดแถวที่เหลือของกลุ่มทิ้งทั้งกลุ่ม (หายเป็นช่วง ๆ)
+    ต้องใช้ **`(created_at, id) < ($1, $2)`** โดย `id` เป็น UUID (หรือคีย์ที่ไม่เปลี่ยน)
+  - **index ต้องเป็น composite ตามลำดับเดียวกับ ORDER BY** — `(created_at)` เดี่ยว ๆ
+    ไม่ช่วย tie-break · ต้องมี `(created_at DESC, id DESC)` ไม่งั้นทุกหน้าจะ seq scan
+  - **`jsonb` คืนเป็น object/array ไม่แน่นอน** ⇒ schema ห้ามประกาศ `dict` (array จะทำ
+    response validation ล้มทั้งหน้า) ใช้ `Any` แล้วปล่อยให้ UI ทนรูปทรง
+  - **cursor ต้องถอดไม่สำเร็จแล้วได้ 400 ไม่ใช่ 500** — ค่าที่พิมพ์มือ/ถูกตัดขาดเป็นเรื่องปกติ
+- **Correct Pattern/Solution:**
+  - query: `ORDER BY created_at DESC, id DESC LIMIT limit+1` · `has_more = len(rows) > limit`
+    · `next_cursor = base64(isoformat|id)` ของแถวสุดท้าย **เฉพาะเมื่อ has_more**
+  - หน้าถัดไป: `WHERE (created_at, id) < ($n::timestamptz, $m::uuid)` — ใช้ cursor ตรง ๆ
+    จาก backend เท่านั้น ห้ามคำนวณเอง · เปลี่ยนตัวกรอง = ทิ้ง cursor (เริ่มหน้าแรก)
+  - index: `CREATE INDEX ... ON audit_logs (created_at DESC, id DESC)` และ **mirror ใน
+    `init_db.py`** ด้วย (fresh DB ต้องได้เหมือน DB จริง)
+  - ฝั่ง Vue: ต่อท้ายด้วย `items = [...items, ...res.items]` + `loadSeq` ทิ้ง response
+    ของคำขอที่เก่ากว่า (ผู้ใช้เปลี่ยน dropdown รัว ๆ ได้) · endpoint ที่ต้องสดใช้ `noCache`
+  - dropdown ของตัวกรองใช้ **`DISTINCT` จากข้อมูลจริง 90 วันล่าสุด** (`/options`)
+    ไม่ใช่ค่าที่เดาจากโค้ด — และกรอง sentinel `'-'` ออกก่อนส่ง
+  - เทสต์ที่จำเป็น: (1) แถว `created_at` เท่ากัน 5 แถว + `limit=2` ต้องได้ครบ 3 หน้า
+    ไม่ซ้ำไม่หลุด (2) แทรกแถวใหม่ระหว่างอ่านหน้าถัดไปต้องไม่เห็นซ้ำ (3) cursor เสีย → 400
+- **Date Added:** 2026-11-04

@@ -118,7 +118,15 @@
 
 | Method | Path | เงื่อนไข | คำขอ | คำตอบ |
 |---|---|---|---|---|
-| GET | `/api/audit-logs` | `VIEW_AUDIT_LOG` | query: `action`, `entity_type`, `user_id`, `status`, `start_date`, `end_date`, `page`, `page_size` | `AuditLogListOut` |
+| GET | `/api/audit-logs` | `VIEW_AUDIT_LOG` + scope `super`/`all` | query: `service_name`, `action`, `entity_type`, `entity_id`, `status`, `q`, `date_from`, `date_to` (YYYY-MM-DD เวลาไทย), `limit` (1–100, ค่าเริ่มต้น 30), `cursor` | `AuditLogPage` (`items`, `next_cursor`, `has_more`) |
+| GET | `/api/audit-logs/options` | เหมือนรายการ | — | `AuditLogOptions` (`service_names`, `actions`, `statuses`, `entity_types` — ค่าจริง 90 วันล่าสุด) |
+
+- **หน้าใช้ keyset ไม่ใช่ offset/total** — `audit_logs` มีแถวใหม่แทรกหัวตลอดเวลา ⇒ `OFFSET`
+  ทำให้หน้าถัดไปเห็นซ้ำ/ข้าม · ส่ง `next_cursor` กลับมาเป็น `cursor` ของคำขอถัดไปเท่านั้น
+- `cursor` ที่ไม่ถูกต้องได้ **400** (ไม่ใช่ 500) — ไม่ใช่ค่าที่ควรคำนวณเองฝั่ง client
+- `date_from`/`date_to` ตีความเป็น **วันตามเวลาไทย** (`created_at AT TIME ZONE 'Asia/Bangkok'`)
+- `q` ค้นใน `actor_identifier`, `endpoint_or_command`, `entity_id`, `error_detail` (ไม่ค้น JSON)
+- `actor_name` มาจาก `users.full_name` (null ถ้าไม่รู้จักผู้ใช้) — หน้าเว็บใช้ชื่อนี้เป็นป้ายหลัก
 
 ### บอร์ด · `/api/boards`
 

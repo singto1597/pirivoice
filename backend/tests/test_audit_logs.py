@@ -1,6 +1,8 @@
 # === Audit Logs Tests: เก็บทุก action (login / create / accept / escalate / resolve / cancel / reject / read) + API ดู ===
 import json
 import random
+from datetime import datetime, timezone
+
 import pytest
 import pytest_asyncio
 
@@ -310,7 +312,33 @@ async def test_trace_id_response_header_matches_audit_row(client, db_pool, audit
     assert row["trace_id"] == trace_id, "trace_id ใน DB ต้องตรงกับ header ที่ตอบกลับ"
 
 
-# === Section 4: GET /api/audit-logs (RBAC + filter + pagination) ===
+# === Section 4: GET /api/audit-logs (RBAC + filter + keyset pagination) ===
+async def _seed_rows(db_pool, *, service_name: str, count: int,
+                     created_at: datetime | None = None, action: str = "SEED"):
+    """แทรกแถว audit ตรง ๆ (ข้าม HTTP) — เพื่อคุม `created_at` ให้เท่ากันเป๊ะได้
+
+    จำเป็นเพราะ keyset มีสองคีย์: ถ้าเทสต์ผ่าน HTTP อย่างเดียว `created_at` จะต่างกันทุกแถว
+    แล้วจะไม่มีทางพิสูจน์ว่าการตัดสินลำดับด้วย `id` ทำงาน
+    """
+    ids = []
+    async with db_pool.acquire() as conn:
+        for _ in range(count):
+            ids.append(await conn.fetchval(
+                """
+                INSERT INTO audit_logs
+                    (actor_identifier, client_source, service_name, action,
+                     entity_type, entity_id, status, old_values, new_values,
+                     endpoint_or_command, ip_address, user_agent, execution_time_ms, created_at)
+                VALUES ('tester', 'web', $1, $2, 'issue', '-', 'success',
+                        '{}'::jsonb, '{}'::jsonb, 'GET /seed', '127.0.0.1', 'pytest', 1,
+                        COALESCE($3, CURRENT_TIMESTAMP))
+                RETURNING id
+                """,
+                service_name, action, created_at,
+            ))
+    return ids
+
+
 @pytest.mark.asyncio
 async def test_audit_logs_endpoint_access(client, db_pool, audit_world):
     """admin ดูได้ 200; ครู/สภานักเรียน/หัวหน้าห้อง → 403"""
@@ -326,10 +354,12 @@ async def test_audit_logs_endpoint_access(client, db_pool, audit_world):
     res = client.get("/api/audit-logs", headers={"Authorization": f"Bearer {world['admin']['token']}"})
     assert res.status_code == 200, f"→ {res.status_code}: {res.text}"
     body = res.json()
-    assert body["total"] >= 1
-    assert body["page_size"] == 20
     assert len(body["items"]) >= 1
     assert "action" in body["items"][0]
+    # keyset ไม่มี total/page/pages — ตัวเลขพวกนั้นเพี้ยนทันทีที่ตารางมีแถวใหม่
+    assert "total" not in body
+    assert "page" not in body
+    assert "has_more" in body and "next_cursor" in body
 
     # head (ไม่มี VIEW_AUDIT_LOG) → 403
     res = client.get("/api/audit-logs", headers={"Authorization": f"Bearer {world['head']['token']}"})
@@ -352,8 +382,9 @@ async def test_audit_logs_endpoint_access(client, db_pool, audit_world):
 
 @pytest.mark.asyncio
 async def test_audit_logs_endpoint_filters_pagination(client, db_pool, audit_world):
-    """filter ตาม action + แบ่งหน้า (limit/offset) + deep-DB ตรงกัน"""
+    """filter ตาม action + แบ่งหน้าแบบ keyset (limit/cursor) + deep-DB ตรงกัน"""
     world = audit_world
+    admin_h = {"Authorization": f"Bearer {world['admin']['token']}"}
 
     # สร้าง activity หลายแบบ: login + create_issue x2 + accept
     client.post("/api/auth/login", json={"username": world["student"]["username"], "password": "1234"})
@@ -363,31 +394,113 @@ async def test_audit_logs_endpoint_filters_pagination(client, db_pool, audit_wor
                 headers={"Authorization": f"Bearer {world['head']['token']}"})
 
     # filter action=CREATE_ISSUE → เฉพาะ 2 อัน
-    res = client.get("/api/audit-logs", params={"action": "CREATE_ISSUE"},
-                     headers={"Authorization": f"Bearer {world['admin']['token']}"})
+    res = client.get("/api/audit-logs", params={"action": "CREATE_ISSUE"}, headers=admin_h)
     assert res.status_code == 200
     body = res.json()
-    assert body["total"] == 2, f"ต้องมี CREATE_ISSUE 2 อัน แต่ได้ {body['total']}"
+    assert len(body["items"]) == 2, f"ต้องมี CREATE_ISSUE 2 อัน แต่ได้ {len(body['items'])}"
     assert all(i["action"] == "CREATE_ISSUE" for i in body["items"])
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None, "หมดแล้วต้องไม่ส่ง cursor"
 
-    # ยอดทั้งหมด (ก่อน filter) สำหรับเทียบ pagination
-    res_all = client.get("/api/audit-logs", headers={"Authorization": f"Bearer {world['admin']['token']}"})
-    full_total = res_all.json()["total"]
-    assert full_total >= 4
-
-    # pagination: limit=1 → 1 item ต่อหน้า, total เท่าเดิม
-    res = client.get("/api/audit-logs", params={"limit": 1, "offset": 0},
-                     headers={"Authorization": f"Bearer {world['admin']['token']}"})
+    # limit=1 → 1 แถว/หน้า + ต้องมี cursor ให้หน้าถัดไป
+    res = client.get("/api/audit-logs", params={"limit": 1}, headers=admin_h)
+    assert res.status_code == 200
     body = res.json()
     assert len(body["items"]) == 1
-    assert body["total"] == full_total
-    assert body["page"] == 1
-    assert body["pages"] == full_total
+    assert body["has_more"] is True
+    assert body["next_cursor"], "has_more=True ต้องมี next_cursor"
 
-    # deep-DB verify: item แรก (ใหม่สุด) ตรงกับ audit_logs ล่าสุด
+    # deep-DB verify: item แรก (ใหม่สุด) ตรงกับ audit_logs ล่าสุด (เรียงคีย์เดียวกับ service)
     async with db_pool.acquire() as conn:
-        newest = await conn.fetchrow("SELECT action FROM audit_logs ORDER BY created_at DESC LIMIT 1")
+        newest = await conn.fetchrow(
+            "SELECT action FROM audit_logs ORDER BY created_at DESC, id DESC LIMIT 1"
+        )
     assert body["items"][0]["action"] == newest["action"]
+
+    # หน้าถัดไปต่อจาก cursor ได้ และไม่เห็นแถวซ้ำ
+    res = client.get("/api/audit-logs", params={"limit": 1, "cursor": body["next_cursor"]},
+                     headers=admin_h)
+    assert res.status_code == 200, res.text
+    assert res.json()["items"][0]["id"] != body["items"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_audit_logs_keyset_survives_identical_timestamps(client, db_pool, audit_world):
+    """แถวที่ `created_at` เท่ากันเป๊ะ (transaction เดียวกัน) ต้องไม่ถูกตัดทิ้งทั้งกลุ่ม
+
+    เทสต์นี้จะพังทันทีถ้า keyset เทียบแค่ `created_at` เดียว หรือถ้า index composite
+    ไม่ได้ถูกใช้ตามที่ออกแบบไว้
+    """
+    ts = datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
+    ids = await _seed_rows(db_pool, service_name="tie_service", count=5, created_at=ts)
+    admin_h = {"Authorization": f"Bearer {audit_world['admin']['token']}"}
+
+    seen: list[str] = []
+    cursor = None
+    pages = 0
+    while True:
+        params: dict = {"service_name": "tie_service", "limit": 2}
+        if cursor:
+            params["cursor"] = cursor
+        res = client.get("/api/audit-logs", params=params, headers=admin_h)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        seen.extend(i["id"] for i in body["items"])
+        pages += 1
+        assert pages < 10, "วนหน้าไม่จบ"
+        if not body["has_more"]:
+            assert body["next_cursor"] is None
+            break
+        cursor = body["next_cursor"]
+        assert cursor
+
+    assert pages == 3, f"5 แถว limit=2 ต้องได้ 3 หน้า แต่ได้ {pages}"
+    assert len(seen) == 5, f"created_at เท่ากันต้องไม่หลุด/ซ้ำ — ได้ {len(seen)} แถว"
+    assert set(seen) == {str(i) for i in ids}, "ต้องได้แถวครบและเป็นชุดเดียวกัน"
+
+
+@pytest.mark.asyncio
+async def test_audit_logs_keyset_ignores_rows_inserted_mid_walk(client, db_pool, audit_world):
+    """ระหว่างที่ผู้ใช้กำลังอ่าน มีแถวใหม่แทรกหัว — หน้าถัดไปต้องไม่เห็นซ้ำ
+
+    นี่คือเหตุผลทั้งหมดที่เลิกใช้ OFFSET (ตารางนี้โตทุกวินาที)
+    """
+    await _seed_rows(db_pool, service_name="walk_service", count=4)
+    admin_h = {"Authorization": f"Bearer {audit_world['admin']['token']}"}
+
+    first = client.get("/api/audit-logs",
+                       params={"service_name": "walk_service", "limit": 2},
+                       headers=admin_h)
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert len(first_body["items"]) == 2
+    assert first_body["has_more"] is True
+
+    # แถวใหม่ (created_at ใหม่กว่า) แทรกหัวระหว่างการอ่าน
+    await _seed_rows(db_pool, service_name="walk_service", count=1)
+
+    second = client.get("/api/audit-logs",
+                        params={"service_name": "walk_service", "limit": 2,
+                                "cursor": first_body["next_cursor"]},
+                        headers=admin_h)
+    assert second.status_code == 200, second.text
+    second_body = second.json()
+
+    first_ids = {i["id"] for i in first_body["items"]}
+    second_ids = {i["id"] for i in second_body["items"]}
+    assert len(second_body["items"]) == 2
+    assert first_ids.isdisjoint(second_ids), "แถวที่แทรกหัวต้องไม่ทำให้หน้าถัดไปเห็นซ้ำ"
+    assert second_body["next_cursor"] is None, "แถวเดิมครบแล้ว → จบ (ไม่นับแถวใหม่ที่แทรก)"
+
+
+@pytest.mark.parametrize("bad_cursor", ["not-a-cursor", "%%%", "abc", "2567a2F8"])
+@pytest.mark.asyncio
+async def test_audit_logs_rejects_bad_cursor(client, db_pool, audit_world, bad_cursor):
+    """cursor ที่พิมพ์มือ/ตัดขาด → 400 ไม่ใช่ 500 (ผู้ใช้เห็นข้อความ ไม่ใช่ stack trace)"""
+    res = client.get("/api/audit-logs", params={"cursor": bad_cursor},
+                     headers={"Authorization": f"Bearer {audit_world['admin']['token']}"})
+    assert res.status_code == 400, f"{bad_cursor!r} → {res.status_code}: {res.text}"
+    assert "cursor" in res.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -435,6 +548,72 @@ async def test_audit_logs_endpoint_exposes_room(client, db_pool, audit_world):
             str(issue_id)
         )
     assert row["room_id"] == items[0]["room_id"]
+
+
+@pytest.mark.asyncio
+async def test_audit_logs_service_filter_and_actor_name(client, db_pool, audit_world):
+    """กรองด้วย service_name ได้ + `actor_name` ต้อง join จาก users.full_name"""
+    world = audit_world
+    created = _create_issue(client, world, title="เรื่องมีชื่อผู้ทำ")
+    assert created.status_code == 200
+    issue_id = created.json()["id"]
+
+    res = client.get("/api/audit-logs",
+                     params={"service_name": "issue_service", "entity_id": issue_id},
+                     headers={"Authorization": f"Bearer {world['admin']['token']}"})
+    assert res.status_code == 200, res.text
+    items = res.json()["items"]
+    assert items, "ต้องมี audit ของ CREATE_ISSUE"
+    assert all(i["service_name"] == "issue_service" for i in items), \
+        "ตัวกรอง service_name ต้องกรองจริง"
+
+    create_item = next(i for i in items if i["action"] == "CREATE_ISSUE")
+    # issue_service ส่ง actor_identifier = str(user_id) ⇒ ชื่อจริงต้องมาจากตาราง users
+    assert create_item["actor_identifier"] == str(world["student"]["user_id"])
+    assert create_item["actor_name"] == "student ทดสอบ", (
+        f"actor_name ต้อง join จาก users.full_name แต่ได้ {create_item['actor_name']!r}"
+    )
+
+    # login ที่หาชื่อไม่เจอ → user_id = -1 → ไม่มีแถว users ให้ join ⇒ actor_name = null
+    client.post("/api/auth/login", json={"username": "ไม่มีคนนี้เลย", "password": "1234"})
+    res = client.get("/api/audit-logs",
+                     params={"action": "login", "status": "error"},
+                     headers={"Authorization": f"Bearer {world['admin']['token']}"})
+    assert res.status_code == 200
+    unknown = next(i for i in res.json()["items"] if i["actor_identifier"] == "ไม่มีคนนี้เลย")
+    assert unknown["actor_name"] is None, "ไม่รู้จักผู้ใช้ → actor_name ต้องเป็น null (หน้าเว็บใช้ identifier แทน)"
+
+
+@pytest.mark.asyncio
+async def test_audit_logs_options_endpoint(client, db_pool, audit_world):
+    """`/options` คืนค่าที่มีจริงสำหรับเติม dropdown — เรียงแล้ว ไม่ซ้ำ ไม่มี sentinel '-'"""
+    world = audit_world
+    client.post("/api/auth/login", json={"username": world["student"]["username"], "password": "1234"})
+    created = _create_issue(client, world, title="เรื่องเติม dropdown")
+    assert created.status_code == 200
+
+    res = client.get("/api/audit-logs/options",
+                     headers={"Authorization": f"Bearer {world['admin']['token']}"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+
+    assert "login" in body["actions"]
+    assert "CREATE_ISSUE" in body["actions"]
+    assert "issue_service" in body["service_names"]
+    assert "auth_service" in body["service_names"]
+    assert "success" in body["statuses"]
+    assert "issue" in body["entity_types"]
+
+    for key in ("service_names", "actions", "statuses", "entity_types"):
+        values = body[key]
+        assert "-" not in values, f"{key} ต้องไม่ส่ง sentinel '-' ออกมา (ไม่ใช่ตัวเลือกจริง)"
+        assert values == sorted(values), f"{key} ต้องเรียงแล้ว (หน้าเว็บใช้ตรง ๆ)"
+        assert len(values) == len(set(values)), f"{key} ต้องไม่ซ้ำกัน"
+
+    # สิทธิ์เดียวกับรายการ: หัวหน้าห้องไม่มี VIEW_AUDIT_LOG → 403
+    res = client.get("/api/audit-logs/options",
+                     headers={"Authorization": f"Bearer {world['head']['token']}"})
+    assert res.status_code == 403
 
 
 # === Section: IP จริงของผู้ใช้หลัง proxy chain ===

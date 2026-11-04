@@ -1,13 +1,35 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import Swal from 'sweetalert2';
-import { listAuditLogs } from '@/services/audit';
-import type { AuditLogEntry } from '@/types/audit';
-import { fmtDateTimeSec } from '@/datetime';
-import PaginationBar from '@/components/PaginationBar.vue';
-import AppCard from '@/components/ui/AppCard.vue';
+/**
+ * 🔍 บันทึกการใช้งาน — หน้าดูสำหรับผู้ดูแล (VIEW_AUDIT_LOG)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * หน้านี้ถืออะไรไว้
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  · รายการ "ใครทำอะไร เมื่อไร จากที่ไหน" จากตาราง `audit_logs`
+ *  · ตัวกรอง: ช่วงวันที่ (เวลาไทย) · บริการ · การกระทำ · สถานะ · ชนิดข้อมูล · คำค้น
+ *  · เลื่อนหน้าแบบ **keyset** — ใช้ `next_cursor` จาก backend ตรง ๆ ห้ามคำนวณ offset
+ *    (ตารางนี้มีแถวใหม่แทรกหัวตลอดเวลา ⇒ offset จะทำให้เห็นซ้ำ/ข้าม)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * กฎที่ฝังไว้
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  1. **เปลี่ยนตัวกรอง = เริ่มจากหน้าแรก** (ทิ้ง cursor เสมอ) ไม่งั้นจะได้หน้า 2
+ *     ของชุดใหม่ที่ไม่มีหัวต่อ ⇒ `resetAndLoad()` ทุกครั้งที่ตัวกรองเปลี่ยน
+ *  2. **คำขอที่เก่ากว่าต้องถูกทิ้ง** — ผู้ใช้เปลี่ยน dropdown รัว ๆ ได้ ใช้ `loadSeq`
+ *     กัน response เก่ามาทับชุดใหม่ (ไม่งั้นเห็นข้อมูลของตัวกรองที่ไม่ได้เลือกอยู่)
+ *  3. **ข้อความว่างสองแบบ**: ยังไม่มีบันทึกเลย กับ "กรองแล้วไม่เจอ" — ทางออกคนละทาง
+ *  4. ค่าที่ละเอียด (IP / User-Agent / old–new values) ซ่อนใต้ `<details>` —
+ *     เป็นข้อมูลสำหรับสืบเหตุ ไม่ใช่อ่านประจำวัน
+ *  5. 🕐 `fmtDateTimeSec` เป็นตัวเดียวในระบบที่โชว์วินาที (ดูคำเตือนใน `datetime.ts`)
+ *     ที่นี่จำเป็น เพราะผู้ดูแลต้องเรียงเหตุการณ์ที่เกิดในนาทีเดียวกัน
+ */
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppEmptyState from '@/components/ui/AppEmptyState.vue';
+import IconButton from '@/components/ui/IconButton.vue';
+import { getAuditLogOptions, listAuditLogs } from '@/services/audit';
+import type { AuditLogItem, AuditLogOptions } from '@/types/audit';
+import { fmtDateTimeSec } from '@/datetime';
 
 // ===== ป้าย action → ภาษาไทย (ให้ตรงกับ backend dashboard_service.ACTION_LABELS) =====
 const ACTION_LABELS: Record<string, string> = {
@@ -78,123 +100,211 @@ const ACTION_LABELS: Record<string, string> = {
   //    ไม่ใช่บั๊กที่รอบนี้ก่อ และไม่แก้ในรอบนี้ (นอกขอบเขต E1 — บันทึกไว้ใน PR)
 };
 
-function actionLabel(action: string): string {
-  return ACTION_LABELS[action] ?? action;
-}
+const STATUS_LABELS: Record<string, string> = {
+  success: 'สำเร็จ',
+  error: 'ผิดพลาด',
+  partial: 'บางส่วน',
+};
 
 const STATUS_BADGE: Record<string, string> = {
   success: 'bg-ok-tint text-ok-strong',
-  error: 'bg-brand/10 text-brand',
-  partial: 'bg-stone-100 text-stone-600',
+  error: 'bg-danger-soft text-danger',
+  partial: 'bg-canvas text-ink-2',
 };
 
-// ===== ข้อมูล + การโหลด =====
-const items = ref<AuditLogEntry[]>([]);
-// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
-const lastPage = ref<{ total: number } | null>(null);
-const total = computed(() => lastPage.value?.total ?? 0);
-const page = ref(1);
-const pageSize = 20;
-const isLoading = ref(true);
-const error = ref('');
+const actionLabel = (action: string): string => ACTION_LABELS[action] ?? action;
+const statusLabel = (status: string): string => STATUS_LABELS[status] ?? status;
+const statusBadge = (status: string): string => STATUS_BADGE[status] ?? 'bg-canvas text-ink-2';
 
-// ===== ตัวกรอง =====
-const fAction = ref('');
-const fStatus = ref('');
-const fEntityType = ref('');
-const fQ = ref('');
-const fDateFrom = ref('');
-const fDateTo = ref('');
+const messageOf = (err: unknown): string =>
+  err instanceof Error && err.message ? err.message : 'เกิดข้อผิดพลาดจากระบบ';
+
+// ── ตัวกรอง ────────────────────────────────────────────────────────────────
+// `date_from`/`date_to` เป็น `YYYY-MM-DD` ตาม `<input type="date">` — backend รับ
+// เป็น DATE และตีความเป็นวันตามเวลาไทยที่ฝั่งนั้น (ไม่ต้องแปลง TZ ที่หน้า)
+const filters = reactive({
+  date_from: '',
+  date_to: '',
+  service_name: '',
+  action: '',
+  status: '',
+  entity_type: '',
+  q: '',
+});
+
+const hasActiveFilters = computed(() => Object.values(filters).some((value) => value !== ''));
+
+const query = (cursor?: string) => ({
+  date_from: filters.date_from || undefined,
+  date_to: filters.date_to || undefined,
+  service_name: filters.service_name || undefined,
+  action: filters.action || undefined,
+  status: filters.status || undefined,
+  entity_type: filters.entity_type || undefined,
+  q: filters.q.trim() || undefined,
+  cursor: cursor || undefined,
+});
+
+// ── รายการ + การเลื่อนหน้า ────────────────────────────────────────────────
+const items = ref<AuditLogItem[]>([]);
+const nextCursor = ref<string | null>(null);
+const hasMore = ref(false);
+const isLoading = ref(true);
+const isLoadingMore = ref(false);
+const loadError = ref('');
+const loadMoreError = ref('');
+const options = ref<AuditLogOptions>({
+  service_names: [],
+  actions: [],
+  statuses: [],
+  entity_types: [],
+});
+
+/** ลำดับคำขอ — response ของคำขอที่เก่ากว่าต้องถูกทิ้ง (ผู้ใช้เปลี่ยนตัวกรองรัว ๆ ได้) */
+let loadSeq = 0;
 let qTimer: ReturnType<typeof setTimeout> | null = null;
 
-const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
-
-async function load() {
+/** โหลดหน้าแรก (ทิ้งรายการเดิม) — เรียกทุกครั้งที่ตัวกรองเปลี่ยน */
+async function resetAndLoad() {
+  const seq = ++loadSeq;
   isLoading.value = true;
-  error.value = '';
+  loadError.value = '';
+  loadMoreError.value = '';
   try {
-    const res = await listAuditLogs({
-      action: fAction.value || undefined,
-      status: fStatus.value || undefined,
-      entity_type: fEntityType.value || undefined,
-      q: fQ.value || undefined,
-      date_from: fDateFrom.value || undefined,
-      date_to: fDateTo.value || undefined,
-      limit: pageSize,
-      offset: (page.value - 1) * pageSize,
-    });
+    const res = await listAuditLogs(query());
+    if (seq !== loadSeq) return; // มีคำขอใหม่กว่าออกไปแล้ว
     items.value = res.items;
-    lastPage.value = res;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'เกิดข้อผิดพลาด';
-    error.value = msg;
-    Swal.fire({ icon: 'error', title: 'โหลดบันทึกการใช้งานไม่สำเร็จ', text: msg });
+    nextCursor.value = res.next_cursor;
+    hasMore.value = res.has_more;
+  } catch (err) {
+    if (seq !== loadSeq) return;
+    items.value = [];
+    nextCursor.value = null;
+    hasMore.value = false;
+    loadError.value = messageOf(err);
   } finally {
-    isLoading.value = false;
+    if (seq === loadSeq) isLoading.value = false;
   }
 }
 
-function resetAndLoad() {
-  page.value = 1;
-  load();
+/** ต่อท้ายรายการด้วย `next_cursor` ของ backend — ห้ามคำนวณ offset เอง */
+async function loadMore() {
+  const cursor = nextCursor.value;
+  if (!cursor || isLoadingMore.value || isLoading.value) return;
+
+  const seq = loadSeq;
+  isLoadingMore.value = true;
+  loadMoreError.value = '';
+  try {
+    const res = await listAuditLogs(query(cursor));
+    if (seq !== loadSeq) return; // ตัวกรองเปลี่ยนระหว่างโหลด — ชุดนี้ไม่ใช้แล้ว
+    items.value = [...items.value, ...res.items];
+    nextCursor.value = res.next_cursor;
+    hasMore.value = res.has_more;
+  } catch (err) {
+    if (seq !== loadSeq) return;
+    loadMoreError.value = messageOf(err);
+  } finally {
+    if (seq === loadSeq) isLoadingMore.value = false;
+  }
 }
 
-// เปลี่ยนฟิลเตอร์ → โหลดหน้า 1 (q เดบานซ์ 300ms กันพิมพ์เร็ว)
-watch([fAction, fStatus, fEntityType, fDateFrom, fDateTo], resetAndLoad);
-watch(fQ, () => {
+/** ล้างตัวกรองทั้งหมด — watcher เป็นผู้สั่งโหลดใหม่ (ไม่เรียกซ้ำ เพื่อไม่ยิงสองคำขอ) */
+function clearFilters() {
+  filters.date_from = '';
+  filters.date_to = '';
+  filters.service_name = '';
+  filters.action = '';
+  filters.status = '';
+  filters.entity_type = '';
+  filters.q = '';
+}
+
+/**
+ * หน่วงการโหลดใหม่ผ่าน timer ตัวเดียว
+ *
+ * ⚠️ ต้องตัวเดียว: `clearFilters()` แตะทุกฟิลด์พร้อมกัน ⇒ watcher สองตัวจะยิง
+ *   `resetAndLoad()` สองครั้งซ้อน (คำขอที่สองทำให้คำขอแรกถูกทิ้งอยู่ดี — เสียฟรี)
+ *   · `delay = 0` สำหรับ dropdown/วันที่ (ต้องตอบสนองทันที) · 300ms สำหรับคำค้น
+ */
+function scheduleReload(delay: number) {
   if (qTimer) clearTimeout(qTimer);
-  qTimer = setTimeout(resetAndLoad, 300);
+  qTimer = setTimeout(() => void resetAndLoad(), delay);
+}
+
+watch(
+  [
+    () => filters.date_from,
+    () => filters.date_to,
+    () => filters.service_name,
+    () => filters.action,
+    () => filters.status,
+    () => filters.entity_type,
+  ],
+  () => scheduleReload(0),
+);
+
+watch(
+  () => filters.q,
+  () => scheduleReload(300),
+);
+
+onBeforeUnmount(() => {
+  if (qTimer) clearTimeout(qTimer);
 });
 
-onMounted(load);
+onMounted(() => {
+  // ตัวเลือกของ dropdown มาจากข้อมูลจริง — ล้มเหลวแล้วไม่ควรทำให้ทั้งหน้าล้มตาม
+  void getAuditLogOptions()
+    .then((result) => {
+      options.value = result;
+    })
+    .catch(() => {
+      // ปล่อยว่าง — ผู้ใช้ยังกรองด้วยคำค้น/วันที่ได้
+    });
+  void resetAndLoad();
+});
 
-// ===== การแสดงผล =====
-// 🕐 `fmtDateTimeSec` มาจาก `@/datetime` (R5.5) — **ตัวเดียวในระบบที่โชว์วินาที**
-//    เพราะที่นี่ผู้ดูแลต้องเรียงลำดับเหตุการณ์ที่เกิดในนาทีเดียวกัน (ดูคำเตือนใน `datetime.ts`)
+// ── การแสดงผลรายแถว ────────────────────────────────────────────────────────
+/** ป้ายชื่อผู้ทำ: ใช้ชื่อจริงถ้ามี ไม่งั้นแสดงตัวระบุดิบที่บันทึกไว้ */
+const actorLabel = (item: AuditLogItem): string => item.actor_name || item.actor_identifier;
 
-const expanded = ref<Set<string>>(new Set());
-
-function toggleExpand(id: string) {
-  const next = new Set(expanded.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  expanded.value = next;
-}
+/** บรรทัดรอง: identifier ดิบ + ฝั่งที่ยิงมา (web/bot) — โชว์เฉพาะเมื่อมีชื่อจริงให้เทียบ */
+const actorDetail = (item: AuditLogItem): string | null =>
+  item.actor_name
+    ? [item.actor_identifier, item.client_source].filter((part) => !isBlank(part)).join(' · ')
+    : null;
 
 /**
  * ค่า sentinel จาก backend = "ไม่มีค่า" — audit_logs บันทึกครบทุกคอลัมน์แล้ว (ไม่เป็น NULL)
  * ความหมาย: '-' = ไม่ทราบ/ไม่มีค่า, '{}' = ไม่มีการเปลี่ยนแปลงข้อมูล
  * (ดู UNKNOWN / EMPTY_JSON ใน backend/core/logger.py)
  */
-function isBlank(v: unknown): boolean {
+function isBlank(v: unknown): v is null | undefined | '' {
   return v === null || v === undefined || v === '' || v === '-';
 }
 
-/** payload ว่าง = {} (ไม่ใช่ null แล้ว) → ถือว่า "ไม่มีรายละเอียดให้กาง" */
-function isEmptyPayload(v: Record<string, unknown> | string | null): boolean {
-  if (v === null || v === undefined || v === '' || v === '-') return true; // เช็คตรง ๆ ให้ TS narrow type
+/** payload ว่าง = {} (ไม่ใช่ null) → ถือว่า "ไม่มีรายละเอียดให้กาง" */
+function isEmptyPayload(v: unknown): boolean {
+  if (v === null || v === undefined || v === '' || v === '-') return true;
   if (typeof v === 'string') {
     const s = v.trim();
     return s === '' || s === '-' || s === '{}' || s === 'null';
   }
-  return Object.keys(v).length === 0;
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'object') return Object.keys(v as Record<string, unknown>).length === 0;
+  return false;
 }
 
-function hasPayload(e: AuditLogEntry): boolean {
-  return !isEmptyPayload(e.new_values) || !isEmptyPayload(e.old_values) || !isBlank(e.error_detail);
-}
-
-function fmtPayload(v: Record<string, unknown> | string | null): string {
-  if (isEmptyPayload(v)) return '-';
+/** แสดง JSON แบบอ่านได้ แต่ตัดความยาวไม่ให้ท่วมการ์ด */
+function prettyJson(value: unknown): string {
+  if (isEmptyPayload(value)) return '—';
   try {
-    return typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    return text.length > 2000 ? `${text.slice(0, 2000)}\n… (ตัดเพื่อแสดงผล)` : text;
   } catch {
-    return String(v);
+    return String(value);
   }
-}
-
-function statusBadge(s: string): string {
-  return STATUS_BADGE[s] ?? 'bg-stone-100 text-stone-600';
 }
 
 /**
@@ -203,206 +313,262 @@ function statusBadge(s: string): string {
  * - ไม่มีชื่อแต่มี id → โชว์ #id ไว้ตามรอยต่อได้
  * - room_id = -1 → ไม่ระบุห้อง
  */
-function fmtRoom(e: AuditLogEntry): string {
-  if (!isBlank(e.room_name)) return e.room_name as string;
-  if (e.room_id !== null && e.room_id !== undefined && e.room_id > 0) return `#${e.room_id}`;
-  return '-';
+function fmtRoom(item: AuditLogItem): string | null {
+  if (!isBlank(item.room_name)) return item.room_name;
+  if (item.room_id !== null && item.room_id > 0) return `#${item.room_id}`;
+  return null;
 }
 
-/** มีห้องจริงหรือไม่ — ใช้ตัดสินสี (sentinel '-' ต้องจางกว่า) */
-function hasRoom(e: AuditLogEntry): boolean {
-  return !isBlank(e.room_name) || (e.room_id !== null && e.room_id !== undefined && e.room_id > 0);
-}
-
-const hasData = computed(() => items.value.length > 0);
-
-const filterCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm transition';
+const filterCls =
+  'mt-1 w-full rounded-control border border-line bg-surface px-3 py-2 text-sm font-normal text-ink-1';
 </script>
 
 <template>
   <div>
-    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว (R0.3) -->
-    <!-- คำอธิบาย + ปุ่มส่งออก -->
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-      <p class="text-xs text-stone-500">ประวัติทุกการกระทำในระบบ (เข้าสู่ระบบ / เพิ่ม / ดึงข้อมูล / แก้ไข / ลบ)</p>
-      <button
-        type="button"
-        @click="load"
+    <!-- 🔴 ไม่มี <h1>/eyebrow ที่นี่ — `AppHeader` แสดงชื่อหน้าจาก `routeTitles` เป็น <h1> ให้แล้ว -->
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <p class="text-xs text-ink-2">
+        ประวัติทุกการกระทำในระบบ (เข้าสู่ระบบ / เพิ่ม / ดึงข้อมูล / แก้ไข / ลบ)
+      </p>
+      <IconButton
+        icon="bi-arrow-clockwise"
+        label="รีเฟรชบันทึกการใช้งาน"
         :disabled="isLoading"
-        title="รีเฟรช"
-        class="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-brand/30 hover:bg-brand/5 hover:text-brand disabled:opacity-50"
-      >
-        <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoading }"></i>
-      </button>
-    </div>
-
-    <!-- ตัวกรอง -->
-    <div class="mb-4 rounded-2xl border border-stone-200 bg-white p-4">
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <div>
-          <label class="mb-1 block text-xs font-semibold text-stone-500">Action</label>
-          <input
-            v-model="fAction"
-            type="text"
-            placeholder="เช่น login, CREATE_ISSUE"
-            :class="filterCls"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold text-stone-500">สถานะ</label>
-          <select v-model="fStatus" :class="filterCls">
-            <option value="">ทั้งหมด</option>
-            <option value="success">สำเร็จ</option>
-            <option value="error">ผิดพลาด</option>
-            <option value="partial">บางส่วน</option>
-          </select>
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold text-stone-500">ชนิดข้อมูล</label>
-          <input
-            v-model="fEntityType"
-            type="text"
-            placeholder="เช่น issue, user"
-            :class="filterCls"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold text-stone-500">ค้นหา (ผู้ใช้/error)</label>
-          <input v-model="fQ" type="text" placeholder="ชื่อผู้ใช้ / ข้อความ" :class="filterCls" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold text-stone-500">จากวันที่</label>
-          <input v-model="fDateFrom" type="date" :class="filterCls" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold text-stone-500">ถึงวันที่</label>
-          <input v-model="fDateTo" type="date" :class="filterCls" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Loading skeleton -->
-    <div v-if="isLoading && !hasData" class="overflow-hidden rounded-2xl border border-stone-200 bg-white" aria-busy="true">
-      <div class="space-y-3 p-4">
-        <div v-for="i in 6" :key="i" class="flex items-center gap-3">
-          <div class="h-8 w-8 animate-pulse rounded-lg bg-stone-100"></div>
-          <div class="flex-1 space-y-1.5">
-            <div class="h-3 w-1/3 animate-pulse rounded bg-stone-100"></div>
-            <div class="h-3 w-1/2 animate-pulse rounded bg-stone-100"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Error — 「ไม่มีการ์ดเส้นประ」 (AppEmptyState ไม่มี border-dashed โดยเจตนา) -->
-    <AppCard v-else-if="error && !hasData" :padded="false" class="py-4">
-      <AppEmptyState icon="bi-exclamation-triangle" title="โหลดข้อมูลไม่สำเร็จ" :description="error">
-        <AppButton variant="secondary" @click="load">
-          <template #icon><i class="bi bi-arrow-clockwise" aria-hidden="true" /></template>
-          ลองใหม่
-        </AppButton>
-      </AppEmptyState>
-    </AppCard>
-
-    <!-- Empty -->
-    <AppCard v-else-if="!isLoading && !hasData" :padded="false" class="py-4">
-      <AppEmptyState
-        icon="bi-inbox"
-        title="ยังไม่มีบันทึกการใช้งานตามเงื่อนไขนี้"
-        description="ลองขยายช่วงวันที่ หรือล้างตัวกรองผู้ใช้/หมวด"
+        @click="resetAndLoad"
       />
-    </AppCard>
+    </div>
 
-    <!-- ตาราง -->
-    <div v-else class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-stone-50">
-            <tr class="text-left text-[11px] text-stone-500">
-              <th class="px-4 py-3 font-semibold">เวลา</th>
-              <th class="px-4 py-3 font-semibold">ผู้ใช้</th>
-              <th class="px-4 py-3 font-semibold">ห้อง</th>
-              <th class="px-4 py-3 font-semibold">การกระทำ</th>
-              <th class="px-4 py-3 font-semibold">ข้อมูล</th>
-              <th class="px-4 py-3 font-semibold">สถานะ</th>
-              <th class="px-4 py-3 font-semibold">IP</th>
-              <th class="px-4 py-3 font-semibold"></th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-stone-100">
-            <template v-for="e in items" :key="e.id">
-              <tr class="transition-colors hover:bg-stone-50">
-                <td class="whitespace-nowrap px-4 py-2.5 text-stone-500 tabular-nums">{{ fmtDateTimeSec(e.created_at) }}</td>
-                <td class="px-4 py-2.5">
-                  <span class="font-medium text-stone-700">{{ e.actor_identifier }}</span>
-                  <span v-if="!isBlank(e.ip_address)" class="block text-[11px] text-ink-3 tabular-nums">{{ e.ip_address }}</span>
-                </td>
-                <td class="whitespace-nowrap px-4 py-2.5">
-                  <span v-if="hasRoom(e)" class="text-stone-600">{{ fmtRoom(e) }}</span>
-                  <span v-else class="text-stone-300">-</span>
-                </td>
-                <td class="px-4 py-2.5">
-                  <span class="inline-flex items-center gap-1.5">
-                    <span class="font-medium text-stone-800">{{ actionLabel(e.action) }}</span>
-                    <span class="font-mono text-[11px] text-ink-3">{{ e.action }}</span>
-                  </span>
-                  <span v-if="!isBlank(e.endpoint_or_command)" class="block font-mono text-[11px] text-ink-3">{{ e.endpoint_or_command }}</span>
-                </td>
-                <td class="px-4 py-2.5 text-stone-500">
-                  <template v-if="!isBlank(e.entity_type)">
-                    <span class="text-ink-3">{{ e.entity_type }}</span>
-                    <span v-if="!isBlank(e.entity_id)" class="font-mono text-stone-600">#{{ e.entity_id }}</span>
-                  </template>
-                  <span v-else class="text-stone-300">-</span>
-                </td>
-                <td class="px-4 py-2.5">
-                  <span class="rounded-full px-2 py-0.5 text-[11px] font-medium" :class="statusBadge(e.status)">
-                    {{ e.status }}
-                  </span>
-                </td>
-                <td class="px-4 py-2.5 font-mono text-xs text-stone-500">{{ isBlank(e.ip_address) ? '-' : e.ip_address }}</td>
-                <td class="px-4 py-2.5 text-right">
-                  <button
-                    v-if="hasPayload(e)"
-                    type="button"
-                    @click="toggleExpand(e.id)"
-                    class="inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink-3 transition hover:bg-brand/5 hover:text-brand"
-                    :title="expanded.has(e.id) ? 'ย่อรายละเอียด' : 'ดูรายละเอียด'"
-                  >
-                    <i class="bi" :class="expanded.has(e.id) ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-                  </button>
-                </td>
-              </tr>
-              <!-- รายละเอียดเก่า/ใหม่ (expand) -->
-              <tr v-if="expanded.has(e.id)" class="bg-stone-50/60">
-                <td colspan="8" class="px-4 py-3">
-                  <div class="grid gap-3 lg:grid-cols-2">
-                    <div>
-                      <p class="mb-1 text-xs font-semibold text-stone-500">ค่าเดิม (old_values)</p>
-                      <pre class="overflow-x-auto rounded-lg border border-stone-200 bg-white p-2.5 text-[11px] text-stone-600">{{ fmtPayload(e.old_values) }}</pre>
-                    </div>
-                    <div>
-                      <p class="mb-1 text-xs font-semibold text-stone-500">ค่าใหม่ (new_values)</p>
-                      <pre class="overflow-x-auto rounded-lg border border-stone-200 bg-white p-2.5 text-[11px] text-stone-600">{{ fmtPayload(e.new_values) }}</pre>
-                    </div>
-                    <div v-if="!isBlank(e.error_detail)" class="lg:col-span-2">
-                      <p class="mb-1 text-xs font-semibold text-brand">ข้อผิดพลาด</p>
-                      <pre class="overflow-x-auto rounded-lg border border-brand/15 bg-brand/5 p-2.5 text-[11px] text-brand">{{ e.error_detail }}</pre>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
+    <!-- ── ตัวกรอง ────────────────────────────────────────────────────────── -->
+    <section class="rounded-card border border-line bg-surface p-4" aria-label="ตัวกรอง">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <label class="block text-xs font-bold text-ink-2">
+          ตั้งแต่
+          <input v-model="filters.date_from" type="date" :class="filterCls" />
+        </label>
+        <label class="block text-xs font-bold text-ink-2">
+          ถึง
+          <input v-model="filters.date_to" type="date" :class="filterCls" />
+        </label>
+        <label class="block text-xs font-bold text-ink-2">
+          คำค้น
+          <input
+            v-model="filters.q"
+            type="search"
+            placeholder="ผู้ทำ / endpoint / รหัส entity / ข้อผิดพลาด"
+            :class="filterCls"
+          />
+        </label>
+        <label class="block text-xs font-bold text-ink-2">
+          บริการ
+          <select v-model="filters.service_name" :class="filterCls">
+            <option value="">ทั้งหมด</option>
+            <option v-for="name in options.service_names" :key="name" :value="name">
+              {{ name }}
+            </option>
+          </select>
+        </label>
+        <label class="block text-xs font-bold text-ink-2">
+          การกระทำ
+          <select v-model="filters.action" :class="filterCls">
+            <option value="">ทั้งหมด</option>
+            <option v-for="name in options.actions" :key="name" :value="name">
+              {{ actionLabel(name) }} ({{ name }})
+            </option>
+          </select>
+        </label>
+        <label class="block text-xs font-bold text-ink-2">
+          สถานะ
+          <select v-model="filters.status" :class="filterCls">
+            <option value="">ทั้งหมด</option>
+            <option v-for="name in options.statuses" :key="name" :value="name">
+              {{ statusLabel(name) }}
+            </option>
+          </select>
+        </label>
+        <label class="block text-xs font-bold text-ink-2">
+          ชนิดข้อมูล
+          <select v-model="filters.entity_type" :class="filterCls">
+            <option value="">ทั้งหมด</option>
+            <option v-for="name in options.entity_types" :key="name" :value="name">
+              {{ name }}
+            </option>
+          </select>
+        </label>
       </div>
+      <div v-if="hasActiveFilters" class="mt-3">
+        <AppButton variant="text" size="sm" @click="clearFilters">ล้างตัวกรอง</AppButton>
+      </div>
+    </section>
 
-      <div class="flex items-center justify-between px-4 py-3 text-xs text-ink-3">
-        <span>แสดง {{ items.length }} จาก {{ total }} รายการ</span>
-        <span v-if="pages > 1">หน้า {{ page }} / {{ pages }}</span>
+    <!-- ── สถานะการโหลด ───────────────────────────────────────────────────── -->
+    <div
+      v-if="isLoading && items.length === 0"
+      class="mt-4 space-y-2.5"
+      aria-busy="true"
+      aria-label="กำลังโหลดบันทึกการใช้งาน"
+    >
+      <div
+        v-for="i in 4"
+        :key="i"
+        class="rounded-card border border-line bg-surface p-4"
+      >
+        <div class="h-3 w-1/3 animate-pulse rounded bg-canvas"></div>
+        <div class="mt-2 h-3 w-1/2 animate-pulse rounded bg-canvas"></div>
       </div>
     </div>
 
-    <PaginationBar :total="total" :page="page" :page-size="pageSize" :loading="isLoading" @page-change="page = $event; load()" />
+    <div
+      v-else-if="loadError"
+      class="mt-4 rounded-card border border-line bg-surface py-4"
+    >
+      <AppEmptyState
+        icon="bi-exclamation-triangle"
+        title="โหลดบันทึกการใช้งานไม่สำเร็จ"
+        :description="loadError"
+      >
+        <AppButton variant="secondary" @click="resetAndLoad">ลองใหม่</AppButton>
+      </AppEmptyState>
+    </div>
+
+    <!-- ยังไม่มีบันทึกเลย กับ "กรองแล้วไม่เจอ" เป็นคนละเรื่อง -->
+    <div
+      v-else-if="items.length === 0 && hasActiveFilters"
+      class="mt-4 rounded-card border border-line bg-surface py-4"
+    >
+      <AppEmptyState
+        icon="bi-funnel"
+        title="ไม่พบบันทึกที่ตรงกับตัวกรอง"
+        description="ลองขยายช่วงวันที่ หรือล้างตัวกรอง"
+      >
+        <AppButton variant="secondary" @click="clearFilters">ล้างตัวกรอง</AppButton>
+      </AppEmptyState>
+    </div>
+
+    <div
+      v-else-if="items.length === 0"
+      class="mt-4 rounded-card border border-line bg-surface py-4"
+    >
+      <AppEmptyState
+        icon="bi-journal-text"
+        title="ยังไม่มีบันทึกการใช้งาน"
+        description="บันทึกจะเริ่มมีเมื่อมีการเข้าสู่ระบบหรือแก้ไขข้อมูลผ่านระบบ"
+      />
+    </div>
+
+    <!-- ── รายการ ─────────────────────────────────────────────────────────── -->
+    <template v-else>
+      <ul class="mt-4 space-y-2.5">
+        <li v-for="item in items" :key="item.id" class="rounded-card border border-line bg-surface p-4">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div class="min-w-0">
+              <p class="flex flex-wrap items-center gap-1.5 text-sm font-bold text-ink-1">
+                <span class="break-words">{{ actorLabel(item) }}</span>
+                <span
+                  class="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-ink-2"
+                  :title="item.action"
+                >
+                  {{ actionLabel(item.action) }}
+                </span>
+                <span
+                  v-if="!isBlank(item.status) && item.status !== 'success'"
+                  class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                  :class="statusBadge(item.status)"
+                >
+                  {{ statusLabel(item.status) }}
+                </span>
+              </p>
+              <p class="mt-0.5 break-words text-xs text-ink-3">
+                {{ item.service_name }}
+                <template v-if="!isBlank(item.entity_type)">
+                  · {{ item.entity_type
+                  }}<template v-if="!isBlank(item.entity_id)"> #{{ item.entity_id }}</template>
+                </template>
+                <template v-if="!isBlank(item.endpoint_or_command)">
+                  · {{ item.endpoint_or_command }}
+                </template>
+              </p>
+            </div>
+            <time class="shrink-0 text-xs text-ink-3 tabular-nums" :datetime="item.created_at">
+              {{ fmtDateTimeSec(item.created_at) }}
+            </time>
+          </div>
+
+          <p v-if="actorDetail(item)" class="mt-1 break-words text-xs text-ink-3">
+            {{ actorDetail(item) }}
+          </p>
+
+          <p
+            v-if="!isBlank(item.error_detail)"
+            class="mt-2 rounded-control bg-danger-soft px-3 py-2 text-xs text-danger"
+          >
+            {{ item.error_detail }}
+          </p>
+
+          <!-- รายละเอียดเชิงสืบเหตุ — ซ่อนไว้เป็นค่าเริ่มต้น -->
+          <details class="mt-2">
+            <summary class="cursor-pointer text-xs font-bold text-brand">รายละเอียด</summary>
+            <dl class="mt-2 space-y-1 text-xs text-ink-2">
+              <div v-if="!isBlank(item.ip_address)" class="flex gap-2">
+                <dt class="w-24 shrink-0 text-ink-3">IP</dt>
+                <dd class="break-all">{{ item.ip_address }}</dd>
+              </div>
+              <div v-if="!isBlank(item.user_agent)" class="flex gap-2">
+                <dt class="w-24 shrink-0 text-ink-3">อุปกรณ์</dt>
+                <dd class="break-all">{{ item.user_agent }}</dd>
+              </div>
+              <div v-if="fmtRoom(item)" class="flex gap-2">
+                <dt class="w-24 shrink-0 text-ink-3">ห้อง</dt>
+                <dd>{{ fmtRoom(item) }}</dd>
+              </div>
+              <div v-if="item.execution_time_ms !== null" class="flex gap-2">
+                <dt class="w-24 shrink-0 text-ink-3">เวลาทำงาน</dt>
+                <dd class="tabular-nums">{{ item.execution_time_ms }} ms</dd>
+              </div>
+              <div class="flex gap-2">
+                <dt class="w-24 shrink-0 text-ink-3">รหัสการทำ</dt>
+                <dd class="font-mono break-all">{{ item.action }}</dd>
+              </div>
+              <div v-if="!isBlank(item.trace_id)" class="flex gap-2">
+                <dt class="w-24 shrink-0 text-ink-3">Trace ID</dt>
+                <dd class="font-mono break-all">{{ item.trace_id }}</dd>
+              </div>
+            </dl>
+            <div class="mt-2 grid gap-2 sm:grid-cols-2">
+              <div v-if="!isEmptyPayload(item.old_values)">
+                <p class="text-xs font-bold text-ink-3">ก่อนแก้</p>
+                <pre
+                  class="mt-1 max-h-56 overflow-auto rounded-control bg-canvas p-2 text-xs leading-relaxed"
+                  v-text="prettyJson(item.old_values)"
+                ></pre>
+              </div>
+              <div v-if="!isEmptyPayload(item.new_values)">
+                <p class="text-xs font-bold text-ink-3">หลังแก้</p>
+                <pre
+                  class="mt-1 max-h-56 overflow-auto rounded-control bg-canvas p-2 text-xs leading-relaxed"
+                  v-text="prettyJson(item.new_values)"
+                ></pre>
+              </div>
+            </div>
+          </details>
+        </li>
+      </ul>
+
+      <div v-if="loadMoreError" class="mt-3 rounded-card border border-line bg-surface py-4">
+        <AppEmptyState
+          icon="bi-exclamation-triangle"
+          title="โหลดหน้าถัดไปไม่สำเร็จ"
+          :description="loadMoreError"
+        >
+          <AppButton variant="secondary" @click="loadMore">ลองใหม่</AppButton>
+        </AppEmptyState>
+      </div>
+
+      <div v-if="hasMore" class="mt-4 flex justify-center">
+        <AppButton variant="secondary" :loading="isLoadingMore" @click="loadMore">
+          โหลดเพิ่ม
+        </AppButton>
+      </div>
+      <p v-else class="mt-4 text-center text-xs text-ink-3">แสดงครบทั้งหมดแล้ว</p>
+    </template>
   </div>
 </template>

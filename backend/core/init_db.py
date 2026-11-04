@@ -857,6 +857,10 @@ async def init_db(pool: asyncpg.Pool):
                 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
                 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
                 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+                -- keyset pagination ของหน้า "บันทึกการใช้งาน" (migrations/030) — ต้องเป็น
+                -- composite สองคีย์ DESC ทั้งคู่ ไม่งั้นแถวที่ created_at ชนกันจะถูกตัดทั้งกลุ่ม
+                CREATE INDEX IF NOT EXISTS idx_audit_logs_created_id
+                    ON audit_logs (created_at DESC, id DESC);
                 -- notifications (Phase 7) — unread badge (group by) + รายการล่าสุด + batch mark-read
                 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread_group
                     ON notifications(user_id, group_type) WHERE read_at IS NULL;
