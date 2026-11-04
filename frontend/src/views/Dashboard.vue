@@ -28,6 +28,7 @@ import AppCard from '@/components/ui/AppCard.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppEmptyState from '@/components/ui/AppEmptyState.vue';
 import { fmtDateTime, fmtDayTime } from '@/datetime';
+import { getSyncedAt } from '@/services/queryCache';
 import { LEVEL_ORDER } from '@/types/issue';
 import { STATUS_DOT, STATUS_BADGE, STATUS_URL_ALL, statusShort } from '@/constants/status';
 import { CHART_BRAND, CHART_BRAND_FILL, CHART_INK, CHART_INK_FILL, NEUTRAL_RAMP } from '@/constants/chart';
@@ -38,7 +39,12 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 const data = ref<DashboardSummary | null>(null);
 const isLoading = ref(true);
 const error = ref('');
-const lastUpdated = ref<string | null>(null);
+// ⏱️ ป้าย "อัปเดตล่าสุด" ต้องเป็นเวลาที่ยิง network สำเร็จจริง — ไม่ใช่เวลาที่เข้าหน้า
+// (cache hit จะทำให้ข้อมูลเก่าถูกติดป้ายว่าเพิ่งอัปเดตถ้าใช้ `new Date()` ตอน load)
+const lastUpdated = computed(() => {
+  const at = getSyncedAt('/api/dashboard/summary');
+  return at === null ? null : new Date(at).toISOString();
+});
 
 // ===== Traffic (สถิติการเข้าใช้งาน 30 วัน) — เฉพาะ scope 'all' =====
 const traffic = ref<DashboardTraffic | null>(null);
@@ -65,7 +71,6 @@ async function loadDashboard() {
   error.value = '';
   try {
     data.value = await getDashboardSummary();
-    lastUpdated.value = new Date().toISOString();
     await loadTraffic(); // โหลดกราฟการเข้าใช้งาน (เฉพาะ scope 'all')
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'เกิดข้อผิดพลาด';

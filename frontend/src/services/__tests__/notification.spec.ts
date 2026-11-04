@@ -60,7 +60,8 @@ describe('notification services (รายการ/นับ/อ่านแล
 
     const result = await getUnreadCounts()
 
-    expect(getMock).toHaveBeenCalledWith('/api/notifications/unread-count')
+    // ⚠️ ต้องมี `noCache` — badge ถูก poll และ store ใช้การ throw เพื่อนับ failure
+    expect(getMock).toHaveBeenCalledWith('/api/notifications/unread-count', { noCache: true })
     expect(result).toEqual(fakeRes)
   })
 
@@ -113,7 +114,8 @@ describe('notification preferences (ตั้งค่ารายกลุ่�
     const result = await getNotificationPreferences()
 
     expect(getMock).toHaveBeenCalledTimes(1)
-    expect(getMock).toHaveBeenCalledWith('/api/notifications/preferences')
+    // `noCache` — หน้าตั้งค่าคัดลอกค่าลงฟอร์ม ต้องเห็นค่าที่เพิ่งบันทึก
+    expect(getMock).toHaveBeenCalledWith('/api/notifications/preferences', { noCache: true })
     expect(result).toEqual(fakeRes)
   })
 

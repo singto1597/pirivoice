@@ -319,9 +319,22 @@ onMounted(() => {
 });
 onBeforeUnmount(() => window.removeEventListener('scroll', onWindowScroll));
 
-watch([stats, isLoadingStats], () => {
-  if (!stats.value || isLoadingStats.value) return;
-  nextTick(() => ledgerRef.value && animateStatNumbers(ledgerRef.value));
+/**
+ * Count-up เล่น **ครั้งเดียวต่อการ mount** เท่านั้น
+ *
+ * ⚠️ ของเดิม watch `[stats, isLoadingStats]` ⇒ `stats` เป็น reactive proxy ตัวเดิม
+ *   ตอน revalidate เบื้องหลัง (ค่าข้างในเปลี่ยน แต่ identity ไม่เปลี่ยน) ⇒ watch ไม่ยิง
+ *   ⇒ ถ้าจะให้ตัวเลขสะท้อนค่าใหม่ ต้อง watch `ledgerStats` (computed คืน array ใหม่)
+ *   และ **ห้าม** เล่นอนิเมชันซ้ำ — รอบถัดไปให้ template binding อัปเดตตรง ๆ
+ */
+let statsAnimated = false;
+watch([ledgerStats, isLoadingStats], () => {
+  if (!stats.value || isLoadingStats.value || statsAnimated) return;
+  nextTick(() => {
+    if (!ledgerRef.value) return;
+    statsAnimated = true;
+    animateStatNumbers(ledgerRef.value);
+  });
 });
 </script>
 

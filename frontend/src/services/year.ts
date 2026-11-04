@@ -30,7 +30,8 @@ export async function listYears(params: {
 // ปีเดี่ยว — ให้ **หน้าแก้ไขแบบเต็มหน้า** โหลดเองจาก URL (`/settings/years/:id/edit`)
 // ⚠️ คืนปีที่ถูกลบด้วย — ต้องเช็ค `deleted_at` เองก่อนเปิดฟอร์ม (ดู deleteBlockReason)
 export async function getYear(yearId: number): Promise<AcademicYear> {
-  return (await api.get(`/api/settings/years/${yearId}`)) as AcademicYear
+  // ⚠️ ห้าม cache — หน้าแก้ไขปีการศึกษาคัดลอกค่าลงฟอร์ม (ต้องเห็นค่าที่เพิ่งบันทึก)
+  return (await api.get(`/api/settings/years/${yearId}`, { noCache: true })) as AcademicYear
 }
 
 // ⚠️ `is_current: true` จะได้ **400** ถ้าปียังไม่มีสมาชิกและปีอื่นยังมีคนอยู่

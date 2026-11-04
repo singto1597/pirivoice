@@ -84,7 +84,9 @@ const ALWAYS_VISIBLE: RegFilter[] = ['all', 'registered', 'checked_in']
 
 const event = ref<Event | null>(null)
 const regs = ref<EventRegistration[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 /** หน้าปัจจุบัน — ตั้งต้นจาก URL (ดู `syncQuery`) */
 const page = ref(1)
 /** ตัวกรองปัจจุบัน — ตั้งต้นจาก URL */
@@ -243,7 +245,12 @@ async function loadCounts() {
   try {
     const res = await Promise.all(
       REG_FILTERS.map((f) =>
-        listRegistrations(id, { status: f.key === 'all' ? undefined : f.key, limit: 1 }),
+        // ⚠️ ตัวเลขสรุปอ่านจาก `total` ของ envelope ⇒ ต้องสด ไม่งั้นค้างค่าเก่าทั้งหน้า
+        listRegistrations(
+          id,
+          { status: f.key === 'all' ? undefined : f.key, limit: 1 },
+          { noCache: true },
+        ),
       ),
     )
     REG_FILTERS.forEach((f, i) => {
@@ -275,7 +282,7 @@ async function fetchPage() {
       offset: (page.value - 1) * REG_PAGE_SIZE,
     })
     regs.value = res.items
-    total.value = res.total
+    lastPage.value = res
     // หน้าสุดท้ายหายไปเพราะมีคนถอน/ถูกยกเลิก ⇒ ถอยกลับหนึ่งหน้า **และแก้ URL ให้ตรง**
     // (ถ้าไม่แก้ ผู้ใช้ที่ refresh จะกลับมาที่หน้าว่างอีกครั้งไม่จบ)
     if (regs.value.length === 0 && page.value > 1) {
@@ -286,7 +293,7 @@ async function fetchPage() {
   } catch (e) {
     listError.value = errText(e)
     regs.value = []
-    total.value = 0
+    lastPage.value = null
   }
 }
 

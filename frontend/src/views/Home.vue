@@ -1,6 +1,6 @@
 <!-- eslint-disable vue/multi-word-component-names -- 'Home' = หน้า Welcome กลาง (หลังล็อกอิน) -->
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useNotificationsStore } from '@/stores/notifications';
@@ -39,7 +39,6 @@ const notificationsStore = useNotificationsStore();
 //    `avatarChar` ก๊อปไว้ตรงนี้ทั้งชุด ทั้งที่ `useIdentity` มีครบแล้ว ⇒ แก้ที่เดียวไม่ตรงกัน
 const identity = useIdentity();
 
-const rootEl = ref<HTMLElement | null>(null);
 
 // ============ เวลาไทย (Asia/Bangkok) + คำทักทาย ============
 const hourBangkok = computed(() =>
@@ -99,7 +98,6 @@ async function loadHome() {
     home.value = null;
   } finally {
     loadingHome.value = false;
-    void nextTick(() => runCountUps());
   }
 }
 
@@ -134,7 +132,9 @@ const statusMap = computed<Record<string, number>>(() => {
 
 // ============ Moderation queue (สภา/แอดมิน) ============
 const reports = ref<ReportItem[]>([]);
-const reportsTotal = ref(0);
+// 🔄 อ่าน total จาก envelope proxy (ไม่คัดลอก primitive) ⇒ อัปเดตตาม revalidate
+const reportsRes = ref<{ total: number } | null>(null);
+const reportsTotal = computed(() => reportsRes.value?.total ?? 0);
 const loadingReports = ref(isCouncil.value);
 const reportsError = ref(false);
 // "ยิงแล้วและจบแล้ว" — **ต่างจาก `loadingReports`** ซึ่งเป็น false ได้โดยไม่เคยยิงเลย
@@ -152,7 +152,7 @@ async function loadReports() {
   try {
     const res = await listReports({ status: 'open', limit: 5 });
     reports.value = res.items ?? [];
-    reportsTotal.value = res.total ?? 0;
+    reportsRes.value = res;
   } catch {
     reportsError.value = true;
   } finally {
@@ -238,27 +238,9 @@ onMounted(() => {
   void loadDash();
 });
 
-// ============ Count-up (ตัวเลขวิ่งเมื่อโหลดเสร็จ) ============
-function animateNumber(el: HTMLElement) {
-  if (el.dataset.done === '1') return;
-  const target = Number(el.dataset.count || '0');
-  const decimals = Number(el.dataset.decimals || '0');
-  const duration = 750;
-  const start = performance.now();
-  const fmt = new Intl.NumberFormat('th-TH');
-  const tick = (now: number) => {
-    const p = Math.min(1, (now - start) / duration);
-    const eased = 1 - Math.pow(1 - p, 3);
-    const val = target * eased;
-    el.textContent = decimals > 0 ? val.toFixed(decimals) : fmt.format(Math.round(val));
-    if (p < 1) requestAnimationFrame(tick);
-    else el.dataset.done = '1';
-  };
-  requestAnimationFrame(tick);
-}
-function runCountUps() {
-  rootEl.value?.querySelectorAll<HTMLElement>('[data-count]').forEach(animateNumber);
-}
+// ตัวเลขสรุปผูกกับ `summary` (reactive proxy จาก query cache) ตรง ๆ
+// ⇒ กลับมาหน้านี้เห็นค่าเดิมทันที แล้วอัปเดตเองเมื่อ revalidate กลับมา — ไม่มี count-up
+// (ผู้ใช้ขอ "ไม่ต้องมีอนิเมชัน"; ของเดิมยังทำให้ตัวเลขวิ่งจาก 0 ใหม่ทุกครั้งที่ mount)
 
 /**
  * 3 ช่องตัวเลขที่เหลือของแถว "สรุปเรื่องของฉัน" (ช่องแรก = ทั้งหมด เขียนตรงในเทมเพลต)
@@ -334,7 +316,7 @@ function destinationIcon(dest: string | null | undefined): string {
 </script>
 
 <template>
-  <div ref="rootEl" class="space-y-5 pb-2 sm:space-y-6">
+  <div class="space-y-5 pb-2 sm:space-y-6">
     <!-- ============ ทักทาย — บรรทัดเดียว ============
          🔴 **ของเดิมคือการ์ด hero สูง ~280dp** (avatar 64dp + eyebrow "Student Voice" +
             `<h1>` ชื่อผู้ใช้ ขนาด 3xl + บทบาท + วันที่ + ปุ่ม CTA 2 ปุ่ม) ซึ่งกินพื้นที่
@@ -710,10 +692,9 @@ function destinationIcon(dest: string | null | undefined): string {
             :to="{ name: 'my-issues' }"
             class="inline-flex items-center rounded-control px-2 min-h-11 py-2 transition-colors hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            <p
-              class="font-display text-xl font-bold leading-none tabular-nums text-ink-1 sm:text-2xl"
-              :data-count="summary.total_issues"
-            >0</p>
+            <p class="font-display text-xl font-bold leading-none tabular-nums text-ink-1 sm:text-2xl">
+              {{ summary.total_issues }}
+            </p>
             <p class="mt-1.5 truncate text-[11px] font-semibold text-ink-3">ทั้งหมด</p>
           </RouterLink>
 
@@ -723,10 +704,9 @@ function destinationIcon(dest: string | null | undefined): string {
             :to="{ name: 'my-issues', query: { status: tile.status } }"
             class="inline-flex items-center rounded-control px-2 min-h-11 py-2 transition-colors hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            <p
-              class="font-display text-xl font-bold leading-none tabular-nums text-ink-1 sm:text-2xl"
-              :data-count="statusMap[tile.status] ?? 0"
-            >0</p>
+            <p class="font-display text-xl font-bold leading-none tabular-nums text-ink-1 sm:text-2xl">
+              {{ statusMap[tile.status] ?? 0 }}
+            </p>
             <p class="mt-1.5 flex items-center gap-1 truncate text-[11px] font-semibold text-ink-3">
               <!-- จุดสีเป็น *ตัวช่วยจำ* ไม่ใช่ตัวสื่อความหมาย — ข้อความข้าง ๆ คือตัวจริง
                    (ผู้ใช้ที่ตาบอดสีอ่าน "รอรับ" ได้เหมือนกัน) -->
@@ -958,10 +938,4 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-/* ♿ เคารพผู้ที่ปิดแอนิเมชัน */
-@media (prefers-reduced-motion: reduce) {
-  [data-count] {
-    animation: none !important;
-  }
-}
 </style>

@@ -67,7 +67,10 @@ function rowState(a: Announcement): 'active' | 'retired' | 'deleted' {
 
 // ===== ข้อมูล + การโหลด =====
 const items = ref<Announcement[]>([])
-const total = ref(0)
+// 🔄 เก็บ envelope (proxy จาก cache) แล้วให้ total อ่านผ่าน computed เพื่อให้ตัวเลข
+// อัปเดตตาม background revalidate — ไม่ต้องรอ mount ใหม่
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const page = ref(1)
 const statusFilter = ref<AnnouncementStatus>('active')
 const isLoading = ref(true)
@@ -83,11 +86,11 @@ async function load() {
       offset: (page.value - 1) * PAGE_SIZE,
     })
     items.value = res.items
-    total.value = res.total
+    lastPage.value = res
   } catch (e) {
     hasError.value = true
     items.value = []
-    total.value = 0
+    lastPage.value = null
     Swal.fire({ icon: 'error', title: 'โหลดประกาศไม่สำเร็จ', text: errorText(e) })
   } finally {
     isLoading.value = false

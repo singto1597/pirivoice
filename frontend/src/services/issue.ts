@@ -54,8 +54,12 @@ export async function listIssues(params: {
   return (await api.get('/api/issues', { params })) as IssueListResponse
 }
 
-export async function getIssue(id: number): Promise<Issue> {
-  return (await api.get(`/api/issues/${id}`)) as Issue
+/**
+ * @param options.fresh — ข้าม cache (หน้าแก้ไขต้องได้ค่าล่าสุดก่อนคัดลอกลงฟอร์ม)
+ *   ส่วนหน้า detail ใช้ cache ได้ ⇒ mount ซ้ำเห็นเนื้อหาเดิมทันทีแล้วอัปเดตเงียบ ๆ
+ */
+export async function getIssue(id: number, options: { fresh?: boolean } = {}): Promise<Issue> {
+  return (await api.get(`/api/issues/${id}`, { noCache: options.fresh })) as Issue
 }
 
 // 📊 สรุปเรื่องที่ฉันแจ้ง (หน้า Home/Welcome) — 1 request แทนการเรียก list หลายครั้ง

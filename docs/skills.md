@@ -3324,3 +3324,31 @@
     (squash `(#N)` หรือ `Merge pull request #N`) — **PR ที่ merge ซ้อนเข้า branch อื่น
     จะไม่โผล่เลย** ⇒ ต้องเปิดทาง `--refs` ให้คนระบุ และห้ามถือว่า "history ครบ"
 - **Date Added:** 2026-10-31
+
+### 🔁 Stale-while-revalidate ที่ชั้น axios — ตัวเลขต้อง "เปลี่ยนเอง" ได้ ไม่ใช่แค่ "ขึ้นเร็ว"
+
+- **Context/Problem:** ทุกครั้งที่เปลี่ยนหน้า view mount ใหม่แล้วตั้ง `isLoading = true`
+  รอ API ⇒ skeleton กระพริบทั้งหน้าเหมือนเว็บรีโหลด ทั้งที่ข้อมูลเพิ่งโหลดมา
+  ต้องการ: กลับมาหน้าเดิมเห็นค่าเก่าทันที + ยิงเงียบ + ตัวเลขบนหน้าอัปเดตเอง
+- **Root Cause / กับดักที่เจอจริง:**
+  - **คืน `response.data` ดิบตอน miss** = เก็บ proxy ไป reconcile แต่ไม่มีใครถือ reference
+    ⇒ หน้าจอไม่ขยับ · ต้องคืน **proxy ตัวเดียวกับที่เก็บ** เสมอ
+  - **Vue `reactive()` เป็น deep proxy แต่ไม่ลึกถึง primitive ที่ถูกคัดลอก**
+    (`total.value = res.total`) ⇒ เก็บ envelope ไว้แล้วอ่านผ่าน `computed`
+  - **`watch([stats, ...])` ไม่ยิงตอน reconcile** เพราะ identity ของ proxy ไม่เปลี่ยน
+    ⇒ ต้อง watch ค่า/computed ที่เปลี่ยนจริง (เช่น array ที่ computed สร้างใหม่)
+  - **endpoint ที่ poll / ฟอร์มแก้ไขคัดลอกลง local state ต้อง `noCache`** ไม่งั้นได้ค่าเก่า
+    (unread-count, import-jobs, quiet-hours, prefill ของ EditIssue/EventForm/ProfileEdit)
+  - **`responseType: 'blob'` ห้าม cache** — ไม่ควรห่อด้วย reactive proxy
+- **Correct Pattern/Solution** (`frontend/src/services/queryCache.ts` + `api.ts`):
+  - request interceptor: GET + `noCache` ไม่ตั้ง + responseType json ⇒ แทน `config.adapter`
+    ด้วย closure ที่คืน `AxiosResponse` ครบถ้วน (`AxiosHeaders`, `status`, `config`, …)
+    — axios `transformResponse` รัน **หลัง** adapter และแตะเฉพาะ string ⇒ proxy ผ่านได้
+  - response interceptor: hit → ยิง revalidate ด้วย `api.request({ noCache: true })`
+    แล้ว `reconcile(entry.data, fresh)` · miss → เขียนแล้วคืน proxy ของ entry
+  - กันแย่งกันเขียน: `entry.revalidating` (dedupe), `isCurrentEntry()` (mutation ลบ entry
+    ระหว่างรอ ⇒ ห้าม resurrect), 403/404 ระหว่าง revalidate ⇒ ลบ entry
+  - mutation สำเร็จ (POST/PUT/PATCH/DELETE) ⇒ ล้าง cache ตาม resource segment แรก
+    (`/api/issues/3/resolve` → `issues`) — เทียบ **segment เต็ม** ไม่ใช่ `startsWith`
+  - cache key = token + url + stable-stringified params ⇒ ล้างทั้งชุดตอน login/logout/401
+- **Date Added:** 2026-11-04

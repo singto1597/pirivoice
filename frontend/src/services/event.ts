@@ -109,8 +109,12 @@ export async function listEvents(
  *    ⇒ อย่าเขียน `catch` ที่ตีความ 404 ว่า "ไม่มีกิจกรรม" แล้วให้ 200 ที่มี `deleted_at`
  *    ตกไปเข้าเส้นทาง "แก้ไขได้ตามปกติ"
  */
-export async function getEvent(eventId: number): Promise<Event> {
-  return (await api.get(`/api/events/${eventId}`)) as Event
+/**
+ * @param options.fresh — ข้าม cache (ฟอร์มแก้ไขกิจกรรมต้องได้ค่าล่าสุดก่อนคัดลอกลงฟอร์ม)
+ *   หน้า detail/ลงทะเบียนใช้ cache ได้
+ */
+export async function getEvent(eventId: number, options: { fresh?: boolean } = {}): Promise<Event> {
+  return (await api.get(`/api/events/${eventId}`, { noCache: options.fresh })) as Event
 }
 
 /** สร้างกิจกรรม — เกิดเป็น **ฉบับร่าง** เสมอ และยังไม่แจ้งเตือนใคร (ดู `EventCreate`) */
@@ -153,6 +157,7 @@ export async function restoreEvent(eventId: number): Promise<Event> {
 export async function listRegistrations(
   eventId: number,
   params: { status?: RegistrationStatus; limit?: number; offset?: number } = {},
+  options: { noCache?: boolean } = {},
 ): Promise<EventRegistrationListResponse> {
   const { status, limit, offset } = params
   return (await api.get(`/api/events/${eventId}/registrations`, {
@@ -161,6 +166,9 @@ export async function listRegistrations(
       limit: limit ?? 50,
       offset: offset ?? 0,
     },
+    // หน้า EventRegistrations ยิงคำขอนี้ซ้ำ 5 ครั้ง (`limit: 1`) เพื่อเอา `total` ของแต่ละสถานะ
+    // ⇒ ต้องสด ไม่งั้นตัวเลขสรุปจะค้างทั้งหน้า
+    noCache: options.noCache,
   })) as EventRegistrationListResponse
 }
 

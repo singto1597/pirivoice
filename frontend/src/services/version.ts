@@ -5,5 +5,6 @@ import type { AppVersion } from '@/types/version'
 // ⚠️ baseURL ของ api instance ไม่มี `/api` นำหน้า → ต้องใส่เองใน path
 
 export async function getVersion(): Promise<AppVersion> {
-  return (await api.get('/api/version')) as AppVersion
+  // ⚠️ ห้าม cache — ใช้เช็คว่า backend ที่ตอบอยู่เป็น build ไหน (ต้องตรงกับที่ deploy ล่าสุด)
+  return (await api.get('/api/version', { noCache: true })) as AppVersion
 }

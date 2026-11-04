@@ -1,5 +1,18 @@
-import axios from 'axios';
+import axios, { type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { REDIRECT_QUERY, safeRedirect } from '@/router/redirect';
+import {
+  buildCacheKey,
+  clearQueryCache,
+  deleteCacheEntry,
+  getCacheEntry,
+  invalidateForMutation,
+  isCacheableData,
+  isCurrentEntry,
+  makeCachedResponse,
+  markSynced,
+  reconcile,
+  writeCache,
+} from './queryCache';
 
 /**
  * Error ที่พก HTTP status มาด้วย
@@ -27,12 +40,30 @@ export const api = axios.create({
   },
 });
 
-// Interceptor ขาออก
+/**
+ * 🧠 cache hit → ตอบจาก memory ทันที (จบใน microtask ก่อน paint) แล้วค่อย revalidate เงียบ ๆ
+ *
+ * ⚠️ ห้าม cache คำขอที่ `responseType` ไม่ใช่ json (blob/arraybuffer) — ข้อมูลไบนารี
+ *   ไม่ควรถูกห่อด้วย reactive proxy และมักเป็นการดาวน์โหลดที่ต้องสด
+ */
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    const method = (config.method ?? 'get').toLowerCase();
+    const responseType = config.responseType ?? 'json';
+    if (method === 'get' && !config.noCache && responseType === 'json' && config.url) {
+      const key = buildCacheKey(config.url, config.params, token);
+      config.__cacheKey = key;
+      const entry = getCacheEntry(key);
+      if (entry) {
+        // แทน adapter = ไม่ยิง network เลย แต่ response ยังไหลผ่าน transform ปกติ
+        config.adapter = () => Promise.resolve(makeCachedResponse(config, entry.data));
+        config.__fromCache = true;
+      }
     }
     return config;
   },
@@ -40,6 +71,62 @@ api.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * ยิงคำขอสดเบื้องหลังแล้ว reconcile ทับ proxy เดิมของ entry
+ *
+ * - dedupe ต่อ key ด้วย `entry.revalidating` (cache hit หลายครั้งรัว ๆ ไม่ยิงถี่กว่า 1)
+ * - `isCurrentEntry` กันกรณี mutation ลบ entry ไปแล้วระหว่างรอ → ห้าม resurrect ข้อมูลเก่า
+ * - 403/404 = ของหาย/ถูกซ่อนแล้ว ⇒ ลบ entry ไม่ให้หน้าโชว์ค้าง (401 มี interceptor จัดการ)
+ */
+function scheduleRevalidate(config: InternalAxiosRequestConfig, key: string): void {
+  const entry = getCacheEntry(key);
+  if (!entry || entry.revalidating) return;
+  entry.revalidating = true;
+  void (api.request({
+    url: config.url,
+    method: 'get',
+    params: config.params,
+    noCache: true,
+  }) as unknown as Promise<unknown>)
+    .then((fresh) => {
+      if (!isCurrentEntry(key, entry) || !isCacheableData(fresh)) return;
+      reconcile(entry.data, fresh);
+      if (config.url) markSynced(config.url);
+    })
+    .catch((err: unknown) => {
+      const status = (err as { status?: number }).status;
+      if (status === 403 || status === 404) deleteCacheEntry(key);
+    })
+    .finally(() => {
+      entry.revalidating = false;
+    });
+}
+
+/**
+ * ⚠️ ลำดับสำคัญมาก: cache miss ต้องคืน **proxy ตัวเดียวกับที่เก็บ** ไม่ใช่ `response.data`
+ *   ดิบ ๆ — ไม่งั้น reconcile จะ mutate object ที่ไม่มีใครถือ reference แล้วหน้าจอไม่ขยับ
+ */
+function handleSuccess(response: AxiosResponse): unknown {
+  const config = response.config;
+
+  if (config.__fromCache && config.__cacheKey) {
+    scheduleRevalidate(config, config.__cacheKey);
+    return response.data;
+  }
+
+  const method = (config.method ?? 'get').toLowerCase();
+  if (method !== 'get') {
+    invalidateForMutation(config.url);
+    return response.data;
+  }
+
+  if (config.__cacheKey && config.url && isCacheableData(response.data)) {
+    markSynced(config.url);
+    return writeCache(config.__cacheKey, config.url, response.data).data;
+  }
+  return response.data;
+}
 
 /**
  * 🔗 สร้าง URL ของหน้า Login **พร้อมจำปลายทางที่ผู้ใช้ตั้งใจจะไป** (§30)
@@ -71,11 +158,15 @@ export function loginUrlRemembering(pathname: string, search: string): string {
 let isRedirectingToLogin = false;
 
 api.interceptors.response.use(
-  (response) => response.data,
+  // ⚠️ signature ของ axios บังคับให้คืน `AxiosResponse` แต่ทั้งโปรเจกต์ใช้ค่าที่ unwrap แล้ว
+  //   (`services/*` ทุกตัวคาดว่าได้ data ตรง ๆ) ⇒ cast ครั้งเดียวตรงจุดนี้เท่านั้น
+  (response) => handleSuccess(response) as unknown as typeof response,
   async (error) => {
     if (error.response) {
       if (error.response.status === 401) {
         // เคลียร์ Session ทั้งหมด (ไม่ใช่แค่ token) เพื่อป้องกัน redirect วนลูป
+        // + ล้าง cache กันข้อมูลของผู้ใช้คนก่อนโผล่ให้คนถัดไปในแท็บเดียวกัน
+        clearQueryCache();
         localStorage.removeItem('access_token');
         localStorage.removeItem('user_id_str');
 

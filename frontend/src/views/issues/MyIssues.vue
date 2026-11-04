@@ -17,7 +17,10 @@ const route = useRoute();
 const router = useRouter();
 
 const issues = ref<Issue[]>([]);
-const total = ref(0); // จำนวนทั้งหมดที่ตรงเงื่อนไข (จาก envelope)
+// 🔄 จำนวนทั้งหมดที่ตรงเงื่อนไข (จาก envelope) — อ่านผ่าน computed เพื่อให้ตัวเลข
+// อัปเดตตาม background revalidate แทนการคัดลอก primitive ตอน load
+const lastPage = ref<{ total: number } | null>(null);
+const total = computed(() => lastPage.value?.total ?? 0);
 const isLoading = ref(true);
 const error = ref('');
 const q = ref('');           // คำค้นหา
@@ -87,7 +90,7 @@ async function load() {
       offset: (page.value - 1) * pageSize,
     });
     issues.value = res.items;
-    total.value = res.total;
+    lastPage.value = res;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ';
   } finally {

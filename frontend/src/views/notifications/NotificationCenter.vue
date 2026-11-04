@@ -50,7 +50,9 @@ const router = useRouter()
 const notificationsStore = useNotificationsStore()
 
 const items = ref<NotificationItem[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const isLoading = ref(true)
 const error = ref('')
 const activeTab = ref<'' | NotificationGroup>('')
@@ -146,7 +148,7 @@ async function load() {
       offset: (page.value - 1) * pageSize,
     })
     items.value = res.items
-    total.value = res.total
+    lastPage.value = res
     await notificationsStore.fetchCounts() // badge อัปเดตตามจริง
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'โหลดการแจ้งเตือนไม่สำเร็จ'
