@@ -279,10 +279,30 @@ const actorLabel = (item: AuditLogItem): string => item.actor_name || item.actor
 const actorDetail = (item: AuditLogItem): string | null => {
   if (!item.actor_name) return null;
   const isBareId = /^\d+$/.test(item.actor_identifier.trim());
-  return [isBareId ? '' : item.actor_identifier, item.client_source]
-    .filter((part) => !isBlank(part))
-    .join(' · ');
+  const parts = [isBareId ? '' : item.actor_identifier, item.client_source].filter(
+    (part) => !isBlank(part),
+  );
+  return parts.length ? parts.join(' · ') : null;
 };
+
+/**
+ * บรรทัดข้อมูลของการ์ด: บริการ · ชนิด/รหัส · endpoint · ผู้ทำ(identifier)/ฝั่งที่ยิงมา
+ *
+ * 🧩 รวมเป็นบรรทัดเดียวโดยเจตนา — แยกเป็นหลาย `<p>` ทำให้การ์ดสูงขึ้น 1 บรรทัดทุกใบ
+ * (30 ใบ/หน้า = เลื่อนไกลขึ้นโดยไม่ได้ข้อมูลเพิ่ม)
+ */
+function metaLine(item: AuditLogItem): string {
+  const parts: string[] = [item.service_name];
+  if (!isBlank(item.entity_type)) {
+    parts.push(
+      isBlank(item.entity_id) ? item.entity_type : `${item.entity_type} #${item.entity_id}`,
+    );
+  }
+  if (!isBlank(item.endpoint_or_command)) parts.push(item.endpoint_or_command);
+  const actor = actorDetail(item);
+  if (actor) parts.push(actor);
+  return parts.join(' · ');
+}
 
 /**
  * ค่า sentinel จาก backend = "ไม่มีค่า" — audit_logs บันทึกครบทุกคอลัมน์แล้ว (ไม่เป็น NULL)
@@ -486,25 +506,12 @@ const filterCls =
                   {{ statusLabel(item.status) }}
                 </span>
               </p>
-              <p class="mt-0.5 break-words text-xs text-ink-3">
-                {{ item.service_name }}
-                <template v-if="!isBlank(item.entity_type)">
-                  · {{ item.entity_type
-                  }}<template v-if="!isBlank(item.entity_id)"> #{{ item.entity_id }}</template>
-                </template>
-                <template v-if="!isBlank(item.endpoint_or_command)">
-                  · {{ item.endpoint_or_command }}
-                </template>
-              </p>
+              <p class="mt-0.5 break-words text-xs text-ink-3">{{ metaLine(item) }}</p>
             </div>
             <time class="shrink-0 text-xs text-ink-3 tabular-nums" :datetime="item.created_at">
               {{ fmtDateTimeSec(item.created_at) }}
             </time>
           </div>
-
-          <p v-if="actorDetail(item)" class="mt-1 break-words text-xs text-ink-3">
-            {{ actorDetail(item) }}
-          </p>
 
           <p
             v-if="!isBlank(item.error_detail)"
@@ -518,27 +525,27 @@ const filterCls =
             <summary class="cursor-pointer text-xs font-bold text-brand">รายละเอียด</summary>
             <dl class="mt-2 space-y-1 text-xs text-ink-2">
               <div v-if="!isBlank(item.ip_address)" class="flex gap-2">
-                <dt class="w-24 shrink-0 text-ink-3">IP</dt>
+                <dt class="w-28 shrink-0 text-ink-3">IP</dt>
                 <dd class="break-all">{{ item.ip_address }}</dd>
               </div>
               <div v-if="!isBlank(item.user_agent)" class="flex gap-2">
-                <dt class="w-24 shrink-0 text-ink-3">อุปกรณ์</dt>
+                <dt class="w-28 shrink-0 text-ink-3">อุปกรณ์</dt>
                 <dd class="break-all">{{ item.user_agent }}</dd>
               </div>
               <div v-if="fmtRoom(item)" class="flex gap-2">
-                <dt class="w-24 shrink-0 text-ink-3">ห้อง</dt>
+                <dt class="w-28 shrink-0 text-ink-3">ห้อง</dt>
                 <dd>{{ fmtRoom(item) }}</dd>
               </div>
               <div v-if="item.execution_time_ms !== null" class="flex gap-2">
-                <dt class="w-24 shrink-0 text-ink-3">เวลาทำงาน</dt>
+                <dt class="w-28 shrink-0 text-ink-3">เวลาทำงาน</dt>
                 <dd class="tabular-nums">{{ item.execution_time_ms }} ms</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="w-24 shrink-0 text-ink-3">รหัสการทำ</dt>
+                <dt class="w-28 shrink-0 text-ink-3">รหัสการทำ</dt>
                 <dd class="font-mono break-all">{{ item.action }}</dd>
               </div>
               <div v-if="!isBlank(item.trace_id)" class="flex gap-2">
-                <dt class="w-24 shrink-0 text-ink-3">Trace ID</dt>
+                <dt class="w-28 shrink-0 text-ink-3">Trace ID</dt>
                 <dd class="font-mono break-all">{{ item.trace_id }}</dd>
               </div>
             </dl>
