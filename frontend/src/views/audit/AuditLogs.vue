@@ -269,11 +269,20 @@ onMounted(() => {
 /** ป้ายชื่อผู้ทำ: ใช้ชื่อจริงถ้ามี ไม่งั้นแสดงตัวระบุดิบที่บันทึกไว้ */
 const actorLabel = (item: AuditLogItem): string => item.actor_name || item.actor_identifier;
 
-/** บรรทัดรอง: identifier ดิบ + ฝั่งที่ยิงมา (web/bot) — โชว์เฉพาะเมื่อมีชื่อจริงให้เทียบ */
-const actorDetail = (item: AuditLogItem): string | null =>
-  item.actor_name
-    ? [item.actor_identifier, item.client_source].filter((part) => !isBlank(part)).join(' · ')
-    : null;
+/**
+ * บรรทัดรอง: identifier ดิบ + ฝั่งที่ยิงมา (web/bot)
+ *
+ * ⚠️ `actor_identifier` ของ log ที่ไม่ใช่ login คือ **user_id เป็นตัวเลข** (ดู
+ * `AuditLogger` callers — `actor_identifier=str(user_id)`) ⇒ "1 · web" ไม่บอกอะไรผู้ดูแล
+ * จึงแสดงเฉพาะ identifier ที่ไม่ใช่ตัวเลขล้วน (username/ข้อความที่ผู้ใช้กรอก) และตัดทิ้งถ้าเหลือว่าง
+ */
+const actorDetail = (item: AuditLogItem): string | null => {
+  if (!item.actor_name) return null;
+  const isBareId = /^\d+$/.test(item.actor_identifier.trim());
+  return [isBareId ? '' : item.actor_identifier, item.client_source]
+    .filter((part) => !isBlank(part))
+    .join(' · ');
+};
 
 /**
  * ค่า sentinel จาก backend = "ไม่มีค่า" — audit_logs บันทึกครบทุกคอลัมน์แล้ว (ไม่เป็น NULL)
