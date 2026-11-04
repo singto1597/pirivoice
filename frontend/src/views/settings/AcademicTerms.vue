@@ -20,7 +20,9 @@ import PaginationBar from '@/components/PaginationBar.vue'
 const PAGE_SIZE = 20
 
 const items = ref<AcademicTerm[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const page = ref(1)
 const statusFilter = ref('active')
 /** ปีทั้งหมด (สำหรับตัวเลือกในฟอร์ม/ตัวกรอง) — โหลดครั้งเดียวตอนเข้าหน้า */
@@ -59,11 +61,11 @@ async function load() {
       year_id: yearFilter.value === '' ? undefined : yearFilter.value,
     })
     items.value = res.items
-    total.value = res.total
+    lastPage.value = res
   } catch (e) {
     hasError.value = true
     items.value = []
-    total.value = 0
+    lastPage.value = null
     Swal.fire({ icon: 'error', title: 'โหลดภาคเรียนไม่สำเร็จ', text: errorText(e) })
   } finally {
     isLoading.value = false

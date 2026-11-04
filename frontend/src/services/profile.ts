@@ -23,8 +23,12 @@ export interface MyProfile {
   email: string | null;
 }
 
-export async function getMyProfile(): Promise<MyProfile> {
-  return (await api.get('/api/students/me/profile')) as MyProfile;
+/**
+ * @param options.fresh — ข้าม cache (หน้าแก้ไขโปรไฟล์ต้องได้ค่าล่าสุดก่อนคัดลอกลงฟอร์ม)
+ *   หน้าดูโปรไฟล์ใช้ cache ได้
+ */
+export async function getMyProfile(options: { fresh?: boolean } = {}): Promise<MyProfile> {
+  return (await api.get('/api/students/me/profile', { noCache: options.fresh })) as MyProfile;
 }
 
 export async function updateMyProfile(data: Partial<MyProfile>): Promise<MyProfile> {

@@ -31,7 +31,9 @@ const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const issues = ref<Issue[]>([])
-const total = ref(0) // จำนวนทั้งหมดที่ตรงเงื่อนไข (จาก envelope)
+// 🔄 จำนวนทั้งหมดที่ตรงเงื่อนไข (จาก envelope) — อ่านผ่าน computed ให้ตรงกับ revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const isLoading = ref(true)
 const error = ref('')
 // 🏛️ อนุมัติเผยแพร่ PIRI Board (สภานักเรียน/แอดมิน) — modal ตั้งค่าตัวเลือกโหวต/คอมเมนต์
@@ -380,7 +382,7 @@ async function load() {
     // ไม่เลือกเลย → ไม่เห็นเรื่องใด (server ไม่มีค่า "none" — default คือระดับตัวเอง)
     if (hasLevelChoice.value && levelSelections.value.length === 0) {
       issues.value = []
-      total.value = 0
+      lastPage.value = null
       return
     }
     const levelsParam = hasLevelChoice.value ? levelSelections.value.join(',') : undefined
@@ -408,7 +410,7 @@ async function load() {
       offset: (page.value - 1) * pageSize,
     })
     issues.value = res.items
-    total.value = res.total
+    lastPage.value = res
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ'
   } finally {

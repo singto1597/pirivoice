@@ -90,7 +90,9 @@ const STATUS_BADGE: Record<string, string> = {
 
 // ===== ข้อมูล + การโหลด =====
 const items = ref<AuditLogEntry[]>([]);
-const total = ref(0);
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null);
+const total = computed(() => lastPage.value?.total ?? 0);
 const page = ref(1);
 const pageSize = 20;
 const isLoading = ref(true);
@@ -122,7 +124,7 @@ async function load() {
       offset: (page.value - 1) * pageSize,
     });
     items.value = res.items;
-    total.value = res.total;
+    lastPage.value = res;
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'เกิดข้อผิดพลาด';
     error.value = msg;

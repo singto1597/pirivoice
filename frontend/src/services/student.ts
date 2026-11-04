@@ -72,7 +72,8 @@ export async function startImportJob(jobId: number): Promise<ImportJob> {
 }
 
 export async function listImportJobs(): Promise<ImportJob[]> {
-  return (await api.get('/api/import-jobs')) as ImportJob[]
+  // ⚠️ ห้าม cache — หน้าอัปโหลด poll ทุก 2 วิ และใช้ค่าสดตัดสินใจหยุด poll
+  return (await api.get('/api/import-jobs', { noCache: true })) as ImportJob[]
 }
 
 export async function downloadImportTemplate(): Promise<Blob> {

@@ -47,6 +47,12 @@
 
 ## 4. UI/UX & Feedback Rules
 - **Loading State:** ทุกครั้งที่มีการดึงข้อมูล ต้องมี `const isLoading = ref(true)` และแสดง Spinner หรือ Skeleton Screen
+- 🔁 **ข้อยกเว้นของ Loading State (พ.ย. 2026):** ถ้ามี **ข้อมูลเก่าจาก cache** อยู่แล้ว
+  (stale-while-revalidate ที่ชั้น `services/api.ts`) **ห้ามแสดง skeleton/spinner ทับข้อมูลเก่า**
+  — skeleton มีไว้เฉพาะ cold load ที่ยังไม่เคยมีข้อมูล · ตัวเลข/รายการต้องอัปเดตเอง
+  เมื่อ revalidate กลับมา ⇒ **อย่าคัดลอกค่าออกจาก response เป็น primitive**
+  (`total.value = res.total`) ให้เก็บ envelope ไว้แล้วอ่านผ่าน `computed` แทน
+  ไม่งั้นตัวเลขจะค้างจนกว่าจะ mount ใหม่ (ดู `queryCache.ts` และ list views)
 - **Notifications:** การแจ้งเตือน Error/Success/Confirm **ต้องใช้ `SweetAlert2` (`Swal.fire`) เท่านั้น** ห้ามใช้ `alert()` หรือ `toast` อื่นๆ
 - **Timezone:** แสดงผลเวลาเป็นภาษาไทย และจัดการให้เป็น `Asia/Bangkok` (UTC+7)
 - 🔴 **"ว่าง" ≠ "พัง" ≠ "ยังโหลดไม่เสร็จ"** (เพิ่ม ต.ค. 2026) — ทั้งสามสถานะให้ผลเหมือนกันเป๊ะ

@@ -58,7 +58,9 @@ const router = useRouter()
 const PAGE_SIZE = 20
 
 const items = ref<Event[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const page = ref(1)
 const statusFilter = ref<EventListStatus>('live')
 /**
@@ -126,7 +128,7 @@ async function load() {
       offset: (page.value - 1) * PAGE_SIZE,
     })
     items.value = res.items
-    total.value = res.total
+    lastPage.value = res
     // ⚠️ หน้าที่ว่างเปล่าต้องถอยกลับ ไม่ใช่ปล่อยค้าง — หลังลบ/กู้คืนแถวสุดท้ายของหน้าสุดท้าย
     //    หน้านี้จะไม่มีอะไรเหลือ และ **`<PaginationBar>` หายไปด้วย** เพราะมันอยู่ในกิ่ง
     //    `v-else` ของรายการ ⇒ ถ้าไม่ถอย ผู้ใช้จะไม่มีทางกลับไปดูแถวที่เหลือได้เลย
@@ -138,7 +140,7 @@ async function load() {
   } catch {
     hasError.value = true
     items.value = []
-    total.value = 0
+    lastPage.value = null
   } finally {
     isLoading.value = false
   }

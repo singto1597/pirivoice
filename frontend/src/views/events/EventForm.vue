@@ -155,7 +155,8 @@ async function load() {
       notFound.value = true
       return
     }
-    const row = await getEvent(id)
+    // ⚠️ ฟอร์มแก้ไขต้องได้ค่าล่าสุด — ห้ามใช้ cache
+    const row = await getEvent(id, { fresh: true })
     event.value = row
     form.value = toFormValues(row)
     baseline.value = toBaseline(row)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -40,8 +40,14 @@ const tab = ref<'activity' | 'bookmarks'>('activity')
 
 // ── แท็บกิจกรรมของฉัน ──
 const actItems = ref<ActivityItem[]>([])
-const actCounts = ref<Partial<Record<ActivityType, number>>>({})
-const actTotal = ref(0)
+// 🔄 เก็บ envelope ไว้ทั้งก้อน (proxy จาก query cache) แล้วให้ตัวเลขอ่านผ่าน computed
+//    — ถ้าคัดลอกเป็น primitive ตอน load ตัวเลขจะค้างเมื่อ background revalidate กลับมา
+const actRes = ref<{
+  total: number
+  counts?: Partial<Record<ActivityType, number>>
+} | null>(null)
+const actCounts = computed<Partial<Record<ActivityType, number>>>(() => actRes.value?.counts ?? {})
+const actTotal = computed(() => actRes.value?.total ?? 0)
 const actPage = ref(1)
 const actType = ref<ActivityType | ''>('')
 const actLoading = ref(true)
@@ -49,7 +55,8 @@ const actError = ref('')
 
 // ── แท็บบันทึกไว้ ──
 const bmItems = ref<Bookmark[]>([])
-const bmTotal = ref(0)
+const bmRes = ref<{ total: number } | null>(null)
+const bmTotal = computed(() => bmRes.value?.total ?? 0)
 const bmPage = ref(1)
 const bmEntityType = ref<BookmarkEntityType | ''>('')
 const bmLoading = ref(false)
@@ -68,8 +75,7 @@ async function loadActivity() {
       offset: (actPage.value - 1) * PAGE_SIZE,
     })
     actItems.value = res.items
-    actTotal.value = res.total
-    actCounts.value = res.counts ?? {}
+    actRes.value = res
   } catch (e) {
     actError.value = e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ'
   } finally {
@@ -87,7 +93,7 @@ async function loadBookmarks() {
       offset: (bmPage.value - 1) * PAGE_SIZE,
     })
     bmItems.value = res.items
-    bmTotal.value = res.total
+    bmRes.value = res
     bmLoaded.value = true
   } catch (e) {
     bmError.value = e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ'

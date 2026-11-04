@@ -26,7 +26,8 @@ async function loadProfile() {
   isLoading.value = true;
   loadError.value = false;
   try {
-    const p = await getMyProfile();
+    // ⚠️ ฟอร์มแก้ไขต้องได้ค่าล่าสุด — ห้ามใช้ cache
+    const p = await getMyProfile({ fresh: true });
     editPrefix.value = p.prefix || '';
     editFirstName.value = p.first_name || '';
     editLastName.value = p.last_name || '';

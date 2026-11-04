@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { listBoards } from '@/services/board'
 import { BOARD_TYPE_LABELS, boardTypeIcon, type BoardSummary, type BoardType } from '@/types/board'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -31,7 +31,9 @@ import { fmtRelative } from '@/datetime'
  *    และเพราะเหตุผลเชิงสถาปัตยกรรม: `AppFab` เป็น `RouterLink` เปิด modal จาก shell ไม่ได้
  */
 const boards = ref<BoardSummary[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const isLoading = ref(true)
 const error = ref('')
 const typeFilter = ref<'' | BoardType>('') // '' = ทั้งหมด
@@ -91,7 +93,7 @@ async function load() {
       offset: (page.value - 1) * pageSize,
     })
     boards.value = res.items
-    total.value = res.total
+    lastPage.value = res
     isFiltered.value = Boolean(typeFilter.value || q.value.trim())
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ'

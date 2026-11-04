@@ -131,8 +131,8 @@ describe('settings services (ช่วงเวลาไม่ส่งแจ้
     const result = await getQuietHours()
 
     expect(getMock).toHaveBeenCalledTimes(1)
-    // ⚠️ ไม่มี config เป็นอาร์กิวเมนต์ที่สอง — endpoint นี้ไม่รับ query param ใด ๆ
-    expect(getMock).toHaveBeenCalledWith('/api/settings/quiet-hours')
+    // ⚠️ ไม่รับ query param ใด ๆ — อาร์กิวเมนต์ที่สองมีแค่ `noCache` (ฟอร์มต้องได้ค่าสด)
+    expect(getMock).toHaveBeenCalledWith('/api/settings/quiet-hours', { noCache: true })
     expect(result).toEqual(fake)
   })
 

@@ -52,7 +52,9 @@ const authStore = useAuthStore()
 const canManage = computed(() => authStore.hasPermission('MANAGE_EVENTS'))
 
 const events = ref<PublicEvent[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const page = ref(1)
 const scope = ref<EventScope>('upcoming')
 /**
@@ -123,7 +125,7 @@ async function load() {
       offset: (page.value - 1) * PAGE_SIZE,
     })
     events.value = res.items
-    total.value = res.total
+    lastPage.value = res
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'โหลดรายการกิจกรรมไม่สำเร็จ'
   } finally {

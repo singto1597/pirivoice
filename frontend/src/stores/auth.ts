@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authService from '@/services/auth'
+import { clearQueryCache } from '@/services/queryCache'
 import type { AuthUser } from '@/types/auth'
 
 // จัดการ Session/Auth state
@@ -53,6 +54,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(username: string, password: string): Promise<AuthUser> {
     const res = await authService.login(username, password)
+    // กันข้ามบัญชี: cache ผูก token อยู่แล้ว แต่ล้างชัด ๆ อีกชั้นก่อนสลับตัวตน
+    clearQueryCache()
     setToken(res.access_token)
     setUser(res.user)
     return res.user
@@ -76,6 +79,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    clearQueryCache()
     accessToken.value = null
     user.value = null
     localStorage.removeItem('access_token')

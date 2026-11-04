@@ -24,6 +24,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios'
 import { api, type ApiError } from '@/services/api'
+import { clearQueryCache } from '@/services/queryCache'
 
 const originalAdapter = api.defaults.adapter
 
@@ -68,6 +69,8 @@ async function catchError(): Promise<ApiError> {
 
 beforeEach(() => {
   localStorage.clear()
+  // กัน entry จากเทสต์ก่อนรั่วข้ามไฟล์/ข้ามเทสต์ (cache เป็นสถานะระดับโมดูล)
+  clearQueryCache()
 })
 
 afterEach(() => {

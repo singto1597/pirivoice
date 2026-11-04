@@ -10,5 +10,6 @@ export async function login(username: string, password: string): Promise<{ acces
 }
 
 export async function fetchMe(): Promise<AuthUser> {
-  return (await api.get('/api/auth/me')) as AuthUser;
+  // ⚠️ ห้าม cache — เป็นตัวตนผู้ใช้; Pinia ถือ state ล่าสุดไว้อยู่แล้ว
+  return (await api.get('/api/auth/me', { noCache: true })) as AuthUser;
 }

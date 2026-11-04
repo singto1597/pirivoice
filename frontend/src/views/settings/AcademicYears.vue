@@ -25,7 +25,9 @@ const router = useRouter()
 const PAGE_SIZE = 20
 
 const items = ref<AcademicYear[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const page = ref(1)
 const statusFilter = ref('active')
 const isLoading = ref(true)
@@ -62,7 +64,7 @@ async function load() {
       offset: (page.value - 1) * PAGE_SIZE,
     })
     items.value = res.items
-    total.value = res.total
+    lastPage.value = res
     staleError.value = false
   } catch (e) {
     // รอบแรก (ยังไม่มีอะไรโชว์) → แทนที่ทั้งหน้าด้วย error state
@@ -71,7 +73,7 @@ async function load() {
     if (!hadItems) {
       hasError.value = true
       items.value = []
-      total.value = 0
+      lastPage.value = null
     }
     Swal.fire({ icon: 'error', title: 'โหลดปีการศึกษาไม่สำเร็จ', text: errorText(e) })
   } finally {

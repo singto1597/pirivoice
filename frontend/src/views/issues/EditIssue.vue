@@ -43,7 +43,8 @@ async function loadIssue() {
   isLoading.value = true
   loadError.value = ''
   try {
-    const issue = await getIssue(issueId)
+    // ⚠️ ฟอร์มแก้ไขต้องได้ค่าล่าสุด — ห้ามใช้ cache (อาจเป็นค่าก่อนมีคนอื่นแก้)
+    const issue = await getIssue(issueId, { fresh: true })
 
     // ตรวจสิทธิ์: ผู้แจ้ง หรือ admin
     const isReporter = !!authStore.user && issue.reporter_id === authStore.user.id

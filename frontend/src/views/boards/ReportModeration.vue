@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import Swal from 'sweetalert2'
 import { BRAND, NEUTRAL } from '@/constants/brand'
@@ -31,7 +31,9 @@ const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
 
 const reports = ref<ReportItem[]>([])
-const total = ref(0)
+// 🔄 อ่าน total จาก envelope proxy ให้ตรงกับ background revalidate
+const lastPage = ref<{ total: number } | null>(null)
+const total = computed(() => lastPage.value?.total ?? 0)
 const isLoading = ref(true)
 const error = ref('')
 const statusFilter = ref<'' | ReportStatus>('open') // default: คิวที่รอจัดการ
@@ -95,7 +97,7 @@ async function load() {
       offset: (page.value - 1) * pageSize,
     })
     reports.value = res.items
-    total.value = res.total
+    lastPage.value = res
     // 🔔 เปิดคิวรายงานแล้ว → mark ว่าเห็นรายงานใหม่แล้ว (badge "จัดการรายงาน" ลด)
     void notificationsStore.read({ group_type: 'report' })
   } catch (e) {

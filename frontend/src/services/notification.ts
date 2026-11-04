@@ -32,7 +32,9 @@ export async function listNotifications(params: {
 }
 
 export async function getUnreadCounts(): Promise<UnreadCounts> {
-  return (await api.get('/api/notifications/unread-count')) as UnreadCounts
+  // ⚠️ ห้าม cache — store ใช้การ throw ของคำขอนี้เพื่อนับ poll failure และคัดลอก
+  //    `total` เป็น primitive ⇒ ค่าเก่าจะค้างและ badge ไม่ยอมขยับ
+  return (await api.get('/api/notifications/unread-count', { noCache: true })) as UnreadCounts
 }
 
 export async function markRead(payload: MarkReadPayload): Promise<{ updated: number }> {
@@ -42,7 +44,8 @@ export async function markRead(payload: MarkReadPayload): Promise<{ updated: num
 // ⚙️ ตั้งค่าการแจ้งเตือนรายกลุ่ม — server คืนครบทุกกลุ่มเสมอ (ไม่ต้อง zero-fill ฝั่งนี้)
 
 export async function getNotificationPreferences(): Promise<NotificationPreferencesResponse> {
-  return (await api.get('/api/notifications/preferences')) as NotificationPreferencesResponse
+  // ⚠️ ห้าม cache — หน้าตั้งค่าคัดลอกค่าลง local form state ⇒ ต้องได้ค่าที่เพิ่งบันทึก
+  return (await api.get('/api/notifications/preferences', { noCache: true })) as NotificationPreferencesResponse
 }
 
 // PUT ไม่ใช่ PATCH — ส่ง "สถานะที่ต้องการ" ของกลุ่มที่แก้ และ endpoint idempotent
@@ -60,7 +63,8 @@ export async function updateNotificationPreferences(
 
 /** สถานะ push ของ **ฉัน** — `device_count` นับเฉพาะอุปกรณ์ที่ผูกกับบัญชีนี้ */
 export async function getPushStatus(): Promise<PushStatus> {
-  return (await api.get('/api/notifications/push/status')) as PushStatus
+  // ⚠️ ห้าม cache — สถานะการสมัคร push ของอุปกรณ์นี้ต้องสด (สลับเครื่อง/เพิ่งอนุญาต)
+  return (await api.get('/api/notifications/push/status', { noCache: true })) as PushStatus
 }
 
 /** ⚠️ ห้ามใส่ `user_id` ในพารามิเตอร์ — backend เอาเจ้าของจาก JWT เท่านั้น (ดูคอมเมนต์ใน types) */

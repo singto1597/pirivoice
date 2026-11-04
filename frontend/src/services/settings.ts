@@ -65,7 +65,8 @@ export async function restoreTerm(termId: number): Promise<AcademicTerm> {
 
 // อ่านค่าปัจจุบัน — **ไม่ต้องมี MANAGE_SETTINGS** (ผู้ใช้ที่ล็อกอินทุกคนเรียกได้)
 export async function getQuietHours(): Promise<QuietHours> {
-  return (await api.get('/api/settings/quiet-hours')) as QuietHours
+  // ⚠️ ห้าม cache — การ์ดตั้งค่าคัดลอกค่าลงฟอร์ม ⇒ ต้องได้ค่าล่าสุดเสมอ
+  return (await api.get('/api/settings/quiet-hours', { noCache: true })) as QuietHours
 }
 
 // ตั้งค่า — ต้องมี MANAGE_SETTINGS · PUT = full replace ⇒ ส่งครบ 3 ฟิลด์เสมอ
